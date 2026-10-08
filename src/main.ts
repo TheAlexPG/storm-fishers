@@ -578,7 +578,8 @@ class Game {
       time.hours,
     );
     const sunI = time.sunStrength;
-    this.sunLight.intensity = sunI * 1.7 + this.weather.flash * 3.0;
+    const cloudFactor = 1 - this.weather.cloudiness * 0.55;
+    this.sunLight.intensity = sunI * 1.7 * cloudFactor + this.weather.flash * 3.0;
     this.moonLight.intensity = (1 - time.daylight) * 0.22;
     const sunPos = this._v.copy(time.sunDir).multiplyScalar(140).add(this.boat.pos);
     this.sunLight.position.copy(sunPos);
@@ -586,7 +587,7 @@ class Game {
     this._v2.set(-time.sunDir.x, Math.max(time.sunDir.y, 0.2), -time.sunDir.z).normalize().multiplyScalar(140).add(this.boat.pos);
     this.moonLight.position.copy(this._v2);
     this.moonLight.target.position.copy(this.boat.pos);
-    this.hemi.intensity = 0.25 + time.daylight * 0.5;
+    this.hemi.intensity = (0.25 + time.daylight * 0.5) * (1 - this.weather.cloudiness * 0.3);
     this.hemi.color.copy(time.skyHorizon);
 
     // порт

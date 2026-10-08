@@ -21,6 +21,7 @@ uniform vec3 uHorizon;
 uniform vec3 uSunDir;
 uniform float uSunStrength;
 uniform float uFlash;
+uniform float uCloudiness;
 varying vec3 vDir;
 void main() {
   vec3 d = normalize(vDir);
@@ -31,6 +32,14 @@ void main() {
   col += vec3(1.0, 0.9, 0.7) * pow(sd, 350.0) * 2.0 * uSunStrength;
   col += vec3(1.0, 0.75, 0.5) * pow(sd, 18.0) * 0.22 * uSunStrength;
   col += vec3(1.0, 0.85, 0.6) * pow(sd, 5.0) * 0.10 * uSunStrength;
+  // хмарність: небо сіріє і темніє (штормове покривало).
+  // Фіксоване темне сіре (немов хмарна штора), трохи світліше біля горизонту,
+  // інакше яскравий денний горизонт залишався блакитним навіть у шторм.
+  float cl = clamp(uCloudiness, 0.0, 1.0);
+  vec3 greyHor = vec3(0.30, 0.33, 0.38);
+  vec3 greyTop = vec3(0.20, 0.22, 0.27);
+  vec3 grey = mix(greyHor, greyTop, pow(h, 0.55));
+  col = mix(col, grey, clamp(cl * 0.85, 0.0, 1.0));
   // блискавка
   col += vec3(0.75, 0.8, 1.0) * uFlash * (0.3 + 0.7 * (1.0 - h));
   gl_FragColor = vec4(col, 1.0);
@@ -124,6 +133,7 @@ export class Sky {
         uSunDir: { value: new THREE.Vector3(0, 1, 0) },
         uSunStrength: { value: 1 },
         uFlash: { value: 0 },
+        uCloudiness: { value: 0.3 },
       },
       side: THREE.BackSide,
       depthWrite: false,
@@ -193,7 +203,7 @@ export class Sky {
     }
     const rainGeo = new THREE.BufferGeometry();
     rainGeo.setAttribute('position', new THREE.BufferAttribute(rpos, 3));
-    this.rainMat = new THREE.PointsMaterial({ color: 0xbfd6e4, size: 0.12, transparent: true, opacity: 0, depthWrite: false });
+    this.rainMat = new THREE.PointsMaterial({ color: 0xcfe2f0, size: 0.16, transparent: true, opacity: 0, depthWrite: false });
     this.rain = new THREE.Points(rainGeo, this.rainMat);
     this.rain.frustumCulled = false;
     this.rain.visible = false;
@@ -235,19 +245,21 @@ export class Sky {
     u.uSunStrength.value = daylight;
     this.flash = Math.max(0, this.flash - dt * 2.0);
     u.uFlash.value = this.flash;
+    u.uCloudiness.value = clamp(cloudiness, 0, 1);
 
     // купол і світила слідують камері
     this.group.position.copy(camPos);
     const sd = sunDir.clone().multiplyScalar(1750);
     this.sunSprite.position.set(sd.x, Math.max(sd.y, -80), sd.z);
-    this.sunSprite.material.opacity = clamp(sunDir.y * 4 + 0.3, 0, 1);
+    // за щільним хмарним покривалом сонце гасне
+    this.sunSprite.material.opacity = clamp(sunDir.y * 4 + 0.3, 0, 1) * (1 - cloudiness * 0.85);
     const md = sunDir.clone().multiplyScalar(-1750);
     this.moonSprite.position.set(md.x, Math.max(md.y, 100), md.z);
     this.moonSprite.material.opacity = clamp(-sunDir.y * 3, 0, 0.9) * (1 - cloudiness * 0.6);
     this.starsMat.opacity = clamp(-sunDir.y * 2.5, 0, 0.9) * (1 - cloudiness * 0.7);
 
     // хмари: дрейф + щільність
-    this.cloudTarget = 0.12 + cloudiness * 0.6;
+    this.cloudTarget = 0.12 + cloudiness * 0.88;
     const wvx = Math.sin(windDir) * (4 + cloudiness * 10);
     const wvz = -Math.cos(windDir) * (4 + cloudiness * 10);
     for (let i = 0; i < this.clouds.length; i++) {
