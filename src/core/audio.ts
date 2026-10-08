@@ -1,0 +1,244 @@
+// ─────────────────────────────────────────────────────────────
+// Синтезований звук (WebAudio), без зовнішніх асетів.
+// Мотор, вітер, дощ, хвилі, сплески, блискавка, UI, клювання.
+// ─────────────────────────────────────────────────────────────
+
+export class AudioEngine {
+  private ctx: AudioContext | null = null;
+  private master: GainNode | null = null;
+  muted = false;
+
+  // вузли "живих" звуків
+  private engineOsc: OscillatorNode | null = null;
+  private engineOsc2: OscillatorNode | null = null;
+  private engineGain: GainNode | null = null;
+  private engineFilter: BiquadFilterNode | null = null;
+
+  private windGain: GainNode | null = null;
+  private rainGain: GainNode | null = null;
+  private waveGain: GainNode | null = null;
+
+  private ensure(): AudioContext | null {
+    if (this.ctx) return this.ctx;
+    try {
+      const ctx = new AudioContext();
+      this.ctx = ctx;
+      this.master = ctx.createGain();
+      this.master.gain.value = 0.55;
+      this.master.connect(ctx.destination);
+
+      // спільний буфер шуму (2 с білого шуму)
+      const len = ctx.sampleRate * 2;
+      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+
+      // вітер: низькопропускний шум
+      const wind = ctx.createBufferSource();
+      wind.buffer = buf;
+      wind.loop = true;
+      const windF = ctx.createBiquadFilter();
+      windF.type = 'lowpass';
+      windF.frequency.value = 420;
+      windF.Q.value = 0.6;
+      this.windGain = ctx.createGain();
+      this.windGain.gain.value = 0;
+      wind.connect(windF).connect(this.windGain).connect(this.master!);
+      wind.start();
+
+      // дощ: середній шум
+      const rain = ctx.createBufferSource();
+      rain.buffer = buf;
+      rain.loop = true;
+      rain.playbackRate.value = 1.4;
+      const rainF = ctx.createBiquadFilter();
+      rainF.type = 'bandpass';
+      rainF.frequency.value = 3200;
+      rainF.Q.value = 0.35;
+      this.rainGain = ctx.createGain();
+      this.rainGain.gain.value = 0;
+      rain.connect(rainF).connect(this.rainGain).connect(this.master!);
+      rain.start();
+
+      // хвилі: дуже низький шум (набій)
+      const wave = ctx.createBufferSource();
+      wave.buffer = buf;
+      wave.loop = true;
+      wave.playbackRate.value = 0.5;
+      const waveF = ctx.createBiquadFilter();
+      waveF.type = 'lowpass';
+      waveF.frequency.value = 160;
+      this.waveGain = ctx.createGain();
+      this.waveGain.gain.value = 0;
+      wave.connect(waveF).connect(this.waveGain).connect(this.master!);
+      wave.start();
+
+      // мотор: 2 осцилятори (оберти + гармоніка)
+      this.engineOsc = ctx.createOscillator();
+      this.engineOsc.type = 'sawtooth';
+      this.engineOsc.frequency.value = 40;
+      this.engineOsc2 = ctx.createOscillator();
+      this.engineOsc2.type = 'square';
+      this.engineOsc2.frequency.value = 20;
+      this.engineFilter = ctx.createBiquadFilter();
+      this.engineFilter.type = 'lowpass';
+      this.engineFilter.frequency.value = 300;
+      this.engineGain = ctx.createGain();
+      this.engineGain.gain.value = 0;
+      const e2g = ctx.createGain();
+      e2g.gain.value = 0.4;
+      this.engineOsc.connect(this.engineFilter);
+      this.engineOsc2.connect(e2g).connect(this.engineFilter);
+      this.engineFilter.connect(this.engineGain).connect(this.master!);
+      this.engineOsc.start();
+      this.engineOsc2.start();
+    } catch {
+      this.ctx = null;
+    }
+    return this.ctx;
+  }
+
+  private noiseBuffer(): AudioBuffer | null {
+    if (!this.ctx) return null;
+    const len = this.ctx.sampleRate * 1.5;
+    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    return buf;
+  }
+
+  /** викликати після user gesture */
+  resume() {
+    const ctx = this.ensure();
+    if (ctx && ctx.state === 'suspended') void ctx.resume();
+  }
+
+  setMuted(m: boolean) {
+    this.muted = m;
+    if (this.master && this.ctx) {
+      this.master.gain.setTargetAtTime(m ? 0 : 0.55, this.ctx.currentTime, 0.05);
+    }
+  }
+
+  /** мотор: throttle 0..1, engineOn, load 0..1 */
+  setEngine(throttle: number, on: boolean, load: number) {
+    if (!this.ctx || !this.engineGain || !this.engineOsc || !this.engineOsc2 || !this.engineFilter) return;
+    const t = this.ctx.currentTime;
+    if (!on || throttle <= 0.01) {
+      this.engineGain.gain.setTargetAtTime(0, t, 0.15);
+      return;
+    }
+    const f = 34 + throttle * 95 + load * 12;
+    this.engineOsc.frequency.setTargetAtTime(f, t, 0.12);
+    this.engineOsc2.frequency.setTargetAtTime(f * 0.5, t, 0.12);
+    this.engineFilter.frequency.setTargetAtTime(200 + throttle * 700, t, 0.12);
+    this.engineGain.gain.setTargetAtTime(0.16 + throttle * 0.16, t, 0.1);
+  }
+
+  /** вітер/дощ/хвилі 0..1 */
+  setAmbience(wind: number, rain: number, wave: number, nearWater: number) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.windGain?.gain.setTargetAtTime(wind * 0.5 * (0.4 + 0.6 * nearWater), t, 0.3);
+    this.rainGain?.gain.setTargetAtTime(rain * 0.35, t, 0.3);
+    this.waveGain?.gain.setTargetAtTime(wave * 0.55 * (0.3 + 0.7 * nearWater), t, 0.5);
+  }
+
+  /** сплеск / об'єднання води (0..1 сила) */
+  splash(power = 1) {
+    const ctx = this.ensure();
+    if (!ctx || !this.master) return;
+    const buf = this.noiseBuffer();
+    if (!buf) return;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = 900 + power * 900;
+    const g = ctx.createGain();
+    const t = ctx.currentTime;
+    g.gain.setValueAtTime(0.25 * power, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.5 + power * 0.4);
+    src.connect(f).connect(g).connect(this.master);
+    src.start(t, Math.random() * 0.5);
+    src.stop(t + 1.2);
+  }
+
+  /** гуркіт блискавки з затримкою */
+  thunder(power = 1) {
+    const ctx = this.ensure();
+    if (!ctx || !this.master) return;
+    const buf = this.noiseBuffer();
+    if (!buf) return;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = 120;
+    const g = ctx.createGain();
+    const t = ctx.currentTime + 0.15 + Math.random() * 0.4;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.5 * power, t + 0.25);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 2.4);
+    src.connect(f).connect(g).connect(this.master);
+    src.start(t);
+    src.stop(t + 2.6);
+  }
+
+  /** клювання! */
+  bite() {
+    this.beep(880, 0.07, 'sine', 0.3);
+    setTimeout(() => this.beep(1180, 0.09, 'sine', 0.3), 90);
+  }
+
+  /** улов! */
+  catchJingle() {
+    const notes = [523, 659, 784, 1046];
+    notes.forEach((n, i) => setTimeout(() => this.beep(n, 0.09, 'triangle', 0.28), i * 90));
+  }
+
+  /** відрив */
+  snap() {
+    const ctx = this.ensure();
+    if (!ctx || !this.master) return;
+    const buf = this.noiseBuffer();
+    if (!buf) return;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const f = ctx.createBiquadFilter();
+    f.type = 'highpass';
+    f.frequency.value = 2000;
+    const g = ctx.createGain();
+    const t = ctx.currentTime;
+    g.gain.setValueAtTime(0.3, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+    src.connect(f).connect(g).connect(this.master);
+    src.start(t, Math.random() * 0.3);
+    src.stop(t + 0.3);
+  }
+
+  click() {
+    this.beep(660, 0.04, 'sine', 0.15);
+  }
+
+  private beep(freq: number, dur: number, type: OscillatorType, vol: number) {
+    const ctx = this.ensure();
+    if (!ctx || !this.master) return;
+    const o = ctx.createOscillator();
+    o.type = type;
+    o.frequency.value = freq;
+    const g = ctx.createGain();
+    const t = ctx.currentTime;
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g).connect(this.master);
+    o.start(t);
+    o.stop(t + dur + 0.05);
+  }
+
+  /** стукіт об корпус (хвиля б'є) */
+  thump(power: number) {
+    this.beep(70 + power * 30, 0.12, 'sine', 0.22 * power);
+  }
+}
