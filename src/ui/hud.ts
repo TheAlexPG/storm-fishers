@@ -27,6 +27,7 @@ export class Hud {
   private elHullBar!: HTMLElement;
   private elHullN!: HTMLElement;
   private elEnergy!: HTMLElement;
+  private elEnergyN!: HTMLElement;
   private elHold!: HTMLElement;
   private elPrompt!: HTMLElement;
   private elAction!: HTMLElement;
@@ -89,6 +90,7 @@ export class Hud {
     this.elHullBar = root.querySelector<HTMLElement>('.bar.hull')!;
     this.elHullN = root.querySelectorAll<HTMLElement>('.bar-num')[1]!;
     this.elEnergy = root.querySelector('.bar.energy > i')!;
+    this.elEnergyN = root.querySelectorAll<HTMLElement>('.bar-num')[2]!;
     this.elHold = root.querySelector('.hold-chip .h')!;
     this.elPrompt = root.querySelector('.prompt')!;
     this.elPromptText = root.querySelector('.prompt .ptext')!;
@@ -142,6 +144,7 @@ export class Hud {
     this.elHullBar.className = 'bar hull' + (hullPct < 30 ? ' low' : '');
     this.elHullN.textContent = `${Math.round(game.hull)}`;
     this.elEnergy.style.width = game.energy + '%';
+    this.elEnergyN.textContent = `${Math.round(game.energy)}`;
     this.elHold.textContent = `${game.hold.length}/${game.holdCap}`;
 
     // промпт
