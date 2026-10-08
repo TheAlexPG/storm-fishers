@@ -15,7 +15,7 @@ const SAVE_KEY = 'storm-fishers-save-v1';
 
 export class GameState {
   money = 500;
-  fuel = 60;
+  fuel = 40; // = базовий об'єм бака (eff.maxFuel(0)); інакше човен стартує з «переповненим» баком
   hull = 100;
   energy = 100;
   hold: FishItem[] = [];

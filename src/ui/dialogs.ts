@@ -49,11 +49,13 @@ export class Dialogs {
   }
 
   close() {
+    // closeFn — ПЕРСИСТЕНТНИЙ колбек (реєструється один раз у Game),
+    // тому його НЕ виводимо в null: інакше після першого закриття
+    // (інтро) phase залишався б 'dialog' і світ би застигав.
+    if (!this.open) return; // захист від подвійного закриття в одному кадрі
     this.overlay.classList.remove('show');
     this.open = false;
-    const cb = this.closeFn;
-    this.closeFn = null;
-    cb?.();
+    this.closeFn?.();
   }
 
   onClose(fn: CloseFn) {
