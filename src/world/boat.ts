@@ -19,6 +19,9 @@ export const BOAT = {
   hullBottom: -1.05,
 };
 
+// точка швартування в порту (причал)
+export const MOOR = { x: 0, z: -26 };
+
 // станції (локальні координати палуби, y = deckY)
 export const STATION_POS: Record<string, { x: number; z: number }> = {
   wheel: { x: 0, z: 3.15 },
@@ -39,7 +42,7 @@ export interface RockObstacle {
 export class Boat {
   group = new THREE.Group();
   // фізика
-  pos = new THREE.Vector3(0, 0, -26);
+  pos = new THREE.Vector3(MOOR.x, 0, MOOR.z);
   vel = new THREE.Vector3();
   heading = 0; // 0 → нос на +Z
   pitch = 0;
@@ -68,6 +71,7 @@ export class Boat {
 
   private gridLocal: THREE.Vector3[] = [];
   private _v = new THREE.Vector3();
+  private _fwd = new THREE.Vector3();
   private _n = new THREE.Vector3();
   private _f = new THREE.Vector3();
   private _r = new THREE.Vector3();
@@ -458,7 +462,7 @@ export class Boat {
     const wetPenalty = 1 - 0.22 * (this.deckWater / 100);
     const maxThrust = 16500 * enginePower * wetPenalty;
     const speed = this.vel.length();
-    const fwd = this.forward(this._v);
+    const fwd = this.forward(this._fwd); // окремий вектор: _v перезаписується в сітці буївності
 
     // двигун може заглушити хвиля в шторм
     if (this.engineOn && weather.intensity > 0.82 && this.throttle > 0.05 && Math.random() < dt * 0.02 * (weather.intensity - 0.75) * 10) {
@@ -507,6 +511,20 @@ export class Boat {
     const wvz = -Math.cos(weather.windDir) * wind;
     this._f.x += wvx * 620;
     this._f.z += wvz * 620;
+
+    // швартування: біля причалу без газу — м'яка пружина до точки шварту.
+    // тримає човен на місці від вітру/хвиль, але не заважає відійти з повним газом.
+    const dMx = this.pos.x - MOOR.x;
+    const dMz = this.pos.z - MOOR.z;
+    const dMoor = Math.hypot(dMx, dMz);
+    if (dMoor < 10 && Math.abs(this.throttle) < 0.15) {
+      let fxm = -dMx * 2100 - this.vel.x * 2500;
+      let fzm = -dMz * 2100 - this.vel.z * 2500;
+      const fl = Math.hypot(fxm, fzm);
+      if (fl > 12000) { fxm *= 12000 / fl; fzm *= 12000 / fl; }
+      this._f.x += fxm;
+      this._f.z += fzm;
+    }
 
     // тяга (у кормі)
     if (thrust !== 0) {

@@ -258,6 +258,12 @@ export class Player {
           best = { id: 'port:' + pt.id, label: pt.label };
         }
       }
+      // залізти на човен прямо з причалу (иначе пасажир би застряг)
+      const dBoat = Math.hypot(this.wx - boat.pos.x, this.wz - boat.pos.z);
+      if (dBoat < 7.0 && dBoat < bestD + 2.0) {
+        best = { id: 'climb-boat', label: 'Залізти на човен' };
+        bestD = dBoat;
+      }
     } else {
       // у воді: залізти на човен / на причал
       const bw = new THREE.Vector3();
