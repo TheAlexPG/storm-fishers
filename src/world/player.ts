@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { clamp, damp } from '../core/math';
 import { Input } from '../core/input';
 import { Boat, BOAT, STATION_POS } from './boat';
-import { Port, PORT_POINTS } from './port';
+import { Port, PORT_POINTS, type Platform } from './port';
 import { Ocean } from '../core/ocean';
 import type { GameState } from '../game/state';
 import type { PlayerMode } from '../core/types';
@@ -65,11 +65,13 @@ export class Player {
   private _n = new THREE.Vector3();
 
   constructor(private game: GameState) {
-    // старт: на причалі біля човна
+    // старт: на палубі біля шварту. Швартувальний курс (нос у світ +X)
+    // ставить причал за правим бортом: локальний +X = світ -Z.
+    // yaw = 0 → погляд у світ -Z, тобто на порт.
     this.mode = 'boat';
     this.localX = 0;
     this.localZ = 1.2;
-    this.yaw = Math.PI; // дивимось на порт
+    this.yaw = 0; // дивимось на порт
   }
 
   /** прив'язати свіжий GameState (після «Нова гра» / «Продовжити») */
@@ -131,15 +133,15 @@ export class Player {
           this.localX = clamp(nx, -1.3, 1.3);
           this.localZ = clamp(nz, -4.4, 4.4);
           moving = true;
-          // вихід за борт
+          // вихід за борт: поруч платформа (зазор до ~0.9 м) — сойти на неї, інакше — у воду
           if (Math.abs(this.localX) > 1.28 || Math.abs(this.localZ) > 4.38) {
             const world = boat.localToWorld(this.localX, BOAT.deckY, this.localZ, this._v);
-            const nearDock = this.onDock(world.x, world.z, port);
-            if (nearDock) {
+            const plat = this.platformNear(world.x, world.z, port, 0.9);
+            if (plat) {
               this.mode = 'port';
-              this.wx = world.x;
-              this.wz = world.z;
-              this.wy = 1.1;
+              this.wx = clamp(world.x, plat.x0, plat.x1);
+              this.wz = clamp(world.z, plat.z0, plat.z1);
+              this.wy = plat.y;
             } else {
               this.fallIn(boat, world.x, world.z);
             }
@@ -170,10 +172,11 @@ export class Player {
         dz /= l;
         const nx = this.wx + dx * speed * dt;
         const nz = this.wz + dz * speed * dt;
-        const plat = this.platformAt(nx, nz, port);
+        const plat = this.platformNear(nx, nz, port, 0);
         if (plat) {
           this.wx = nx;
-          this.wy = plat.y;
+          // плавний ступінь по висоті (причал 1.1 ↔ земля 1.6), без «попапу»
+          this.wy = damp(this.wy, plat.y, 14, dt);
           this.wz = nz;
           moving = true;
         } else {
@@ -241,13 +244,10 @@ export class Player {
     return [x, z];
   }
 
-  private onDock(x: number, z: number, port: Port): boolean {
-    return this.platformAt(x, z, port) != null;
-  }
-
-  private platformAt(x: number, z: number, port: Port): { y: number } | null {
+  /** платформа під точкою; margin — допуск (напр. ступінь з палуби в зазорі до ~0.9 м) */
+  private platformNear(x: number, z: number, port: Port, margin: number): Platform | null {
     for (const p of port.platforms) {
-      if (x >= p.x0 && x <= p.x1 && z >= p.z0 && z <= p.z1) return { y: p.y };
+      if (x >= p.x0 - margin && x <= p.x1 + margin && z >= p.z0 - margin && z <= p.z1 + margin) return p;
     }
     return null;
   }

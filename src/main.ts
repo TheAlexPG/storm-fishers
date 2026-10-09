@@ -6,7 +6,7 @@ import { Ocean } from './core/ocean';
 import { AudioEngine } from './core/audio';
 import { clamp, rand } from './core/math';
 import { GameState } from './game/state';
-import { Boat, BOAT } from './world/boat';
+import { Boat, BOAT, MOOR, MOOR_HEADING } from './world/boat';
 import { Port } from './world/port';
 import { Player } from './world/player';
 import { Sky } from './world/sky';
@@ -73,6 +73,10 @@ class Game {
   private outOfFuelWarned = false;
   private prevObjectives = { ...this.game.objectives };
   private camShake = new THREE.Vector3();
+  private _tiltQ = new THREE.Quaternion();
+  private _tiltEuler = new THREE.Euler();
+  /** наскільки камера наслідує нахил човна (1 = повністю, 0 = повна стабілізація) */
+  private tiltFollow = 0.5;
   private _v = new THREE.Vector3();
   private _v2 = new THREE.Vector3();
 
@@ -206,7 +210,7 @@ class Game {
     this.player.attachGame(this.game);
     this.time = new TimeCycle(8.0);
     this.weather = new Weather();
-    this.boat.reset(0, -26, 0);
+    this.boat.reset(MOOR.x, MOOR.z, MOOR_HEADING);
     this.player.resetToBoat();
     this.stations.dispose();
     this.stations = new Stations(this.boat, this.game, this.audio);
@@ -229,7 +233,13 @@ class Game {
     this.time = new TimeCycle(data.timeHours ?? 8.0);
     this.time.dayCount = data.dayCount ?? 1;
     this.weather.restore(data.weatherSeed ?? 10);
-    this.boat.reset(data.boatX ?? 0, data.boatZ ?? -26, data.boatHeading ?? 0);
+    // старі сейви: човен стояв на (0,-26) — під причалом; виносимо на шварт
+    let bx = data.boatX ?? MOOR.x, bz = data.boatZ ?? MOOR.z, bh = data.boatHeading ?? MOOR_HEADING;
+    const dock = this.port.platforms[0];
+    if (bx > dock.x0 && bx < dock.x1 && bz > dock.z0 && bz < dock.z1) {
+      bx = MOOR.x; bz = MOOR.z; bh = MOOR_HEADING;
+    }
+    this.boat.reset(bx, bz, bh);
     this.player.resetToBoat();
     this.stations.dispose();
     this.stations = new Stations(this.boat, this.game, this.audio);
@@ -252,7 +262,7 @@ class Game {
     this.game.money = Math.max(0, this.game.money - penalty);
     const hadStorm = this.game.hold.some((f) => f.storm);
     this.game.loseHoldFraction(0.3);
-    this.boat.reset(0, -26, 0);
+    this.boat.reset(MOOR.x, MOOR.z, MOOR_HEADING);
     this.player.resetToBoat();
     this.fishing.reelIn();
     this.game.hull = Math.max(20, this.game.maxHull * 0.5);
@@ -420,7 +430,7 @@ class Game {
     this.player.updateEnergy(dt);
 
     // човен
-    this.boat.update(dt, t, this.ocean, this.weather, g, this.particles, this.audio, this.port.rocks);
+    this.boat.update(dt, t, this.ocean, this.weather, g, this.particles, this.audio, this.port.rocks, this.port.platforms[0]);
 
     // станції
     this.stations.update(dt, this.time.hours);
@@ -615,6 +625,14 @@ class Game {
     );
     this.camera.position.set(head.x + this.camShake.x, head.y + this.camShake.y, head.z + this.camShake.z);
     this.camera.rotation.set(this.player.pitch + this.player.shakeX, this.player.yaw, this.player.shakeZ, 'YXZ');
+    // нахил: позицію й курс ми наслідуємо човен повністю, а тангаж/крен — частково
+    // (тіло стабілізує половину). Обертання у world-рамці (premultiply) —
+    // коректно незалежно від того, куди гравець дивиться. Лише на палубі:
+    // у воді тіло тримає рівновагу на хвилі, на причалі човен не наш.
+    if (this.player.mode === 'boat') {
+      this._tiltEuler.set(this.boat.pitch * this.tiltFollow, 0, this.boat.roll * this.tiltFollow);
+      this.camera.quaternion.premultiply(this._tiltQ.setFromEuler(this._tiltEuler));
+    }
 
     // підводне затемнення
     const inWater = this.player.mode === 'water' && head.y < this.ocean.heightAt(head.x, head.z, t) + 0.15;

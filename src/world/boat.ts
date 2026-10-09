@@ -6,6 +6,7 @@ import type { GameState } from '../game/state';
 import type { Weather } from '../core/weather';
 import type { ParticlePool } from './particles';
 import type { AudioEngine } from '../core/audio';
+import type { Platform } from './port';
 
 // ─────────────────────────────────────────────────────────────
 // Човен «Шторм»: mesh + фізика (буївність 5×3, двигун, рильє,
@@ -506,7 +507,7 @@ export class Boat {
 
   // ── Фізика ──
 
-  update(dt: number, t: number, ocean: Ocean, weather: Weather, game: GameState, particles: ParticlePool, audio: AudioEngine, rocks: RockObstacle[]) {
+  update(dt: number, t: number, ocean: Ocean, weather: Weather, game: GameState, particles: ParticlePool, audio: AudioEngine, rocks: RockObstacle[], dock?: Platform) {
     if (this.sinking) {
       this.sinkTimer += dt;
       this.pos.y -= 0.55 * dt;
@@ -675,6 +676,28 @@ export class Boat {
         // витісняємо
         this.pos.x = rock.x + nx * minD;
         this.pos.z = rock.z + nz * minD;
+      }
+    }
+
+    // причал: корпус (корма→центр→нос) не заїжджає під платформу.
+    // Точки рахуємо напряму з поточного pos (а не через group-матрицю попереднього
+    // кадру), щоб послідовні виштовхування не накладалося.
+    if (dock) {
+      const R = 1.7;
+      const x0 = dock.x0 - R, x1 = dock.x1 + R;
+      const z0 = dock.z0 - R, z1 = dock.z1 + R;
+      const ch = Math.cos(this.heading), sh = Math.sin(this.heading);
+      for (const oz of [-4.2, 0, 4.2]) {
+        const px = this.pos.x + oz * sh;
+        const pz = this.pos.z + oz * ch;
+        if (px > x0 && px < x1 && pz > z0 && pz < z1) {
+          const pL = px - x0, pR = x1 - px, pB = pz - z0, pT = z1 - pz;
+          const m = Math.min(pL, pR, pB, pT);
+          if (m === pL) { this.pos.x -= pL; this.vel.x = Math.min(0, this.vel.x); }
+          else if (m === pR) { this.pos.x += pR; this.vel.x = Math.max(0, this.vel.x); }
+          else if (m === pB) { this.pos.z -= pB; this.vel.z = Math.min(0, this.vel.z); }
+          else { this.pos.z += pT; this.vel.z = Math.max(0, this.vel.z); }
+        }
       }
     }
 
