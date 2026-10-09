@@ -49,8 +49,8 @@ export class Input {
     for (const k of this.keys) if (!this.prevKeys.has(k)) this.justPressed.add(k);
     this.prevKeys.clear();
     for (const k of this.keys) this.prevKeys.add(k);
-    this.mouseDX = 0;
-    this.mouseDY = 0;
+    // мишу НЕ нулюємо тут: дельти накопичуються між кадрами і з'їдаються
+    // consumeMouse() в player.update — той самий кадр, після beginFrame()
   }
 
   down(code: string): boolean {

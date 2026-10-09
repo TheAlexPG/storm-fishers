@@ -19,8 +19,10 @@ export const BOAT = {
   hullBottom: -1.05,
 };
 
-// точка швартування в порту (причал)
-export const MOOR = { x: 0, z: -26 };
+// точка швартування в порту: у воді, біля кромки причалу (причал закінчується з=-18)
+export const MOOR = { x: 0, z: -15.9 };
+// курс при шварті: човен паралельно причалу, нос на +X
+export const MOOR_HEADING = Math.PI / 2;
 
 // станції (локальні координати палуби, y = deckY)
 export const STATION_POS: Record<string, { x: number; z: number }> = {
@@ -28,9 +30,10 @@ export const STATION_POS: Record<string, { x: number; z: number }> = {
   rod: { x: 0, z: -4.25 },
   engine: { x: 1.12, z: 1.7 },
   pump: { x: -1.12, z: 1.7 },
-  kitchen: { x: -1.12, z: -2.2 },
-  radio: { x: 1.25, z: -2.6 },
-  bed: { x: 1.25, z: -1.35 },
+  // каюта (локальні межі: x -0.65..0.85, z -2.8..-0.8)
+  kitchen: { x: -0.375, z: -2.35 },
+  radio: { x: 0.575, z: -1.15 },
+  bed: { x: 0.525, z: -2.1 },
 };
 
 export interface RockObstacle {
@@ -44,7 +47,7 @@ export class Boat {
   // фізика
   pos = new THREE.Vector3(MOOR.x, 0, MOOR.z);
   vel = new THREE.Vector3();
-  heading = 0; // 0 → нос на +Z
+  heading = MOOR_HEADING; // 0 → нос на +Z; старт — швартувальний курс
   pitch = 0;
   roll = 0;
   angVel = new THREE.Vector3();
@@ -80,6 +83,8 @@ export class Boat {
   // візуали апгрейдів
   private upg: Record<string, THREE.Object3D[]> = {};
   private hullMats: THREE.MeshStandardMaterial[] = [];
+  private interiorLight!: THREE.PointLight;
+  private glowMats: THREE.MeshStandardMaterial[] = [];
   private lights: Array<{ light: THREE.PointLight; lamp: THREE.Mesh }> = [];
   private spotlight: THREE.SpotLight | null = null;
   private exhaustTip = new THREE.Vector3(1.2, 0.9, 0.9);
@@ -167,19 +172,63 @@ export class Boat {
       rail.rotation.x = 0;
     }
 
-    // каюта
+    // ── каюта: справжня кімната (стіни, дах, двері з корми, інтер'єр) ──
+    // межі: x -0.9..1.1, z -3.05..-0.55; дверний отвір у кормі x -0.2..0.7
     const cabin = new THREE.Group();
-    cabin.position.set(0.25, BOAT.deckY + 0.06, -1.85);
+    cabin.position.set(0, BOAT.deckY, 0);
     g.add(cabin);
-    this.addBox(cabin, 1.7, 1.35, 2.3, 0, 0.67, 0, WHITE, 0.85);
-    this.addBox(cabin, 1.86, 0.12, 2.46, 0, 1.4, 0, RED_DARK, 0.8);
-    // вікна
-    for (const s of [-1, 1]) {
-      const win = this.addBox(cabin, 0.02, 0.4, 0.7, s * 0.86, 0.75, 0.2, 0x223244, 0.3, 0.4);
-      (win.material as THREE.MeshStandardMaterial).emissive = new THREE.Color(0x0a1420);
+    const CW = 0.25; // товщина стін
+    const CH = 2.0;  // висота кімнати
+    this.addBox(cabin, 2.0, CH, CW, 0.1, CH / 2, -0.675, WHITE, 0.85);   // носова стіна
+    this.addBox(cabin, CW, CH, 2.5, -0.775, CH / 2, -1.8, WHITE, 0.85);  // лівий борт
+    this.addBox(cabin, CW, CH, 2.5, 0.975, CH / 2, -1.8, WHITE, 0.85);   // правий борт
+    this.addBox(cabin, 0.7, CH, CW, -0.55, CH / 2, -2.925, WHITE, 0.85); // корма (ліворуч дверей)
+    this.addBox(cabin, 0.4, CH, CW, 0.9, CH / 2, -2.925, WHITE, 0.85);   // корма (праворуч дверей)
+    this.addBox(cabin, 0.9, 0.15, CW, 0.25, CH - 0.075, -2.925, WHITE, 0.85); // перемичка над дверима
+    for (const dx of [-0.2, 0.7]) this.addBox(cabin, 0.07, CH, 0.07, dx, CH / 2, -2.925, 0x6d5438, 0.9); // дверна рама
+    this.addBox(cabin, 2.3, 0.12, 2.8, 0.1, CH + 0.06, -1.8, RED_DARK, 0.8); // дах з навісом
+    // ілюмінатори (зсередини; вночі світяться теплом інтер'єру)
+    const glowMats: THREE.MeshStandardMaterial[] = [];
+    for (const x of [-0.64, 0.84]) {
+      const m = new THREE.MeshStandardMaterial({ color: 0x223244, emissive: 0xffd9a0, emissiveIntensity: 0.15, roughness: 0.25, metalness: 0.4 });
+      const w = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.5, 0.6), m);
+      w.position.set(x, 1.15, -1.35);
+      cabin.add(w);
+      glowMats.push(m);
     }
-    // двері (корма)
-    this.addBox(cabin, 0.55, 1.0, 0.03, 0.2, 0.5, -1.16, 0x6d5438, 0.9);
+    // інтер'єр: койка (правий борт, корма)
+    this.addBox(cabin, 0.6, 0.28, 1.3, 0.525, 0.14, -2.1, 0x6d5438, 0.9);
+    this.addBox(cabin, 0.56, 0.09, 1.24, 0.525, 0.325, -2.1, WHITE, 0.9);
+    this.addBox(cabin, 0.16, 0.1, 0.32, 0.525, 0.42, -1.62, 0xcfd8dc, 0.95);
+    // кухня (лівий борт): шафа, стільниця, казанок
+    this.addBox(cabin, 0.5, 0.85, 0.75, -0.375, 0.425, -2.35, 0x8a6d48, 0.9);
+    this.addBox(cabin, 0.52, 0.05, 0.77, -0.375, 0.875, -2.35, 0x555a60, 0.5, 0.4);
+    {
+      const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.1, 0.13, 10), this.mat(0x3a3d42, 0.4, 0.6));
+      pot.position.set(-0.375, 0.98, -2.3);
+      pot.castShadow = true;
+      cabin.add(pot);
+    }
+    // приладка (правий борт, біля носа): консоль з екраном
+    this.addBox(cabin, 0.45, 1.05, 0.65, 0.575, 0.525, -1.095, 0x3d4046, 0.6, 0.3);
+    {
+      const scr = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.22, 0.3), new THREE.MeshStandardMaterial({ color: 0x0a1a14, emissive: 0x2fae7a, emissiveIntensity: 0.7, roughness: 0.4 }));
+      scr.position.set(0.345, 0.66, -1.095);
+      cabin.add(scr);
+    }
+    // плафон на стелі
+    {
+      const lm = new THREE.MeshStandardMaterial({ color: 0xfff4e0, emissive: 0xffd9a0, emissiveIntensity: 0.5, roughness: 0.5 });
+      const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.06, 0.26), lm);
+      lamp.position.set(0.1, 1.92, -1.8);
+      cabin.add(lamp);
+      glowMats.push(lm);
+    }
+    // тепле світло всередині (вмикається вночі/у шторм)
+    this.interiorLight = new THREE.PointLight(0xffd9a0, 0.5, 6, 1.7);
+    this.interiorLight.position.set(0.1, 1.75, -1.8);
+    cabin.add(this.interiorLight);
+    this.glowMats = glowMats;
 
     // штурвал
     const wheel = new THREE.Group();
@@ -290,17 +339,23 @@ export class Boat {
       list('hull', keel, 5);
     }
 
-    // Трюм: ящики (1–3), контейнери (4), + мережа (5)
-    for (let i = 0; i < 3; i++) {
-      const c = this.addBox(g, 0.55, 0.45, 0.55, -1.0 + (i % 2) * 0.6, BOAT.deckY + 0.22 + (i > 1 ? 0.45 : 0), -3.2 + Math.floor(i / 2) * 0.6, 0x8a6d48, 0.95);
-      list('hold', c, i + 1);
-    }
-    for (let i = 0; i < 2; i++) {
-      const box = this.addBox(g, 0.7, 0.7, 0.7, -1.0 + i * 0.75, BOAT.deckY + 0.35, -2.9, 0x4a6b8a, 0.7);
-      list('hold', box, 4);
+    // Трюм: ящики (1–3), контейнери (4), + мережа (5) — на кормовій палубі, поза каютою
+    {
+      const c0 = this.addBox(g, 0.55, 0.45, 0.55, -0.85, BOAT.deckY + 0.22, -3.5, 0x8a6d48, 0.95);
+      list('hold', c0, 1);
+      const c1 = this.addBox(g, 0.55, 0.45, 0.55, -0.75, BOAT.deckY + 0.22, -4.2, 0x8a6d48, 0.95);
+      list('hold', c1, 2);
+      const c2 = this.addBox(g, 0.55, 0.45, 0.55, -0.85, BOAT.deckY + 0.22 + 0.45, -3.5, 0x7a5f3f, 0.95);
+      list('hold', c2, 3);
     }
     {
-      const net = this.addBox(g, 1.4, 0.5, 0.3, 0, BOAT.deckY + 0.25, -2.6, 0x5a7d6a, 0.9);
+      const b1 = this.addBox(g, 0.7, 0.7, 0.7, -0.6, BOAT.deckY + 0.35, 1.2, 0x4a6b8a, 0.7);
+      list('hold', b1, 4);
+      const b2 = this.addBox(g, 0.7, 0.7, 0.7, 0.75, BOAT.deckY + 0.35, -4.1, 0x4a6b8a, 0.7);
+      list('hold', b2, 4);
+    }
+    {
+      const net = this.addBox(g, 1.2, 0.5, 0.3, 0.6, BOAT.deckY + 0.25, -3.5, 0x5a7d6a, 0.9);
       list('hold', net, 5);
     }
 
@@ -412,6 +467,14 @@ export class Boat {
       (l.lamp.material as THREE.MeshStandardMaterial).emissiveIntensity = lightsLvl > 0 ? night * 1.6 : 0;
     }
     if (this.spotlight && lightsLvl >= 5) this.spotlight.intensity = night * 26;
+  }
+
+  /** каютне світло: тепле сяйво вночі та у шторм, ілюмінатори світлять разом */
+  setInteriorLight(daylight: number, storm: number) {
+    const night = 1 - daylight;
+    const i = Math.max(0.2, night * 1.7 + storm * 0.9);
+    this.interiorLight.intensity = i;
+    for (const m of this.glowMats) m.emissiveIntensity = 0.15 + i * 0.55;
   }
 
   /** підсвітити маркер станції (1 — активна/близька) */

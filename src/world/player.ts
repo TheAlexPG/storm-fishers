@@ -21,8 +21,20 @@ const WALK = 3.4;
 const RUN = 5.6;
 const SWIM = 2.3;
 
-// каюта (локальні межі для колізії ходьби)
-const CABIN = { x0: -0.62, x1: 1.08, z0: -3.05, z1: -0.62 };
+// стіни каюти (локальні AABB) — тверді; гравець заходить через дверний отвір
+// у кормовій стіні (x -0.2..0.7). Стіни товсті (0.25), отже тунелювання неможливе.
+const CABIN_WALLS = [
+  { x0: -0.9, x1: 1.1, z0: -0.8, z1: -0.55 },    // носова стіна
+  { x0: -0.9, x1: -0.65, z0: -3.05, z1: -0.55 }, // лівий борт
+  { x0: 0.85, x1: 1.1, z0: -3.05, z1: -0.55 },   // правий борт
+  { x0: -0.9, x1: -0.2, z0: -3.05, z1: -2.8 },   // корма (ліворуч дверей)
+  { x0: 0.7, x1: 1.1, z0: -3.05, z1: -2.8 },     // корма (праворуч дверей)
+];
+// внутрішнє приміщення каюти (для прапорця inCabin і затишних ефектів)
+const CABIN_IN = { x0: -0.65, x1: 0.85, z0: -2.8, z1: -0.8 };
+// станції всередині каюти (доступні лише зсередини)
+const CABIN_STATIONS = new Set(['kitchen', 'radio', 'bed']);
+const PLAYER_R = 0.28; // радіус тіла для колізії зі стінами
 
 export class Player {
   yaw = 0;
@@ -37,6 +49,8 @@ export class Player {
   wz = -20;
   /** керування човном */
   wheeling = false;
+  /** стоїмо всередині каюти (затишок + каютні станції) */
+  inCabin = false;
   /** найближча інтерактивна ціль */
   nearest: Interactable | null = null;
   /** позиція голови (для камери) */
@@ -83,6 +97,7 @@ export class Player {
     const inDown = input.down('KeyC') ? 1 : 0;
 
     let moving = false;
+    this.inCabin = false;
 
     if (this.mode === 'boat') {
       if (this.wheeling) {
@@ -97,8 +112,8 @@ export class Player {
         if (inF || inL) {
           const fx = -Math.sin(this.yaw);
           const fz = -Math.cos(this.yaw);
-          const lx = -Math.cos(this.yaw);
-          const lz = Math.sin(this.yaw);
+          const lx = Math.cos(this.yaw); // правий вектор камери (D = вправо)
+          const lz = -Math.sin(this.yaw);
           let dx = fx * inF + lx * inL;
           let dz = fz * inF + lz * inL;
           const l = Math.hypot(dx, dz) || 1;
@@ -111,22 +126,8 @@ export class Player {
           const ldz = dx * sh + dz * ch;
           let nx = this.localX + ldx * speed * dt;
           let nz = this.localZ + ldz * speed * dt;
-          // каюта — стіна
-          if (
-            nx > CABIN.x0 - 0.25 && nx < CABIN.x1 + 0.25 &&
-            nz > CABIN.z0 - 0.25 && nz < CABIN.z1 + 0.25
-          ) {
-            // витискаємо по мінімальному проникненню
-            const pL = nx - (CABIN.x0 - 0.25);
-            const pR = (CABIN.x1 + 0.25) - nx;
-            const pB = nz - (CABIN.z0 - 0.25);
-            const pT = (CABIN.z1 + 0.25) - nz;
-            const m = Math.min(pL, pR, pB, pT);
-            if (m === pL) nx = CABIN.x0 - 0.25;
-            else if (m === pR) nx = CABIN.x1 + 0.25;
-            else if (m === pB) nz = CABIN.z0 - 0.25;
-            else nz = CABIN.z1 + 0.25;
-          }
+          // каюта — стіни (пройти можна лише через дверний отвір у кормі)
+          [nx, nz] = this.resolveCabin(nx, nz);
           this.localX = clamp(nx, -1.3, 1.3);
           this.localZ = clamp(nz, -4.4, 4.4);
           moving = true;
@@ -151,13 +152,17 @@ export class Player {
         this.bobPhase += dt * (running ? 11 : 7.5);
         this.head.y += Math.sin(this.bobPhase) * 0.035;
       }
+      // всередині каюти?
+      this.inCabin =
+        this.localX > CABIN_IN.x0 && this.localX < CABIN_IN.x1 &&
+        this.localZ > CABIN_IN.z0 && this.localZ < CABIN_IN.z1;
     } else if (this.mode === 'port') {
       const speed = running ? RUN : WALK;
       if (inF || inL) {
         const fx = -Math.sin(this.yaw);
         const fz = -Math.cos(this.yaw);
-        const lx = -Math.cos(this.yaw);
-        const lz = Math.sin(this.yaw);
+        const lx = Math.cos(this.yaw); // правий вектор камери (D = вправо)
+        const lz = -Math.sin(this.yaw);
         let dx = fx * inF + lx * inL;
         let dz = fz * inF + lz * inL;
         const l = Math.hypot(dx, dz) || 1;
@@ -188,8 +193,8 @@ export class Player {
       if (inF || inL) {
         const fx = -Math.sin(this.yaw);
         const fz = -Math.cos(this.yaw);
-        const lx = -Math.cos(this.yaw);
-        const lz = Math.sin(this.yaw);
+        const lx = Math.cos(this.yaw); // правий вектор камери (D = вправо)
+        const lz = -Math.sin(this.yaw);
         let dx = fx * inF + lx * inL;
         let dz = fz * inF + lz * inL;
         const l = Math.hypot(dx, dz) || 1;
@@ -214,6 +219,26 @@ export class Player {
     }
 
     this.nearest = this.findNearest(boat, port);
+  }
+
+  /** витіснення зі стін каюти: тіло — коло радіуса PLAYER_R, стіни — товсті AABB */
+  private resolveCabin(x: number, z: number): [number, number] {
+    for (const w of CABIN_WALLS) {
+      const x0 = w.x0 - PLAYER_R, x1 = w.x1 + PLAYER_R;
+      const z0 = w.z0 - PLAYER_R, z1 = w.z1 + PLAYER_R;
+      if (x > x0 && x < x1 && z > z0 && z < z1) {
+        const pL = x - x0;
+        const pR = x1 - x;
+        const pB = z - z0;
+        const pT = z1 - z;
+        const m = Math.min(pL, pR, pB, pT);
+        if (m === pL) x = x0;
+        else if (m === pR) x = x1;
+        else if (m === pB) z = z0;
+        else z = z1;
+      }
+    }
+    return [x, z];
   }
 
   private onDock(x: number, z: number, port: Port): boolean {
@@ -243,6 +268,8 @@ export class Player {
 
     if (this.mode === 'boat') {
       for (const [id, sp] of Object.entries(STATION_POS)) {
+        // каютні станції — лише зсередини; палубні — лише на палубі
+        if (this.inCabin ? !CABIN_STATIONS.has(id) : CABIN_STATIONS.has(id)) continue;
         const w = boat.localToWorld(sp.x, BOAT.deckY, sp.z, this._v);
         const d = Math.hypot(p.x - w.x, p.y - w.y - 0.4, p.z - w.z);
         if (d < bestD) {
@@ -310,8 +337,11 @@ export class Player {
       const w = new THREE.Vector3();
       boat.localToWorld(0, 0, 0, w);
       const local = boat.worldToLocal(this.wx, this.wy, this.wz, this._v);
-      this.localX = clamp(local.x, -1.1, 1.1);
-      this.localZ = clamp(local.z, -4.2, 4.2);
+      let lx = clamp(local.x, -1.1, 1.1);
+      let lz = clamp(local.z, -4.2, 4.2);
+      [lx, lz] = this.resolveCabin(lx, lz); // не спавнитись всередині стіни каюти
+      this.localX = clamp(lx, -1.3, 1.3);
+      this.localZ = clamp(lz, -4.4, 4.4);
       this.mode = 'boat';
       this.shakeX = 0;
       this.shakeZ = 0;
@@ -330,10 +360,10 @@ export class Player {
     return n.id;
   }
 
-  /** енергія: відновлення в спокої */
+  /** енергія: відновлення в спокої (у каюті — затишок, відновлюється швидше) */
   updateEnergy(dt: number) {
     if (this.mode === 'boat' && !this.wheeling) {
-      this.game.addEnergy(0.9 * dt);
+      this.game.addEnergy((this.inCabin ? 1.5 : 0.9) * dt);
     } else if (this.mode === 'port') {
       this.game.addEnergy(1.2 * dt);
     }

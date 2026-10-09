@@ -318,6 +318,8 @@ class Game {
     input.beginFrame();
 
     const locked = document.pointerLockElement != null;
+    // підказка «клікни, щоб захопити мишу», коли lock не діє (напр. браузер відмовив)
+    this.hud.setLockHint(this.phase === 'play' && !locked && !this.dialogs.isOpen);
     const simRunning = this.phase === 'play' || this.phase === 'intro';
 
     if (simRunning) {
@@ -382,9 +384,11 @@ class Game {
       this.audio.thunder(p);
     };
 
-    // амб'єнс: вітер/дощ/набій хвиль (тихіше, коли гравець далеко від води)
+    // амб'єнс: вітер/дощ/набій хвиль (тихіше, коли гравець далеко від води; в каюті — під дахом)
     // край води (причал) ≈ z=-18, хата ≈ z=-60
-    const nearWater = this.player.mode === 'port' ? clamp((this.player.wz + 60) / 42, 0.25, 1) : 1;
+    const nearWater =
+      (this.player.mode === 'port' ? clamp((this.player.wz + 60) / 42, 0.25, 1) : 1) *
+      (this.player.inCabin ? 0.45 : 1);
     this.audio.setAmbience(this.weather.wind, this.weather.rain, clamp(this.weather.intensity, 0, 1), nearWater);
 
     // океан
@@ -593,6 +597,9 @@ class Game {
     // порт
     this.port.setNight(1 - time.daylight);
     this.port.update(simDt, t);
+
+    // каюта: тепле світло вночі та у шторм
+    this.boat.setInteriorLight(time.daylight, this.weather.intensity);
 
     // апгрейди-світло
     this.boat.applyUpgrades(g.upgrades, time.daylight);

@@ -75,6 +75,7 @@ export class Hud {
         <kbd>M</kbd> мінімапа · <kbd>Esc</kbd> меню · у штурвалі: <kbd>W/S</kbd> газ, <kbd>A/D</kbd> рильє<br>
         у воді: <kbd>Space</kbd> сплестись, <kbd>C</kbd> зануритись
       </div>
+      <div class="lock-hint">🖱️ Клікни по екрану, щоб захопити мишу</div>
     `;
     document.body.appendChild(root);
     this.root = root;
@@ -105,13 +106,16 @@ export class Hud {
     this.elDistN = this.elFight.querySelector<HTMLElement>('.distn')!;
     this.toasts = root.querySelector('.toasts')!;
     this.hintEl = root.querySelector('.controls-hint')!;
+    this.elLockHint = root.querySelector('.lock-hint')!;
     this._day = elDay;
   }
 
   private _day!: HTMLElement;
   private elPromptText!: HTMLElement;
+  private elLockHint!: HTMLElement;
   private lastMoney = -1;
   private lastClock = '';
+  private lockHintShown = false;
 
   update(game: GameState, time: TimeCycle, weather: Weather, boatPos: { x: number; z: number }, extra: {
     prompt?: string | null;
@@ -189,6 +193,13 @@ export class Hud {
     }, ms);
     // не більше 4 одночасно
     while (this.toasts.children.length > 4) this.toasts.firstChild?.remove();
+  }
+
+  /** підказка «клікни, щоб захопити мишу», коли граємо без pointer lock */
+  setLockHint(show: boolean) {
+    if (show === this.lockHintShown) return;
+    this.lockHintShown = show;
+    this.elLockHint.classList.toggle('show', show);
   }
 
   hideHint() {
