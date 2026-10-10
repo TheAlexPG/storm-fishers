@@ -35,7 +35,9 @@ export function updateWaveSet(defs: WaveDef[], intensity: number, windDir: numbe
     const a = windDir + off;
     w.dir[0] = Math.sin(a);
     w.dir[1] = -Math.cos(a);
-    w.amp = baseAmp * (0.35 + s);
+    // підлог 0.09: у тиші хвилі справді дрібні (~0.15 м), а шторм
+    // зберігає амплітуди завдяки множнику 1.15·s
+    w.amp = baseAmp * (0.09 + 1.15 * s);
     w.len = len;
     w.q = q;
   }

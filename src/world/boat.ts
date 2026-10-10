@@ -9,7 +9,7 @@ import type { AudioEngine } from '../core/audio';
 import type { Platform } from './port';
 
 // ─────────────────────────────────────────────────────────────
-// Човен «Шторм»: mesh + фізика (буївність 5×3, двигун, рильє,
+// Човен «Шторм»: mesh + фізика (буївність 3 шари × 5×3, двигун, рильє,
 // вітер, затоплення палуби, міцність). +Z — нос, origin — вода.
 // ─────────────────────────────────────────────────────────────
 
@@ -17,7 +17,7 @@ export const BOAT = {
   length: 9.4,
   beam: 3.0,
   deckY: 1.05,
-  hullBottom: -1.05,
+  hullBottom: -1.1,
 };
 
 // точка швартування в порту: у воді, біля кромки причалу (причал закінчується з=-18)
@@ -65,13 +65,14 @@ export class Boat {
   onEngineStall: (() => void) | null = null;
   onSunk: (() => void) | null = null;
 
-  private mass = 3500;
+  private mass = 4000;
   private inertiaPitch = 3100;
   private inertiaRoll = 2900;
   private inertiaYaw = 27500;
-  private readonly buoyK = 5300;
-  private readonly buoyDamp = 1500;
-  private readonly wavePushK = 2400;
+  // на точку сітки (45 точок: 3 шари × 5 × 3) — м'якіше, човен сідає глибше
+  private readonly buoyK = 933;
+  private readonly buoyDamp = 500;
+  private readonly wavePushK = 800;
 
   private gridLocal: THREE.Vector3[] = [];
   private _v = new THREE.Vector3();
@@ -96,11 +97,16 @@ export class Boat {
   stationMarkers: THREE.Group = new THREE.Group();
 
   constructor(private scene: THREE.Scene) {
-    for (let i = 0; i < 5; i++) {
-      for (let j = 0; j < 3; j++) {
-        const x = (j - 1) * 0.95;
-        const z = -3.4 + (i / 4) * 6.8;
-        this.gridLocal.push(new THREE.Vector3(x, -0.4, z));
+    // 3-шарова сітка (об'єм корпусу): глибокі шари лишаються у воді
+    // навіть при тангажі, тож буївність змінюється плавно, без різких
+    // «вкл/викл», які раніше розганяли крен/тангаж наспіх
+    for (const y of [-0.1, -0.5, -0.8]) {
+      for (let i = 0; i < 5; i++) {
+        for (let j = 0; j < 3; j++) {
+          const x = (j - 1) * 1.2;
+          const z = -3.4 + (i / 4) * 6.8;
+          this.gridLocal.push(new THREE.Vector3(x, y, z));
+        }
       }
     }
     this.buildMesh();
@@ -130,8 +136,9 @@ export class Boat {
     const WOOD = 0x9a7a52;
     const WHITE = 0xe8e4d8;
 
-    // корпус: модифікований box (нос клин, дно округле)
-    const hullGeo = new THREE.BoxGeometry(BOAT.beam, 1.15, BOAT.length, 2, 1, 14);
+    // корпус: модифікований box (нос клин, дно округле, глибокий киль) —
+    // човен сидить у воді: лінія води ~+0.4, більша частина корпусу під водою
+    const hullGeo = new THREE.BoxGeometry(BOAT.beam, 2.0, BOAT.length, 2, 1, 14);
     const hp = hullGeo.attributes.position as THREE.BufferAttribute;
     for (let i = 0; i < hp.count; i++) {
       const x = hp.getX(i);
@@ -141,15 +148,15 @@ export class Boat {
       let sx = 1;
       if (t > 0.25) sx *= 1 - Math.pow((t - 0.25) / 0.75, 1.7) * 0.8;
       if (t < -0.55) sx *= 1 - Math.pow((-t - 0.55) / 0.45, 1.5) * 0.3;
-      if (y < 0) sx *= 1 - Math.pow(-y / 0.575, 2) * 0.4;
+      if (y < 0) sx *= 1 - Math.pow(-y / 1.0, 2) * 0.4;
       hp.setX(i, x * sx);
-      // легкий киль: дно внизу по центру опускається
-      if (y < -0.2 && Math.abs(x) < 0.5) hp.setY(i, y - 0.12 * (1 - Math.abs(x) / 0.5));
+      // киль: дно внизу по центру опускається (візуальний киль ~-1.15)
+      if (y < -0.3 && Math.abs(x) < 0.5) hp.setY(i, y - 0.15 * (1 - Math.abs(x) / 0.5));
     }
     hullGeo.computeVertexNormals();
     const hullMat = new THREE.MeshStandardMaterial({ color: RED, roughness: 0.7, metalness: 0.1, flatShading: true });
     const hull = new THREE.Mesh(hullGeo, hullMat);
-    hull.position.y = 0.15;
+    hull.position.y = 0;
     hull.castShadow = true;
     hull.receiveShadow = true;
     g.add(hull);
@@ -328,15 +335,15 @@ export class Boat {
 
     // Корпус: 2 — бортові канти, 3 — броньовані плити, 5 — повна броня + кіл
     for (const s of [-1, 1]) {
-      const trim = this.addBox(g, 0.06, 0.18, BOAT.length * 0.95, s * (BOAT.beam / 2 + 0.02), 0.12, 0, 0x4a4f55, 0.4, 0.7);
+      const trim = this.addBox(g, 0.06, 0.18, BOAT.length * 0.95, s * (BOAT.beam / 2 + 0.02), 0.5, 0, 0x4a4f55, 0.4, 0.7);
       list('hull', trim, 2);
-      const plate = this.addBox(g, 0.05, 0.5, BOAT.length * 0.9, s * (BOAT.beam / 2 + 0.03), -0.25, 0, 0x3c4147, 0.5, 0.6);
+      const plate = this.addBox(g, 0.05, 0.5, BOAT.length * 0.9, s * (BOAT.beam / 2 + 0.03), 0.15, 0, 0x3c4147, 0.5, 0.6);
       list('hull', plate, 3);
-      const armor = this.addBox(g, 0.07, 0.9, BOAT.length * 0.96, s * (BOAT.beam / 2 + 0.04), 0, 0, 0x2c3036, 0.35, 0.8);
+      const armor = this.addBox(g, 0.07, 0.9, BOAT.length * 0.96, s * (BOAT.beam / 2 + 0.04), 0.2, 0, 0x2c3036, 0.35, 0.8);
       list('hull', armor, 5);
     }
     {
-      const keel = this.addBox(g, 0.16, 0.4, BOAT.length * 0.8, 0, -1.05, 0, 0x2c3036, 0.35, 0.8);
+      const keel = this.addBox(g, 0.16, 0.4, BOAT.length * 0.8, 0, -1.1, 0, 0x2c3036, 0.35, 0.8);
       list('hull', keel, 5);
     }
 
@@ -566,7 +573,7 @@ export class Boat {
     // водний опір (квадратичний → топову швидкість)
     const dragC = 190;
     this._f.x -= dragC * this.vel.x * Math.max(1, speed) + 4 * this.vel.x;
-    this._f.y -= 20 * this.vel.y;
+    this._f.y -= 30 * this.vel.y;
     this._f.z -= dragC * this.vel.z * Math.max(1, speed) + 4 * this.vel.z;
 
     // вітер
@@ -614,16 +621,21 @@ export class Boat {
       this.angVel.x += (this._t.x / this.inertiaPitch) * sdt;
       this.angVel.y += (this._t.y / this.inertiaYaw) * sdt;
       this.angVel.z += (this._t.z / this.inertiaRoll) * sdt;
-      // стабілізація: м'яка пружність до рівня + демпфування кутів
+      // стабілізація: пружність до рівня + сильне демпфування кутів.
+      // Човен — квазістатичний «слідч за схилом хвилі»: сильне демпфування
+      // вбиває зв'язний резонанс тангаж↔крен, який раніше розганяв човен
+      // до жорстких клампів навіть у тиші
       this.angVel.x += -this.pitch * 2.0 * sdt;
       this.angVel.z += -this.roll * 2.0 * rollDamp * sdt;
-      this.angVel.x *= 1 - 2.2 * sdt;
-      this.angVel.z *= 1 - 2.4 * rollDamp * sdt;
+      this.angVel.x *= 1 - 9.0 * sdt;
+      this.angVel.z *= 1 - 11.0 * rollDamp * sdt;
       this.angVel.y *= 1 - 0.8 * sdt;
       this.pos.addScaledVector(this.vel, sdt);
       this.heading += this.angVel.y * sdt;
       this.pitch = clamp(this.pitch + this.angVel.x * sdt, -0.45, 0.45);
-      this.roll = clamp(this.roll + this.angVel.z * sdt, -0.55, 0.55);
+      // крен до 0.65 рад (~37°) — у штормі швартований човен має право
+      // сильно кренитись, без жорсткого «прилипання» до клампу
+      this.roll = clamp(this.roll + this.angVel.z * sdt, -0.65, 0.65);
     }
 
     // страховка: жодна числова нестабільність не повинна розірвати гру
