@@ -1,4 +1,5 @@
 import { formatMoney, formatTime } from '../core/math';
+import { MOOR } from '../world/boat';
 import type { GameState } from '../game/state';
 import type { TimeCycle } from '../core/time';
 import type { Weather } from '../core/weather';
@@ -39,6 +40,12 @@ export class Hud {
   private elTensionLimit!: HTMLElement;
   private elDist!: HTMLElement;
   private elDistN!: HTMLElement;
+  private compass: HTMLCanvasElement | null = null;
+  private compassCtx: CanvasRenderingContext2D | null = null;
+  private chipPort!: HTMLElement;
+  private chipWp!: HTMLElement;
+  private lastPortChip = '';
+  private lastWpChip = '';
   private toasts: HTMLElement;
   private hintEl: HTMLElement;
 
@@ -57,6 +64,11 @@ export class Hud {
           <div class="clock"><span class="t">00:00</span><small class="d">День 1</small></div>
           <div class="wrow"><span class="w"></span>·<span class="zone"></span></div>
         </div>
+        <canvas class="compass-strip" width="300" height="36"></canvas>
+        <div class="nav-chips">
+          <span class="nav-chip hud-card" id="chip-port"></span>
+          <span class="nav-chip hud-card" id="chip-wp"></span>
+        </div>
       </div>
       <div class="hud-tr">
         <div class="hold-chip hud-card">🐟 Трюм <b class="h">0/8</b></div>
@@ -72,7 +84,7 @@ export class Hud {
       </div>
       <div class="controls-hint">
         <kbd>WASD</kbd> рух · <kbd>Миша</kbd> погляд · <kbd>Shift</kbd> біг · <kbd>E</kbd> дія<br>
-        <kbd>M</kbd> мінімапа · <kbd>Esc</kbd> меню · у штурвалі: <kbd>W/S</kbd> газ, <kbd>A/D</kbd> рильє<br>
+        <kbd>M</kbd> карта · <kbd>Esc</kbd> меню · у штурвалі: <kbd>W/S</kbd> газ, <kbd>A/D</kbd> рильє<br>
         у воді: <kbd>Space</kbd> сплестись, <kbd>C</kbd> зануритись
       </div>
       <div class="lock-hint">🖱️ Клікни по екрану, щоб захопити мишу</div>
@@ -107,7 +119,24 @@ export class Hud {
     this.toasts = root.querySelector('.toasts')!;
     this.hintEl = root.querySelector('.controls-hint')!;
     this.elLockHint = root.querySelector('.lock-hint')!;
+    this.compass = root.querySelector<HTMLCanvasElement>('.compass-strip');
+    this.compassCtx = this.compass?.getContext('2d') ?? null;
+    this.setupCompassDpi();
+    this.chipPort = root.querySelector('#chip-port')!;
+    this.chipWp = root.querySelector('#chip-wp')!;
     this._day = elDay;
+  }
+
+  /** гострий канвас компаса під devicePixelRatio (CSS 300×36) */
+  private setupCompassDpi() {
+    const c = this.compass;
+    if (!c) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    c.width = 300 * dpr;
+    c.height = 36 * dpr;
+    c.style.width = '300px';
+    c.style.height = '36px';
+    this.compassCtx?.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   private _day!: HTMLElement;
@@ -123,6 +152,8 @@ export class Hud {
     actionLabel?: string | null;
     actionProgress?: number;
     fight?: { name: string; tension: number; limit: number; dist: number } | null;
+    heading?: number;
+    speedKn?: number;
   }) {
     if (game.money !== this.lastMoney) {
       this.elMoney.textContent = Math.round(game.money).toLocaleString('uk-UA');
@@ -179,6 +210,125 @@ export class Hud {
       this.elDistN.textContent = Math.round(extra.fight.dist) + ' м';
     } else {
       this.elFight.classList.remove('show');
+    }
+
+    // навігація: компасна стрічка + чіпи до порту/точки
+    this.drawCompass(extra.heading ?? 0, boatPos, game.waypoint);
+    this.updateNavChips(boatPos, game.waypoint);
+  }
+
+  /** азимут у градусах: 0 = північ (-Z), за годинниковою стрілкою */
+  private static bearing(fx: number, fz: number, tx: number, tz: number): number {
+    let b = (Math.atan2(tx - fx, -(tz - fz)) * 180) / Math.PI;
+    if (b < 0) b += 360;
+    return b;
+  }
+
+  private static fmtDist(d: number): string {
+    return d >= 1000 ? (d / 1000).toFixed(1).replace('.', ',') + ' км' : Math.round(d) + ' м';
+  }
+
+  /** компасна стрічка: шкала курсу, рубка-лінія, маркери порту й точки */
+  private drawCompass(headingRad: number, boat: { x: number; z: number }, wp: { x: number; z: number } | null) {
+    const c = this.compassCtx;
+    if (!c || !this.compass) return;
+    const w = 300; // логічний розмір (dpr закладений у transform)
+    const h = 36;
+    const deg = ((headingRad * 180) / Math.PI) % 360;
+    const d0 = deg < 0 ? deg + 360 : deg;
+    c.clearRect(0, 0, w, h);
+    const pxPerDeg = w / 180; // ±90° по боках
+    const cx = w / 2;
+    const base = h - 12;
+    const P8 = ['П', 'ПСх', 'Сх', 'СхПд', 'Пд', 'ПдЗх', 'Зх', 'ЗхП'];
+    const wrap = (a: number) => {
+      let d = (a - d0 + 540) % 360;
+      if (d > 180) d -= 360;
+      return d;
+    };
+    // риска
+    for (let a = 0; a < 360; a += 5) {
+      const d = wrap(a);
+      if (Math.abs(d) > 92) continue;
+      const x = cx + d * pxPerDeg;
+      const major = a % 45 === 0;
+      const mid = a % 15 === 0;
+      c.strokeStyle = major ? 'rgba(255,255,255,0.95)' : mid ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.35)';
+      c.lineWidth = major ? 2 : 1;
+      c.beginPath();
+      c.moveTo(x, base);
+      c.lineTo(x, base - (major ? 14 : mid ? 10 : 6));
+      c.stroke();
+      if (major) {
+        c.font = '700 11px -apple-system, "Segoe UI", sans-serif';
+        c.fillStyle = 'rgba(255,255,255,0.9)';
+        c.textAlign = 'center';
+        c.fillText(P8[a / 45], x, base - 17);
+      }
+    }
+    // маркер порту (трикутник)
+    const drawMark = (brg: number, color: string, flag: boolean) => {
+      const d = wrap(brg);
+      if (Math.abs(d) > 92) return;
+      const x = cx + d * pxPerDeg;
+      c.fillStyle = color;
+      if (flag) {
+        // прапор
+        c.fillRect(x, 1, 1.5, 9);
+        c.beginPath();
+        c.moveTo(x + 1.5, 1);
+        c.lineTo(x + 9, 3.5);
+        c.lineTo(x + 1.5, 6);
+        c.closePath();
+        c.fill();
+      } else {
+        c.beginPath();
+        c.moveTo(x, 3);
+        c.lineTo(x + 4, 10);
+        c.lineTo(x - 4, 10);
+        c.closePath();
+        c.fill();
+      }
+    };
+    drawMark(Hud.bearing(boat.x, boat.z, MOOR.x, MOOR.z), '#ffd980', false);
+    if (wp) drawMark(Hud.bearing(boat.x, boat.z, wp.x, wp.z), '#78dcff', true);
+    // рубка-лінія (курсова риска)
+    c.strokeStyle = '#ff6b5e';
+    c.lineWidth = 2;
+    c.beginPath();
+    c.moveTo(cx, 2);
+    c.lineTo(cx, base);
+    c.stroke();
+    c.fillStyle = '#ff6b5e';
+    c.beginPath();
+    c.moveTo(cx, 2);
+    c.lineTo(cx + 5, -2);
+    c.lineTo(cx - 5, -2);
+    c.closePath();
+    c.fill();
+  }
+
+  /** чіпи: 🏠 до шварту (дому), ⚑ до точки */
+  private updateNavChips(boat: { x: number; z: number }, wp: { x: number; z: number } | null) {
+    const bPort = Hud.bearing(boat.x, boat.z, MOOR.x, MOOR.z);
+    const dPort = Math.hypot(boat.x - MOOR.x, boat.z - MOOR.z);
+    // у шварту курс сенсу не має — показуємо лише факт
+    const tPort = dPort < 5 ? '🏠 у шварту' : `🏠 ${String(Math.round(bPort) % 360).padStart(3, '0')}° · ${Hud.fmtDist(dPort)}`;
+    if (tPort !== this.lastPortChip) {
+      this.lastPortChip = tPort;
+      this.chipPort.textContent = tPort;
+    }
+    if (wp) {
+      const bWp = Hud.bearing(boat.x, boat.z, wp.x, wp.z);
+      const dWp = Math.hypot(wp.x - boat.x, wp.z - boat.z);
+      const tWp = `⚑ ${String(Math.round(bWp) % 360).padStart(3, '0')}° · ${Hud.fmtDist(dWp)}`;
+      if (tWp !== this.lastWpChip) {
+        this.lastWpChip = tWp;
+        this.chipWp.textContent = tWp;
+      }
+      this.chipWp.classList.remove('hidden');
+    } else {
+      this.chipWp.classList.add('hidden');
     }
   }
 

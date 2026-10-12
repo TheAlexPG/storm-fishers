@@ -59,9 +59,9 @@ export class Fishing {
     if (!game.spendEnergy(2)) return false;
     const rodLvl = game.upgrades.rod;
     const dist = eff.castDist(rodLvl) * rand(0.85, 1.15);
-    // поплавок вперед від корми
+    // поплавок вперед від носа (вудка на носовій палубі)
     const fwd = new THREE.Vector3(Math.sin(boat.heading), 0, Math.cos(boat.heading));
-    const base = boat.localToWorld(0, BOAT.deckY + 0.5, -4.2, new THREE.Vector3());
+    const base = boat.localToWorld(0, BOAT.deckY + 0.5, 3.9, new THREE.Vector3());
     this.bobberPos.copy(base).addScaledVector(fwd, dist);
     this.state = 'waiting';
     // базовий час: 5–30 с, зона, погода, вудка, радіо
@@ -145,8 +145,8 @@ export class Fishing {
       return;
     }
 
-    // вудка: кінчик у світі
-    boat.localToWorld(0, BOAT.deckY + 1.35, -4.3, this.rodTipWorld);
+    // вудка: кінчик у світі (вудка на носі)
+    boat.localToWorld(0, BOAT.deckY + 1.0, 4.6, this.rodTipWorld);
 
     if (this.state === 'waiting') {
       // поплавок плаває по хвилях

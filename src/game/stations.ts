@@ -151,7 +151,8 @@ export class Stations {
   }
 
   private insideCabin(x: number, z: number): boolean {
-    return x > -0.8 && x < 1.3 && z > -3.2 && z < -0.5;
+    // салон на носі (локальні межі каюти)
+    return x > -0.8 && x < 1.3 && z > 0.5 && z < 3.5;
   }
 
   private addStain(x: number, z: number) {

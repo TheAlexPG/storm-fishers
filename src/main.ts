@@ -15,6 +15,7 @@ import { Stations } from './game/stations';
 import { Fishing } from './game/fishing';
 import { Hud } from './ui/hud';
 import { Minimap } from './ui/minimap';
+import { MapView } from './ui/map';
 import { Dialogs } from './ui/dialogs';
 import { zoneFromDist } from './game/fish';
 import { LocalAdapter } from './net/adapter';
@@ -24,7 +25,7 @@ import './styles.css';
 // Головний цикл: світ, ігри, UI.
 // ─────────────────────────────────────────────────────────────
 
-type Phase = 'intro' | 'play' | 'paused' | 'dialog';
+type Phase = 'intro' | 'play' | 'paused' | 'dialog' | 'map';
 
 class Game {
   private renderer: THREE.WebGLRenderer;
@@ -65,6 +66,7 @@ class Game {
   // UI
   private hud: Hud;
   private minimap: Minimap;
+  private mapView: MapView;
   private dialogs: Dialogs;
   private underwater: HTMLElement;
 
@@ -127,6 +129,18 @@ class Game {
 
     this.hud = new Hud();
     this.minimap = new Minimap();
+    this.mapView = new MapView();
+    this.mapView.onWaypoint = (x, z) => {
+      this.game.setWaypoint(x, z);
+      this.mapView.show(this.boat.pos.x, this.boat.pos.z, this.boat.heading, this.port.rocks, this.game);
+      this.saveGame();
+    };
+    this.mapView.onClear = () => {
+      this.game.clearWaypoint();
+      this.mapView.show(this.boat.pos.x, this.boat.pos.z, this.boat.heading, this.port.rocks, this.game);
+      this.saveGame();
+    };
+    this.mapView.onClose = () => this.closeMap();
     this.dialogs = new Dialogs(this.audio);
 
     this.underwater = document.createElement('div');
@@ -288,13 +302,29 @@ class Game {
     });
   }
 
-  private openDialog(kind: 'shop' | 'radio') {
+  private openDialog(kind: 'shop' | 'radio' | 'panel') {
     this.phase = 'dialog';
     this.expectUnlock = true;
     document.exitPointerLock();
     this.saveTimer = 30;
     if (kind === 'shop') this.dialogs.shop(this.game);
-    else this.dialogs.radio(this.game, this.weather, this.time);
+    else if (kind === 'radio') this.dialogs.radio(this.game, this.weather, this.time);
+    else this.dialogs.gauges(this.game, this.weather, this.time, this.boat, this.player);
+  }
+
+  // ── штурвальна карта (M) ──
+  private openMap() {
+    this.phase = 'map';
+    this.expectUnlock = true; // вихід з lock не відкриває паузу
+    this.mapView.show(this.boat.pos.x, this.boat.pos.z, this.boat.heading, this.port.rocks, this.game);
+    document.exitPointerLock();
+  }
+
+  private closeMap() {
+    this.mapView.hide();
+    this.phase = 'play';
+    this.expectUnlock = false;
+    this.requestLock();
   }
 
   private saveGame() {
@@ -341,9 +371,11 @@ class Game {
     if (locked && input.pressed('KeyE') && this.phase === 'play' && !this.dialogs.isOpen) {
       this.doInteract();
     }
-    // Esc — меню паузи / продовження (працює і без pointer lock)
+    // Esc — меню паузи / продовження / закрити карту (працює і без pointer lock)
     if (input.pressed('Escape')) {
-      if (!this.escSwallow) {
+      if (this.phase === 'map') {
+        this.closeMap();
+      } else if (!this.escSwallow) {
         if (this.phase === 'play' && !this.dialogs.isOpen) {
           this.openPause();
         } else if (this.phase === 'paused' && this.dialogs.isOpen) {
@@ -355,10 +387,10 @@ class Game {
       }
     }
     this.escSwallow = false;
-    // M — мінімапа
+    // M — штурвальна карта (повноекранна)
     if (input.pressed('KeyM')) {
-      this.minimap.visible = !this.minimap.visible;
-      this.minimap.setMuted(!this.minimap.visible);
+      if (this.phase === 'map') this.closeMap();
+      else if (this.phase === 'play' && !this.dialogs.isOpen) this.openMap();
     }
     // Space у битві — обробляється в fishing через input.down
 
@@ -394,11 +426,11 @@ class Game {
       this.audio.thunder(p);
     };
 
-    // амб'єнс: вітер/дощ/набій хвиль (тихіше, коли гравець далеко від води; в каюті — під дахом)
+    // амб'єнс: вітер/дощ/набій хвиль (тихіше, коли гравець далеко від води; під дахом — у каюті чи кокпіті)
     // край води (причал) ≈ z=-18, хата ≈ z=-60
     const nearWater =
       (this.player.mode === 'port' ? clamp((this.player.wz + 60) / 42, 0.25, 1) : 1) *
-      (this.player.inCabin ? 0.45 : 1);
+      (this.player.sheltered ? 0.45 : 1);
     this.audio.setAmbience(this.weather.wind, this.weather.rain, clamp(this.weather.intensity, 0, 1), nearWater);
 
     // океан
@@ -443,7 +475,7 @@ class Game {
       if (g.addFish(catched)) {
         const fresh = catched.storm ? ' · штормова!' : '';
         this.hud.toast(`Улов: ${name}, ${catched.kg.toFixed(2)} кг${fresh}`, 'good');
-        this.particles.sparkle(this.boat.localToWorld(0, BOAT.deckY + 1, -4.0, this._v).x, this.boat.localToWorld(0, BOAT.deckY + 1, -4.0, this._v).y, this.boat.localToWorld(0, BOAT.deckY + 1, -4.0, this._v).z);
+        this.particles.sparkle(this.boat.localToWorld(0, BOAT.deckY + 1, 3.9, this._v).x, this.boat.localToWorld(0, BOAT.deckY + 1, 3.9, this._v).y, this.boat.localToWorld(0, BOAT.deckY + 1, 3.9, this._v).z);
       } else {
         // трюм повний — продаємо одразу
         const v = g.sellOne(catched.uid) || 0;
@@ -506,7 +538,7 @@ class Game {
 
     // спочатку: клювання
     if (this.fishing.state === 'bite') {
-      const rodW = this.boat.localToWorld(0, BOAT.deckY, -4.2, this._v);
+      const rodW = this.boat.localToWorld(0, BOAT.deckY, 3.9, this._v);
       if (p.mode === 'boat') {
         const px = this.boat.localToWorld(p.localX, BOAT.deckY, p.localZ, this._v2);
         if (px.distanceTo(rodW) < 3.5) {
@@ -539,6 +571,10 @@ class Game {
     }
     if (id === 'st:radio') {
       this.openDialog('radio');
+      return;
+    }
+    if (id === 'st:panel') {
+      this.openDialog('panel');
       return;
     }
     if (id === 'st:bed' || id === 'port:house') {
@@ -664,6 +700,8 @@ class Game {
         actionLabel: this.stations.active ? this.stations.active.label : null,
         actionProgress: this.stations.progress,
         fight,
+        heading: this.boat.heading,
+        speedKn: this.boat.vel.length() * 1.944,
       },
     );
 

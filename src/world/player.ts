@@ -22,16 +22,18 @@ const RUN = 5.6;
 const SWIM = 2.3;
 
 // стіни каюти (локальні AABB) — тверді; гравець заходить через дверний отвір
-// у кормовій стіні (x -0.2..0.7). Стіни товсті (0.25), отже тунелювання неможливе.
+// у кормовій стіні (x -0.2..0.7, на повну висоту) з боку кокпіту.
+// Перемичка над люком у носовій стіні — лише візуальна.
 const CABIN_WALLS = [
-  { x0: -0.9, x1: 1.1, z0: -0.8, z1: -0.55 },    // носова стіна
-  { x0: -0.9, x1: -0.65, z0: -3.05, z1: -0.55 }, // лівий борт
-  { x0: 0.85, x1: 1.1, z0: -3.05, z1: -0.55 },   // правий борт
-  { x0: -0.9, x1: -0.2, z0: -3.05, z1: -2.8 },   // корма (ліворуч дверей)
-  { x0: 0.7, x1: 1.1, z0: -3.05, z1: -2.8 },     // корма (праворуч дверей)
+  { x0: -0.9, x1: -0.2, z0: 3.0, z1: 3.25 },    // носова стіна (ліворуч люка)
+  { x0: 0.7, x1: 1.1, z0: 3.0, z1: 3.25 },      // носова стіна (праворуч люка)
+  { x0: -0.9, x1: -0.2, z0: 0.75, z1: 1.0 },    // кормова стіна (ліворуч дверей)
+  { x0: 0.7, x1: 1.1, z0: 0.75, z1: 1.0 },      // кормова стіна (праворуч дверей)
+  { x0: -0.9, x1: -0.65, z0: 0.75, z1: 3.25 },  // лівий борт
+  { x0: 0.85, x1: 1.1, z0: 0.75, z1: 3.25 },    // правий борт
 ];
 // внутрішнє приміщення каюти (для прапорця inCabin і затишних ефектів)
-const CABIN_IN = { x0: -0.65, x1: 0.85, z0: -2.8, z1: -0.8 };
+const CABIN_IN = { x0: -0.65, x1: 0.85, z0: 1.0, z1: 3.0 };
 // станції всередині каюти (доступні лише зсередини)
 const CABIN_STATIONS = new Set(['kitchen', 'radio', 'bed']);
 const PLAYER_R = 0.28; // радіус тіла для колізії зі стінами
@@ -51,6 +53,8 @@ export class Player {
   wheeling = false;
   /** стоїмо всередині каюти (затишок + каютні станції) */
   inCabin = false;
+  /** під дахом: каюта або критий кокпіт (hardtop) — захист від негоди */
+  sheltered = false;
   /** найближча інтерактивна ціль */
   nearest: Interactable | null = null;
   /** позиція голови (для камери) */
@@ -65,13 +69,13 @@ export class Player {
   private _n = new THREE.Vector3();
 
   constructor(private game: GameState) {
-    // старт: на палубі біля шварту. Швартувальний курс (нос у світ +X)
-    // ставить причал за правим бортом: локальний +X = світ -Z.
-    // yaw = 0 → погляд у світ -Z, тобто на порт.
+    // старт: у критому кокпіті перед приборною панеллю. Швартувальний курс
+    // (нос у світ +X) ставить причал за правим бортом: локальний +X = світ -Z.
+    // yaw = 0 → погляд у світ -Z, тобто на порт; штурвал у 0.4 м попереду.
     this.mode = 'boat';
     this.localX = 0;
-    this.localZ = 1.2;
-    this.yaw = 0; // дивимось на порт
+    this.localZ = -2.2;
+    this.yaw = 0; // дивимось на порт; штурвал одразу в полі зору
   }
 
   /** прив'язати свіжий GameState (після «Нова гра» / «Продовжити») */
@@ -83,7 +87,8 @@ export class Player {
     this.mode = 'boat';
     this.wheeling = false;
     this.localX = 0;
-    this.localZ = 1.2;
+    this.localZ = -2.2;
+    this.yaw = 0; // у кокпіт, погляд на штурвал/порт
   }
 
   /** свіжий кадр: миша + рух + переходи */
@@ -100,6 +105,7 @@ export class Player {
 
     let moving = false;
     this.inCabin = false;
+    this.sheltered = false;
 
     if (this.mode === 'boat') {
       if (this.wheeling) {
@@ -158,6 +164,10 @@ export class Player {
       this.inCabin =
         this.localX > CABIN_IN.x0 && this.localX < CABIN_IN.x1 &&
         this.localZ > CABIN_IN.z0 && this.localZ < CABIN_IN.z1;
+      // під дахом? каюта (стеля) або критий кокпіт (hardtop) — укриття в негоду
+      this.sheltered =
+        this.inCabin ||
+        (Math.abs(this.localX) <= 1.3 && this.localZ >= -4.4 && this.localZ <= 0.4);
     } else if (this.mode === 'port') {
       const speed = running ? RUN : WALK;
       if (inF || inL) {
@@ -317,6 +327,7 @@ export class Player {
   private stationLabel(id: string, boat: Boat): string {
     switch (id) {
       case 'wheel': return this.wheeling ? 'Вийти зі штурвала' : 'Керування (газ W/S, рильє A/D)';
+      case 'panel': return 'Приборна панель';
       case 'rod': return 'Вудка — закинути / зняти';
       case 'engine': return boat.engineOn ? 'Ремонт двигуна' : 'Запустити двигун!';
       case 'pump': return boat.deckWater > 5 ? 'Осушити палубу' : 'Помпа (палуба суха)';
@@ -360,10 +371,11 @@ export class Player {
     return n.id;
   }
 
-  /** енергія: відновлення в спокої (у каюті — затишок, відновлюється швидше) */
+  /** енергія: відновлення в спокої (каюта — затишок, кокпіт під дахом — теж) */
   updateEnergy(dt: number) {
     if (this.mode === 'boat' && !this.wheeling) {
-      this.game.addEnergy((this.inCabin ? 1.5 : 0.9) * dt);
+      const rate = this.inCabin ? 1.5 : this.sheltered ? 1.2 : 0.9;
+      this.game.addEnergy(rate * dt);
     } else if (this.mode === 'port') {
       this.game.addEnergy(1.2 * dt);
     }

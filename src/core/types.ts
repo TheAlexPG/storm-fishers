@@ -91,6 +91,7 @@ export interface SaveData {
   boatZ: number;
   boatHeading: number;
   totalPlayTime: number;
+  waypoint: { x: number; z: number } | null;
 }
 
 export interface PlayerStats {

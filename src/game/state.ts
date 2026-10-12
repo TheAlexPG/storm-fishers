@@ -37,6 +37,9 @@ export class GameState {
   // радіо-звіти дня (обновлюються щодня)
   reports: RadioReport[] = [];
 
+  // навігація: точка, вибрана на карті (M)
+  waypoint: { x: number; z: number } | null = null;
+
   constructor() {
     this.rollPrices();
     this.rollReports();
@@ -158,6 +161,17 @@ export class GameState {
     return r ? r.boost : 1;
   }
 
+  // ── Навігація ──
+
+  /** поставити/переставити точку на карті */
+  setWaypoint(x: number, z: number) {
+    this.waypoint = { x, z };
+  }
+
+  clearWaypoint() {
+    this.waypoint = null;
+  }
+
   private checkObjectives() {
     if (this.discovered.length >= FISH.length) this.objectives.allSpecies = true;
     if (UPGRADES.every((u) => this.upgrades[u.id] >= MAX_LEVEL)) this.objectives.maxUpgrades = true;
@@ -201,6 +215,7 @@ export class GameState {
       boatZ: 0,
       boatHeading: 0,
       totalPlayTime: 0,
+      waypoint: this.waypoint,
     };
   }
 
@@ -239,6 +254,9 @@ export class GameState {
     if (data.stats) this.stats = { ...this.stats, ...data.stats };
     if (typeof data.priceWeek === 'number') this.priceWeek = data.priceWeek;
     if (data.priceMult) this.priceMult = data.priceMult;
+    if (data.waypoint && typeof data.waypoint.x === 'number' && typeof data.waypoint.z === 'number') {
+      this.waypoint = { x: data.waypoint.x, z: data.waypoint.z };
+    }
     this.checkObjectives();
   }
 
