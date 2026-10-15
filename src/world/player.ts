@@ -24,7 +24,7 @@ const SWIM = 2.3;
 
 // станції в салоні (доступні лише внизу)
 const CABIN_STATIONS = new Set(['kitchen', 'radio', 'bed']);
-const PLAYER_R = 0.25; // радіус тіла для колізій
+const PLAYER_R = 0.22; // радіус тіла для колізій
 
 /** рівень на яхті: палуба / трап компаньйона / салон у корпусі */
 export type DeckLevel = 'deck' | 'stairs' | 'below';
@@ -58,6 +58,7 @@ export class Player {
   shakeZ = 0;
 
   private bobPhase = 0;
+  private railPush = 0;
   private inWaterT = 0;
   private _v = new THREE.Vector3();
   private _n = new THREE.Vector3();
@@ -135,7 +136,7 @@ export class Player {
           const nx = this.localX + ldx * speed * dt;
           const nz = this.localZ + ldz * speed * dt;
           moving = true;
-          if (this.moveOnBoat(nx, nz)) {
+          if (this.moveOnBoat(nx, nz, dt)) {
             // вихід за борт: поруч платформа (зазор до ~0.9 м) — зійти на неї, інакше — у воду
             const world = boat.localToWorld(this.localX, BOAT.deckY, this.localZ, this._v);
             const plat = this.platformNear(world.x, world.z, port, 0.9);
@@ -234,13 +235,18 @@ export class Player {
    * Трап: коридор |x| < STAIR.x, висота лінійно між палубою і салоном.
    * Салон: прохід між меблями (SALOON), нагору — лише через трап.
    */
-  private moveOnBoat(nx: number, nz: number): boolean {
+  private moveOnBoat(nx: number, nz: number, dt: number): boolean {
     const r = PLAYER_R;
     if (this.level === 'deck') {
       [nx, nz] = this.resolveBoxes(nx, nz, DECK_COLLIDERS, r);
       // увійти на трап: з кокпіту вперед у проріз компаньйона
-      if (Math.abs(nx) < STAIR.x && nz > STAIR.zTop) this.level = 'stairs';
-      const overboard = Math.abs(nz) > HALF_LEN - 0.32 || Math.abs(nx) > deckLimitX(nz, r) + 0.02;
+      if (Math.abs(nx) < STAIR.x && nz > STAIR.zTop && nz < STAIR.zTop + 0.4) this.level = 'stairs';
+      // за борт: через корму (купальна платформа) одразу; через леєри — якщо
+      // тиснути на них ~0.6 с (перелазимо), щоб не випасти випадково
+      // (носовий пульпіт суцільний — через ніс не випасти)
+      const atRail = Math.abs(nx) > deckLimitX(nz, r) + 0.02 && nz < HALF_LEN - 1.0;
+      this.railPush = atRail ? this.railPush + dt : 0;
+      const overboard = nz < -(HALF_LEN - 0.32) || this.railPush > 0.6;
       this.localX = clamp(nx, -deckLimitX(nz, r), deckLimitX(nz, r));
       this.localZ = clamp(nz, -(HALF_LEN - 0.35), HALF_LEN - 0.35);
       this.floorY = this.level === 'stairs' ? stairY(this.localZ) : BOAT.deckY;

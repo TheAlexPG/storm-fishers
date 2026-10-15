@@ -48,7 +48,7 @@ function smooth(a: number, b: number, x: number): number {
 
 // ── палуба ──
 /** рубка (deckhouse) над салоном: тверда на рівні палуби, окрім прорізу трапа */
-export const HOUSE = { x: 1.0, z0: -0.6, z1: 2.6, top: DECK_Y + 0.72 };
+export const HOUSE = { x: 0.92, z0: -0.6, z1: 2.6, top: DECK_Y + 0.72 };
 /** кокпіт: коамінги ±COCKPIT.x, накритий hardtop z0..z1 */
 export const COCKPIT = { x: 1.0, z0: -4.35, z1: -0.6, roofY: DECK_Y + 2.12 };
 
@@ -73,9 +73,11 @@ export interface Box2 {
 /** тверді перешкоди на рівні палуби */
 export const DECK_COLLIDERS: Box2[] = [
   // рубка, ліворуч і праворуч трапа, та її носова частина
-  { x0: -HOUSE.x, x1: -STAIR.x, z0: HOUSE.z0, z1: HOUSE.z1 },
-  { x0: STAIR.x, x1: HOUSE.x, z0: HOUSE.z0, z1: HOUSE.z1 },
-  { x0: -STAIR.x, x1: STAIR.x, z0: STAIR.zBot, z1: HOUSE.z1 },
+  { x0: -HOUSE.x, x1: -STAIR.x, z0: HOUSE.z0, z1: 2.0 },
+  { x0: STAIR.x, x1: HOUSE.x, z0: HOUSE.z0, z1: 2.0 },
+  { x0: -STAIR.x, x1: STAIR.x, z0: STAIR.zBot, z1: 2.0 },
+  // носова частина рубки звужується (похила стінка) — прохід бічною палубою
+  { x0: -HOUSE.x + 0.2, x1: HOUSE.x - 0.2, z0: 2.0, z1: HOUSE.z1 },
   // скляні бічні щитки кокпіту (захист від бризок) — прохід на бакові палуби
   // лишається у кормовій частині кокпіту
   { x0: -1.04, x1: -0.96, z0: -2.4, z1: -0.6 },
@@ -89,7 +91,7 @@ export const DECK_COLLIDERS: Box2[] = [
 
 /** межі ходьби по палубі: всередині обрису корпусу з відступом */
 export function deckLimitX(z: number, r: number): number {
-  return Math.max(0.05, hullHalfWidth(z) - 0.2 - r);
+  return Math.max(0.05, hullHalfWidth(z) - 0.1 - r);
 }
 
 // ── рангоут ──
