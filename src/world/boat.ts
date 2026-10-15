@@ -16,7 +16,7 @@ import type { Platform } from './port';
 
 export const BOAT = {
   length: 9.4,
-  beam: 3.0,
+  beam: 3.6,
   deckY: 1.05,
   hullBottom: -1.1,
 };
@@ -198,6 +198,9 @@ export class Boat {
     for (const y of [-0.1, -0.5, -0.8]) {
       for (let i = 0; i < 5; i++) {
         for (let j = 0; j < 3; j++) {
+          // фізична ширина буївності НЕ масштабується з корпусом:
+          // ±1.2 — налаштоване значення (баланс крен/тангаж, комміт 70d29ae);
+          // ширший візуальний корпус не змінює фізику
           const x = (j - 1) * 1.2;
           const z = -3.4 + (i / 4) * 6.8;
           this.gridLocal.push(new THREE.Vector3(x, y, z));
@@ -338,22 +341,22 @@ export class Boat {
     this.glowMats = glowMats;
 
     // ── критий кокпіт: hardtop на консолі з каюти, лобове скло, коамінги ──
-    this.addBox(g, 2.9, 0.12, 5.1, 0, BOAT.deckY + 2.35, -2.1, WHITE, 0.85);
-    this.addBox(g, 2.94, 0.05, 5.14, 0, BOAT.deckY + 2.28, -2.1, RED_DARK, 0.8); // темна обшивка під дахом
+    this.addBox(g, 3.5, 0.12, 5.1, 0, BOAT.deckY + 2.35, -2.1, WHITE, 0.85);
+    this.addBox(g, 3.54, 0.05, 5.14, 0, BOAT.deckY + 2.28, -2.1, RED_DARK, 0.8); // темна обшивка під дахом
     // тепле світло під hardtop: дах не чорніє, кокпіт затишний в негоду
     this.cockpitLight = new THREE.PointLight(0xffd9a0, 22, 7.5, 1.8);
     this.cockpitLight.position.set(0, BOAT.deckY + 1.5, -1.9);
     g.add(this.cockpitLight);
     {
       const glass = new THREE.Mesh(
-        new THREE.BoxGeometry(2.7, 1.35, 0.05),
+        new THREE.BoxGeometry(3.3, 1.35, 0.05),
         new THREE.MeshStandardMaterial({ color: 0x88ccee, transparent: true, opacity: 0.22, roughness: 0.08, metalness: 0.2 }),
       );
       glass.position.set(0, BOAT.deckY + 1.75, 0.5);
       glass.rotation.x = -0.22;
       g.add(glass);
     }
-    for (const s of [-1, 1]) this.addBox(g, 0.09, 0.34, 4.9, s * 1.29, BOAT.deckY + 0.17, -2.15, RED_DARK, 0.8); // коамінги
+    for (const s of [-1, 1]) this.addBox(g, 0.09, 0.34, 4.9, s * 1.57, BOAT.deckY + 0.17, -2.15, RED_DARK, 0.8); // коамінги
     this.addBox(g, 2.67, 0.34, 0.09, 0, BOAT.deckY + 0.17, -4.47, RED_DARK, 0.8); // кормова перемичка
 
     // штурвал (у критому кокпіті)

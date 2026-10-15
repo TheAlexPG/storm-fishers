@@ -136,11 +136,11 @@ export class Player {
           let nz = this.localZ + ldz * speed * dt;
           // каюта — стіни (пройти можна лише через дверний отвір у кормі)
           [nx, nz] = this.resolveCabin(nx, nz);
-          this.localX = clamp(nx, -1.3, 1.3);
+          this.localX = clamp(nx, -1.55, 1.55);
           this.localZ = clamp(nz, -4.4, 4.4);
           moving = true;
           // вихід за борт: поруч платформа (зазор до ~0.9 м) — сойти на неї, інакше — у воду
-          if (Math.abs(this.localX) > 1.28 || Math.abs(this.localZ) > 4.38) {
+          if (Math.abs(this.localX) > 1.53 || Math.abs(this.localZ) > 4.38) {
             const world = boat.localToWorld(this.localX, BOAT.deckY, this.localZ, this._v);
             const plat = this.platformNear(world.x, world.z, port, 0.9);
             if (plat) {
@@ -167,7 +167,7 @@ export class Player {
       // під дахом? каюта (стеля) або критий кокпіт (hardtop) — укриття в негоду
       this.sheltered =
         this.inCabin ||
-        (Math.abs(this.localX) <= 1.3 && this.localZ >= -4.4 && this.localZ <= 0.4);
+        (Math.abs(this.localX) <= 1.55 && this.localZ >= -4.4 && this.localZ <= 0.4);
     } else if (this.mode === 'port') {
       const speed = running ? RUN : WALK;
       if (inF || inL) {
@@ -351,7 +351,7 @@ export class Player {
       let lx = clamp(local.x, -1.1, 1.1);
       let lz = clamp(local.z, -4.2, 4.2);
       [lx, lz] = this.resolveCabin(lx, lz); // не спавнитись всередині стіни каюти
-      this.localX = clamp(lx, -1.3, 1.3);
+      this.localX = clamp(lx, -1.55, 1.55);
       this.localZ = clamp(lz, -4.4, 4.4);
       this.mode = 'boat';
       this.shakeX = 0;
