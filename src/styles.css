@@ -50,6 +50,7 @@
 .wrow { margin-top: 3px; font-size: 12.5px; opacity: 0.85; display: flex; gap: 8px; justify-content: center; }
 .wrow .zone { color: var(--accent); font-weight: 700; }
 .wrow .weather-storm { color: var(--danger); font-weight: 700; }
+.sailrow { margin-top: 2px; font-size: 11.5px; opacity: 0.8; text-align: center; white-space: nowrap; }
 
 /* ── верх-право: мінімапа + трюм ── */
 .hud-tr { position: absolute; top: 16px; right: 16px; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }

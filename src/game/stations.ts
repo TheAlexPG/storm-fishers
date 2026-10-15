@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { clamp, rand } from '../core/math';
 import { Boat, BOAT } from '../world/boat';
+import { DECK_COLLIDERS, deckLimitX } from '../world/yachtLayout';
 import type { GameState } from './state';
 import type { AudioEngine } from '../core/audio';
 
@@ -143,16 +144,17 @@ export class Stations {
     this.stainTimer -= dt;
     if (this.stainTimer <= 0 && this.stains.length < 3) {
       this.stainTimer = rand(25, 55);
-      const x = rand(-1.05, 1.05);
-      const z = rand(-4.0, 4.0);
+      const x = rand(-0.9, 0.9);
+      const z = rand(-4.2, 4.0);
       if (!this.insideCabin(x, z)) this.addStain(x, z);
     }
     void timeH;
   }
 
   private insideCabin(x: number, z: number): boolean {
-    // салон на носі (локальні межі каюти)
-    return x > -0.8 && x < 1.3 && z > 0.5 && z < 3.5;
+    // рубка/лави/тумба на палубі — плями лише на відкритому настилі
+    return DECK_COLLIDERS.some((b) => x > b.x0 - 0.3 && x < b.x1 + 0.3 && z > b.z0 - 0.3 && z < b.z1 + 0.3) ||
+      Math.abs(x) > deckLimitX(z, 0.3);
   }
 
   private addStain(x: number, z: number) {

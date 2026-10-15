@@ -146,8 +146,16 @@ uniform float uFogDensity;
 uniform float uTime;
 uniform float uSunStrength;
 uniform float uFlash;
+uniform mat4  uHullInv;
 varying vec3 vWorldPos;
 varying vec3 vNormalW;
+
+// обрис корпусу яхти (дзеркало hullHalfWidth у yachtLayout.ts)
+float hullHalfW(float z) {
+  float t = z / 4.7;
+  if (t < 0.0) return 1.8 - 0.25 * t * t;
+  return 1.8 * pow(max(0.0, 1.0 - pow(t, 2.2)), 0.75);
+}
 
 float hash(vec2 p){
   p = fract(p * vec2(123.34, 456.21));
@@ -176,6 +184,10 @@ float fbm(vec2 p){
 }
 
 void main() {
+  // вода не заходить у корпус (салон нижче ватерлінії, кокпіт, трап)
+  vec3 hl = (uHullInv * vec4(vWorldPos, 1.0)).xyz;
+  if (abs(hl.z) < 4.68 && hl.y < 1.05 && abs(hl.x) < hullHalfW(hl.z) - 0.02) discard;
+
   vec3 N = normalize(vNormalW);
   vec3 V = normalize(uCamPos - vWorldPos);
   if (dot(N, V) < 0.0) N = -N;
@@ -263,12 +275,19 @@ export class Ocean {
         uFogDensity: { value: 0.0016 },
         uSunStrength: { value: 1.0 },
         uFlash: { value: 0 },
+        uHullInv: { value: new THREE.Matrix4() },
       },
     });
 
     this.mesh = new THREE.Mesh(geo, this.material);
     this.mesh.frustumCulled = false;
     scene.add(this.mesh);
+  }
+
+  /** матриця корпусу човна (світ → локаль), щоб не малювати воду всередині */
+  setHull(group: THREE.Object3D) {
+    group.updateMatrixWorld();
+    (this.material.uniforms.uHullInv.value as THREE.Matrix4).copy(group.matrixWorld).invert();
   }
 
   /** плавні цільові умови (Weather вже демпфує, тут — м'яке доганяння) */

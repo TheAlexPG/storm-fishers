@@ -178,6 +178,7 @@ class Game {
       this.hud.toast(`Удар! Міцність −${Math.round(power * 6)}`, 'bad');
       this.audio.thump(power / 6);
     };
+    this.boat.sails.onEvent = (msg, kind) => this.hud.toast(msg, kind, 4000);
     this.boat.onEngineStall = () => {
       this.hud.toast('Хвиля заглушила двигун! Запусти його на двигунній (E)', 'bad');
       this.audio.snap();
@@ -235,6 +236,7 @@ class Game {
     this.phase = 'play';
     this.requestLock();
     this.hud.toast('Вітаємо на борту «Шторму»! Почни з порту: продавай, прокачуй, лови.', 'good', 6000);
+    this.hud.toast('Порада: пальне дороге — у вітер іди під парусами (F за штурвалом). Двигун — для штилю й причалу.', 'warn', 9000);
   }
 
   private continueGame() {
@@ -371,6 +373,10 @@ class Game {
     if (locked && input.pressed('KeyE') && this.phase === 'play' && !this.dialogs.isOpen) {
       this.doInteract();
     }
+    // F — паруси (за штурвалом)
+    if (locked && input.pressed('KeyF') && this.phase === 'play' && this.player.wheeling) {
+      this.cycleSails();
+    }
     // Esc — меню паузи / продовження / закрити карту (працює і без pointer lock)
     if (input.pressed('Escape')) {
       if (this.phase === 'map') {
@@ -435,10 +441,12 @@ class Game {
 
     // океан
     this.ocean.setConditions(this.weather.intensity, this.weather.windDir);
+    this.ocean.setHull(this.boat.group);
     this.ocean.update(dt, t, this.camera.position, this.time.sunDir, this.time.skyHorizon, this.time.fogColor, this.fogDensity(), this.time.sunStrength, this.weather.flash);
 
     // паливо
-    const fuelUse = Math.abs(this.boat.throttle) * 0.055 * dt;
+    // повний газ — непропорційно дорожче: економний хід і паруси окупаються
+    const fuelUse = Math.pow(Math.abs(this.boat.throttle), 1.4) * 0.07 * dt;
     if (fuelUse > 0) {
       if (g.spendFuel(fuelUse)) {
         if (g.fuel <= 0.01 && !this.outOfFuelWarned) {
@@ -457,7 +465,7 @@ class Game {
       this.player.update(dt, input, this.boat, this.port, this.ocean, t);
     } else {
       // навіть без лока тримаємо голову на місці
-      this.boat.localToWorld(this.player.localX, BOAT.deckY + 1.62, this.player.localZ, this.player.head);
+      this.boat.localToWorld(this.player.localX, this.player.floorY + 1.62, this.player.localZ, this.player.head);
     }
     this.player.updateEnergy(dt);
 
@@ -553,7 +561,7 @@ class Game {
 
     if (id === 'st:wheel') {
       p.wheeling = !p.wheeling;
-      if (p.wheeling) this.hud.toast('Штурвал: W/S — газ, A/D — рильє. E — вийти.', 'warn', 3500);
+      if (p.wheeling) this.hud.toast('Штурвал: W/S — газ, A/D — рильє, F — паруси. E — вийти.', 'warn', 3500);
       return;
     }
     if (id === 'st:rod') {
@@ -567,6 +575,10 @@ class Game {
       } else if (this.fishing.state === 'waiting') {
         this.fishing.reelIn();
       }
+      return;
+    }
+    if (id === 'st:sails') {
+      this.cycleSails();
       return;
     }
     if (id === 'st:radio') {
@@ -591,6 +603,13 @@ class Game {
     if (!res.ok && res.msg && res.msg !== '__sleep__') {
       this.hud.toast(res.msg, 'warn', 2500);
     }
+  }
+
+  private cycleSails() {
+    const m = this.boat.sails.cycle();
+    this.audio.click();
+    const txt = m === 2 ? '⛵ Паруси підняті — повні' : m === 1 ? '⛵ Взято риф (≈60 % площі)' : '⛵ Паруси спущено';
+    this.hud.toast(txt, m === 0 ? 'warn' : 'good', 2200);
   }
 
   private doSleep(inPort: boolean) {
@@ -626,6 +645,7 @@ class Game {
       this.weather.rain,
       this.weather.windDir,
       time.hours,
+      this.player.mode === 'boat' && this.player.level !== 'deck',
     );
     const sunI = time.sunStrength;
     const cloudFactor = 1 - this.weather.cloudiness * 0.55;
@@ -702,6 +722,7 @@ class Game {
         fight,
         heading: this.boat.heading,
         speedKn: this.boat.vel.length() * 1.944,
+        sail: this.player.mode === 'boat' || this.boat.sails.mode !== 0 ? this.boat.sails.hudText() : null,
       },
     );
 

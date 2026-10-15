@@ -237,7 +237,7 @@ export class Sky {
    * @param cloudiness 0..1
    * @param rain 0..1
    */
-  update(dt: number, camPos: THREE.Vector3, sunDir: THREE.Vector3, zenith: THREE.Color, horizon: THREE.Color, daylight: number, cloudiness: number, rain: number, windDir: number, timeH: number) {
+  update(dt: number, camPos: THREE.Vector3, sunDir: THREE.Vector3, zenith: THREE.Color, horizon: THREE.Color, daylight: number, cloudiness: number, rain: number, windDir: number, timeH: number, indoor = false) {
     const u = this.domeMat.uniforms;
     (u.uZenith.value as THREE.Color).copy(zenith);
     (u.uHorizon.value as THREE.Color).copy(horizon);
@@ -285,7 +285,7 @@ export class Sky {
     // дощ
     const rainO = clamp(rain * 1.2, 0, 0.75);
     this.rainMat.opacity = damp(this.rainMat.opacity, rainO, 1.2, dt);
-    this.rain.visible = this.rainMat.opacity > 0.01;
+    this.rain.visible = this.rainMat.opacity > 0.01 && !indoor;
     if (this.rain.visible) {
       this.rain.position.set(camPos.x, 0, camPos.z);
       const attr = this.rain.geometry.getAttribute('position') as THREE.BufferAttribute;

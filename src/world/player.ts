@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { clamp, damp } from '../core/math';
 import { Input } from '../core/input';
 import { Boat, BOAT, STATION_POS } from './boat';
+import { DECK_COLLIDERS, COCKPIT, STAIR, SALOON, SOLE_Y, HALF_LEN, deckLimitX, stairY, type Box2 } from './yachtLayout';
 import { Port, PORT_POINTS, type Platform } from './port';
 import { Ocean } from '../core/ocean';
 import type { GameState } from '../game/state';
@@ -21,22 +22,12 @@ const WALK = 3.4;
 const RUN = 5.6;
 const SWIM = 2.3;
 
-// стіни каюти (локальні AABB) — тверді; гравець заходить через дверний отвір
-// у кормовій стіні (x -0.2..0.7, на повну висоту) з боку кокпіту.
-// Перемичка над люком у носовій стіні — лише візуальна.
-const CABIN_WALLS = [
-  { x0: -0.9, x1: -0.2, z0: 3.0, z1: 3.25 },    // носова стіна (ліворуч люка)
-  { x0: 0.7, x1: 1.1, z0: 3.0, z1: 3.25 },      // носова стіна (праворуч люка)
-  { x0: -0.9, x1: -0.2, z0: 0.75, z1: 1.0 },    // кормова стіна (ліворуч дверей)
-  { x0: 0.7, x1: 1.1, z0: 0.75, z1: 1.0 },      // кормова стіна (праворуч дверей)
-  { x0: -0.9, x1: -0.65, z0: 0.75, z1: 3.25 },  // лівий борт
-  { x0: 0.85, x1: 1.1, z0: 0.75, z1: 3.25 },    // правий борт
-];
-// внутрішнє приміщення каюти (для прапорця inCabin і затишних ефектів)
-const CABIN_IN = { x0: -0.65, x1: 0.85, z0: 1.0, z1: 3.0 };
-// станції всередині каюти (доступні лише зсередини)
+// станції в салоні (доступні лише внизу)
 const CABIN_STATIONS = new Set(['kitchen', 'radio', 'bed']);
-const PLAYER_R = 0.28; // радіус тіла для колізії зі стінами
+const PLAYER_R = 0.25; // радіус тіла для колізій
+
+/** рівень на яхті: палуба / трап компаньйона / салон у корпусі */
+export type DeckLevel = 'deck' | 'stairs' | 'below';
 
 export class Player {
   yaw = 0;
@@ -51,8 +42,11 @@ export class Player {
   wz = -20;
   /** керування човном */
   wheeling = false;
-  /** стоїмо всередині каюти (затишок + каютні станції) */
+  /** у салоні (внизу або на трапі): затишок + каютні станції */
   inCabin = false;
+  /** рівень на яхті та висота підлоги під ногами (локальна y) */
+  level: DeckLevel = 'deck';
+  floorY = BOAT.deckY;
   /** під дахом: каюта або критий кокпіт (hardtop) — захист від негоди */
   sheltered = false;
   /** найближча інтерактивна ціль */
@@ -75,6 +69,8 @@ export class Player {
     this.mode = 'boat';
     this.localX = 0;
     this.localZ = -2.2;
+    this.level = 'deck';
+    this.floorY = BOAT.deckY;
     this.yaw = 0; // дивимось на порт; штурвал одразу в полі зору
   }
 
@@ -88,6 +84,8 @@ export class Player {
     this.wheeling = false;
     this.localX = 0;
     this.localZ = -2.2;
+    this.level = 'deck';
+    this.floorY = BOAT.deckY;
     this.yaw = 0; // у кокпіт, погляд на штурвал/порт
   }
 
@@ -115,6 +113,8 @@ export class Player {
         // тримаємось біля штурвала
         this.localX = STATION_POS.wheel.x;
         this.localZ = STATION_POS.wheel.z;
+        this.level = 'deck';
+        this.floorY = BOAT.deckY;
       } else {
         const speed = running ? RUN : WALK;
         if (inF || inL) {
@@ -132,15 +132,11 @@ export class Player {
           const sh = Math.sin(boat.heading);
           const ldx = dx * ch - dz * sh;
           const ldz = dx * sh + dz * ch;
-          let nx = this.localX + ldx * speed * dt;
-          let nz = this.localZ + ldz * speed * dt;
-          // каюта — стіни (пройти можна лише через дверний отвір у кормі)
-          [nx, nz] = this.resolveCabin(nx, nz);
-          this.localX = clamp(nx, -1.55, 1.55);
-          this.localZ = clamp(nz, -4.4, 4.4);
+          const nx = this.localX + ldx * speed * dt;
+          const nz = this.localZ + ldz * speed * dt;
           moving = true;
-          // вихід за борт: поруч платформа (зазор до ~0.9 м) — сойти на неї, інакше — у воду
-          if (Math.abs(this.localX) > 1.53 || Math.abs(this.localZ) > 4.38) {
+          if (this.moveOnBoat(nx, nz)) {
+            // вихід за борт: поруч платформа (зазор до ~0.9 м) — зійти на неї, інакше — у воду
             const world = boat.localToWorld(this.localX, BOAT.deckY, this.localZ, this._v);
             const plat = this.platformNear(world.x, world.z, port, 0.9);
             if (plat) {
@@ -155,19 +151,17 @@ export class Player {
         }
       }
       // голова
-      boat.localToWorld(this.localX, BOAT.deckY + EYE, this.localZ, this.head);
+      boat.localToWorld(this.localX, this.floorY + EYE, this.localZ, this.head);
       if (moving) {
         this.bobPhase += dt * (running ? 11 : 7.5);
         this.head.y += Math.sin(this.bobPhase) * 0.035;
       }
-      // всередині каюти?
-      this.inCabin =
-        this.localX > CABIN_IN.x0 && this.localX < CABIN_IN.x1 &&
-        this.localZ > CABIN_IN.z0 && this.localZ < CABIN_IN.z1;
-      // під дахом? каюта (стеля) або критий кокпіт (hardtop) — укриття в негоду
+      // у салоні? (внизу або вже на трапі нижче рівня палуби)
+      this.inCabin = this.level === 'below' || (this.level === 'stairs' && this.floorY < BOAT.deckY - 0.7);
+      // під дахом: салон, трап або кокпіт під hardtop — укриття в негоду
       this.sheltered =
-        this.inCabin ||
-        (Math.abs(this.localX) <= 1.55 && this.localZ >= -4.4 && this.localZ <= 0.4);
+        this.level !== 'deck' ||
+        (Math.abs(this.localX) <= COCKPIT.x && this.localZ >= COCKPIT.z0 && this.localZ <= COCKPIT.z1);
     } else if (this.mode === 'port') {
       const speed = running ? RUN : WALK;
       if (inF || inL) {
@@ -234,11 +228,55 @@ export class Player {
     this.nearest = this.findNearest(boat, port);
   }
 
-  /** витіснення зі стін каюти: тіло — коло радіуса PLAYER_R, стіни — товсті AABB */
-  private resolveCabin(x: number, z: number): [number, number] {
-    for (const w of CABIN_WALLS) {
-      const x0 = w.x0 - PLAYER_R, x1 = w.x1 + PLAYER_R;
-      const z0 = w.z0 - PLAYER_R, z1 = w.z1 + PLAYER_R;
+  /**
+   * Крок по яхті з урахуванням рівнів. Повертає true, якщо гравець ступив за борт
+   * (лише з палуби). Палуба: обрис корпусу + тверді рубка/щитки/тумба.
+   * Трап: коридор |x| < STAIR.x, висота лінійно між палубою і салоном.
+   * Салон: прохід між меблями (SALOON), нагору — лише через трап.
+   */
+  private moveOnBoat(nx: number, nz: number): boolean {
+    const r = PLAYER_R;
+    if (this.level === 'deck') {
+      [nx, nz] = this.resolveBoxes(nx, nz, DECK_COLLIDERS, r);
+      // увійти на трап: з кокпіту вперед у проріз компаньйона
+      if (Math.abs(nx) < STAIR.x && nz > STAIR.zTop) this.level = 'stairs';
+      const overboard = Math.abs(nz) > HALF_LEN - 0.32 || Math.abs(nx) > deckLimitX(nz, r) + 0.02;
+      this.localX = clamp(nx, -deckLimitX(nz, r), deckLimitX(nz, r));
+      this.localZ = clamp(nz, -(HALF_LEN - 0.35), HALF_LEN - 0.35);
+      this.floorY = this.level === 'stairs' ? stairY(this.localZ) : BOAT.deckY;
+      return this.level === 'deck' && overboard;
+    }
+    if (this.level === 'stairs') {
+      const lim = STAIR.x - r * 0.6;
+      this.localX = clamp(nx, -lim, lim);
+      this.localZ = nz;
+      if (nz < STAIR.zTop) {
+        this.level = 'deck';
+        this.localZ = STAIR.zTop - 0.02;
+      } else if (nz > STAIR.zBot) {
+        this.level = 'below';
+      }
+      this.floorY = this.level === 'stairs' ? stairY(this.localZ) : this.level === 'below' ? SOLE_Y : BOAT.deckY;
+      return false;
+    }
+    // салон
+    const lim = SALOON.x - r * 0.4;
+    this.localX = clamp(nx, -lim, lim);
+    this.localZ = clamp(nz, STAIR.zTop, SALOON.z1 - r);
+    if (this.localZ < STAIR.zBot) {
+      // назад на трап — лише в його коридорі
+      if (Math.abs(this.localX) < STAIR.x - r * 0.6) this.level = 'stairs';
+      else this.localZ = STAIR.zBot;
+    }
+    this.floorY = this.level === 'stairs' ? stairY(this.localZ) : SOLE_Y;
+    return false;
+  }
+
+  /** витіснення з товстих AABB (тіло — коло радіуса r) */
+  private resolveBoxes(x: number, z: number, boxes: Box2[], r: number): [number, number] {
+    for (const w of boxes) {
+      const x0 = w.x0 - r, x1 = w.x1 + r;
+      const z0 = w.z0 - r, z1 = w.z1 + r;
       if (x > x0 && x < x1 && z > z0 && z < z1) {
         const pL = x - x0;
         const pR = x1 - x;
@@ -252,6 +290,16 @@ export class Player {
       }
     }
     return [x, z];
+  }
+
+  /** поставити на палубу (спавн / залізти на борт) */
+  private placeOnDeck(lx: number, lz: number) {
+    this.level = 'deck';
+    this.floorY = BOAT.deckY;
+    [lx, lz] = this.resolveBoxes(lx, lz, DECK_COLLIDERS, PLAYER_R);
+    const lim = deckLimitX(lz, PLAYER_R);
+    this.localX = clamp(lx, -lim, lim);
+    this.localZ = clamp(lz, -(HALF_LEN - 0.4), HALF_LEN - 0.4);
   }
 
   /** платформа під точкою; margin — допуск (напр. ступінь з палуби в зазорі до ~0.9 м) */
@@ -280,7 +328,7 @@ export class Player {
       for (const [id, sp] of Object.entries(STATION_POS)) {
         // каютні станції — лише зсередини; палубні — лише на палубі
         if (this.inCabin ? !CABIN_STATIONS.has(id) : CABIN_STATIONS.has(id)) continue;
-        const w = boat.localToWorld(sp.x, BOAT.deckY, sp.z, this._v);
+        const w = boat.localToWorld(sp.x, sp.y ?? BOAT.deckY, sp.z, this._v);
         const d = Math.hypot(p.x - w.x, p.y - w.y - 0.4, p.z - w.z);
         if (d < bestD) {
           bestD = d;
@@ -326,8 +374,9 @@ export class Player {
 
   private stationLabel(id: string, boat: Boat): string {
     switch (id) {
-      case 'wheel': return this.wheeling ? 'Вийти зі штурвала' : 'Керування (газ W/S, рильє A/D)';
+      case 'wheel': return this.wheeling ? 'Вийти зі штурвала' : 'Керування (газ W/S, рильє A/D, паруси F)';
       case 'panel': return 'Приборна панель';
+      case 'sails': return boat.sails.mode === 0 ? 'Лебідка — підняти паруси' : boat.sails.mode === 2 ? 'Лебідка — взяти риф' : 'Лебідка — спустити паруси';
       case 'rod': return 'Вудка — закинути / зняти';
       case 'engine': return boat.engineOn ? 'Ремонт двигуна' : 'Запустити двигун!';
       case 'pump': return boat.deckWater > 5 ? 'Осушити палубу' : 'Помпа (палуба суха)';
@@ -348,11 +397,7 @@ export class Player {
       const w = new THREE.Vector3();
       boat.localToWorld(0, 0, 0, w);
       const local = boat.worldToLocal(this.wx, this.wy, this.wz, this._v);
-      let lx = clamp(local.x, -1.1, 1.1);
-      let lz = clamp(local.z, -4.2, 4.2);
-      [lx, lz] = this.resolveCabin(lx, lz); // не спавнитись всередині стіни каюти
-      this.localX = clamp(lx, -1.55, 1.55);
-      this.localZ = clamp(lz, -4.4, 4.4);
+      this.placeOnDeck(local.x, local.z);
       this.mode = 'boat';
       this.shakeX = 0;
       this.shakeZ = 0;

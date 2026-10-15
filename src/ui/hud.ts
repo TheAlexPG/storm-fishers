@@ -47,6 +47,8 @@ export class Hud {
   private lastPortChip = '';
   private lastWpChip = '';
   private toasts: HTMLElement;
+  private elSail!: HTMLElement;
+  private lastSail = '-';
   private hintEl: HTMLElement;
 
   constructor() {
@@ -63,6 +65,7 @@ export class Hud {
         <div class="hud-card">
           <div class="clock"><span class="t">00:00</span><small class="d">День 1</small></div>
           <div class="wrow"><span class="w"></span>·<span class="zone"></span></div>
+          <div class="sailrow"></div>
         </div>
         <canvas class="compass-strip" width="300" height="36"></canvas>
         <div class="nav-chips">
@@ -84,7 +87,7 @@ export class Hud {
       </div>
       <div class="controls-hint">
         <kbd>WASD</kbd> рух · <kbd>Миша</kbd> погляд · <kbd>Shift</kbd> біг · <kbd>E</kbd> дія<br>
-        <kbd>M</kbd> карта · <kbd>Esc</kbd> меню · у штурвалі: <kbd>W/S</kbd> газ, <kbd>A/D</kbd> рильє<br>
+        <kbd>M</kbd> карта · <kbd>Esc</kbd> меню · у штурвалі: <kbd>W/S</kbd> газ, <kbd>A/D</kbd> рильє, <kbd>F</kbd> паруси<br>
         у воді: <kbd>Space</kbd> сплестись, <kbd>C</kbd> зануритись
       </div>
       <div class="lock-hint">🖱️ Клікни по екрану, щоб захопити мишу</div>
@@ -97,6 +100,7 @@ export class Hud {
     const elDay = root.querySelector<HTMLElement>('.clock .d')!;
     this.elWeather = root.querySelector<HTMLElement>('.wrow .w')!;
     this.elZone = root.querySelector<HTMLElement>('.wrow .zone')!;
+    this.elSail = root.querySelector<HTMLElement>('.sailrow')!;
     this.elFuel = root.querySelector<HTMLElement>('.bar.fuel > i')!;
     this.elFuelN = root.querySelectorAll<HTMLElement>('.bar-num')[0]!;
     this.elHull = root.querySelector<HTMLElement>('.bar.hull > i')!;
@@ -154,6 +158,7 @@ export class Hud {
     fight?: { name: string; tension: number; limit: number; dist: number } | null;
     heading?: number;
     speedKn?: number;
+    sail?: string | null;
   }) {
     if (game.money !== this.lastMoney) {
       this.elMoney.textContent = Math.round(game.money).toLocaleString('uk-UA');
@@ -170,6 +175,12 @@ export class Hud {
     if (this.elWeather.textContent !== wName) this.elWeather.textContent = wName;
     this.elWeather.className = 'w' + (ws === 'storm' ? ' weather-storm' : '');
     this.elZone.textContent = ZONE_NAMES[zoneFromDist(Math.hypot(boatPos.x, boatPos.z))];
+    const sail = extra.sail ?? '';
+    if (sail !== this.lastSail) {
+      this.elSail.textContent = sail;
+      this.elSail.style.display = sail ? '' : 'none';
+      this.lastSail = sail;
+    }
 
     const fuelPct = (game.fuel / game.maxFuel) * 100;
     this.elFuel.style.width = fuelPct + '%';
