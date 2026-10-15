@@ -1,3 +1,4 @@
+import { PortLife } from './portLife';
 import * as THREE from 'three';
 import { mulberry32 } from '../core/math';
 import type { RockObstacle } from './boat';
@@ -111,6 +112,7 @@ export class Port {
   /** тверді перешкоди для гравця на суші/причалі: будинки (OBB) і реквізит (кола) */
   solids: Solid[] = [];
 
+  private life!: PortLife;
   private lighthouseLight!: THREE.SpotLight;
   private lampLights: THREE.PointLight[] = [];
   private beaconPhase = 0;
@@ -158,7 +160,7 @@ export class Port {
       stone: std({ map: stone, color: 0xd2cabb }),
       stoneDark: std({ map: stone, color: 0x9a9284 }),
       coping: std({ map: stone, color: 0xe2dccf, roughness: 0.85 }),
-      cobble: std({ map: cobbleTex(), color: 0xb9b0a1, roughness: 0.92 }),
+      cobble: std({ map: cobbleTex(), color: 0xcabda6, roughness: 0.92 }),
       plasterWhite: std({ map: plaster, color: 0xf6f2ea }),
       plasterCream: std({ map: plaster, color: 0xf2e3c2 }),
       plasterOchre: std({ map: plaster, color: 0xe9c27e }),
@@ -450,6 +452,9 @@ export class Port {
 
     // все статичне — у кілька мешів
     this.batch.build(this.group);
+
+    // трава, квіти, мешканці, чайки (після будівель — щоб знати тверді перешкоди)
+    this.life = new PortLife(this.group, this);
   }
 
   /** кам'яна набережна, бруківка, вулички, межові мури */
@@ -1388,6 +1393,7 @@ export class Port {
   /** нічні вогні: 0 — день, 1 — ніч */
   setNight(night: number) {
     this.night = night;
+    this.life.setNight(night);
     for (const pl of this.lampLights) pl.intensity = night * 6;
     this.lighthouseLight.intensity = night * 40;
     const M = this.M;
@@ -1402,6 +1408,7 @@ export class Port {
   }
 
   update(dt: number, t: number) {
+    this.life.update(dt, t);
     // прожектор маяка обертається
     this.beaconPhase += dt * 0.7;
     this.lighthouseLight.target.position.set(Math.cos(this.beaconPhase) * 60, 0, Math.sin(this.beaconPhase) * 60);

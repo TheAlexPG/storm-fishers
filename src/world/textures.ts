@@ -148,31 +148,41 @@ export function stoneTex(): THREE.Texture {
 /** бруківка — округлі камінці; 1 тайл ≈ 2 м */
 export function cobbleTex(): THREE.Texture {
   return cached('cobble', () => {
+    // дрібна бруківка (~0.15 м камінь при тайлі 2.5 м), приглушений контраст
     const [c, g] = canvas(512, 512);
     const rng = mulberry32(37);
-    g.fillStyle = shade(70);
+    g.fillStyle = shade(96);
     g.fillRect(0, 0, 512, 512);
-    const n = 10;
+    const n = 16;
     const s = 512 / n;
     for (let j = 0; j < n; j++) {
       for (let i = 0; i < n + 1; i++) {
         const ox = (j % 2) * s * 0.5;
-        const cx = i * s + ox + (rng() - 0.5) * 6;
-        const cy = j * s + s / 2 + (rng() - 0.5) * 6;
-        const b = 125 + rng() * 80;
+        const cx = i * s + ox + (rng() - 0.5) * 4;
+        const cy = j * s + s / 2 + (rng() - 0.5) * 4;
+        const b = 140 + rng() * 45;
+        const rx = s * (0.42 + rng() * 0.05);
+        const ry = s * (0.38 + rng() * 0.05);
+        const rot = (rng() - 0.5) * 0.5;
         for (const dx of [-512, 0, 512]) {
+          // м'яка тінь шва
+          g.fillStyle = 'rgba(0,0,0,0.18)';
+          g.beginPath();
+          g.ellipse(cx + dx + 1.5, cy + 2, rx, ry, rot, 0, Math.PI * 2);
+          g.fill();
           g.fillStyle = shade(b);
           g.beginPath();
-          g.ellipse(cx + dx, cy, s * 0.44, s * 0.4, rng() * 0.4, 0, Math.PI * 2);
+          g.ellipse(cx + dx, cy, rx, ry, rot, 0, Math.PI * 2);
           g.fill();
-          g.fillStyle = 'rgba(255,255,255,0.14)';
+          g.fillStyle = 'rgba(255,255,255,0.06)';
           g.beginPath();
-          g.ellipse(cx + dx - 4, cy - 5, s * 0.26, s * 0.18, 0, 0, Math.PI * 2);
+          g.ellipse(cx + dx - 2, cy - 3, rx * 0.55, ry * 0.4, rot, 0, Math.PI * 2);
           g.fill();
         }
       }
     }
-    speckle(g, 512, 512, rng, 4000, 0.12, false);
+    speckle(g, 512, 512, rng, 6000, 0.1, false);
+    speckle(g, 512, 512, rng, 2500, 0.06, true);
     return finish(c);
   });
 }
@@ -293,8 +303,8 @@ export function groundDetailTex(): THREE.Texture {
     const rng = mulberry32(103);
     g.fillStyle = shade(225);
     g.fillRect(0, 0, 256, 256);
-    for (let i = 0; i < 90; i++) {
-      g.fillStyle = `rgba(0,0,0,${rng() * 0.035})`;
+    for (let i = 0; i < 140; i++) {
+      g.fillStyle = rng() < 0.5 ? `rgba(0,0,0,${rng() * 0.07})` : `rgba(255,255,230,${rng() * 0.06})`;
       g.beginPath();
       g.arc(rng() * 256, rng() * 256, 8 + rng() * 30, 0, Math.PI * 2);
       g.fill();
