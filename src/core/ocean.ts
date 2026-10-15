@@ -147,6 +147,7 @@ uniform float uTime;
 uniform float uSunStrength;
 uniform float uFlash;
 uniform mat4  uHullInv;
+uniform float uBoatSpeed;
 varying vec3 vWorldPos;
 varying vec3 vNormalW;
 
@@ -220,6 +221,33 @@ void main() {
   foam = smoothstep(0.35, 0.9, foam);
   col = mix(col, vec3(0.95, 0.97, 1.0), foam * 0.8);
 
+  // Піна біля корпусу (носова хвиля) і кільватер за кормою
+  {
+    float spd = clamp(uBoatSpeed / 7.0, 0.0, 1.0);
+    float n = fbm(vWorldPos.xz * 1.7 + uTime * 0.9);
+    float edge = 0.0;
+    if (abs(hl.z) < 4.9) {
+      float d = abs(hl.x) - hullHalfW(clamp(hl.z, -4.7, 4.7));
+      float bow = 0.35 + 0.65 * smoothstep(-2.0, 4.2, hl.z);
+      edge = smoothstep(0.25 + 0.9 * spd * bow, 0.0, d) * (0.25 + 0.75 * spd) * bow;
+    }
+    float wake = 0.0;
+    float s = -4.7 - hl.z; // відстань за транцем
+    if (s > -0.2 && spd > 0.02) {
+      float sc = max(s, 0.0);
+      float fade = exp(-sc / (9.0 + 24.0 * spd));
+      // турбулентна смуга від гвинта / транця
+      float core = smoothstep(1.0 + sc * 0.045, 0.15, abs(hl.x));
+      // «вуса» Кельвіна під ~19.5°
+      float arm = smoothstep(0.55, 0.0, abs(abs(hl.x) - (1.5 + sc * 0.36)));
+      wake = (core * 0.75 + arm * 0.4) * fade * spd;
+    }
+    float f = clamp(edge + wake, 0.0, 1.0) * smoothstep(0.25, 0.75, n + 0.2);
+    // уночі піна не світиться — бере освітлення неба
+    vec3 foamCol = vec3(0.93, 0.96, 0.98) * clamp(0.12 + 0.88 * uSunStrength, 0.0, 1.0) + uSkyColor * 0.15;
+    col = mix(col, foamCol, f * 0.8);
+  }
+
   // Блискавка підсвічує воду
   col += vec3(0.7, 0.8, 1.0) * uFlash * (0.25 + 0.5 * fres);
 
@@ -276,6 +304,7 @@ export class Ocean {
         uSunStrength: { value: 1.0 },
         uFlash: { value: 0 },
         uHullInv: { value: new THREE.Matrix4() },
+        uBoatSpeed: { value: 0 },
       },
     });
 
@@ -285,7 +314,8 @@ export class Ocean {
   }
 
   /** матриця корпусу човна (світ → локаль), щоб не малювати воду всередині */
-  setHull(group: THREE.Object3D) {
+  setHull(group: THREE.Object3D, speed = 0) {
+    this.material.uniforms.uBoatSpeed.value = speed;
     group.updateMatrixWorld();
     (this.material.uniforms.uHullInv.value as THREE.Matrix4).copy(group.matrixWorld).invert();
   }

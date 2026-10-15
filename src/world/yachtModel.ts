@@ -322,11 +322,15 @@ export class YachtBuilder {
     };
   }
 
+  /** у салоні відбиття неба (IBL) притлумлені — там світло тепле, від плафонів */
+  private interior = false;
+
   mat(color: number, rough = 0.8, metal = 0.05): THREE.MeshStandardMaterial {
-    const key = `${color}|${rough}|${metal}`;
+    const key = `${color}|${rough}|${metal}|${this.interior ? 'in' : 'out'}`;
     let m = this.mats.get(key);
     if (!m) {
       m = new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal });
+      if (this.interior) m.envMapIntensity = 0.25;
       this.mats.set(key, m);
     }
     return m;
@@ -369,7 +373,9 @@ export class YachtBuilder {
     this.buildHelm();
     this.buildRig();
     this.buildDeckGear();
+    this.interior = true;
     this.buildInterior();
+    this.interior = false;
     this.buildUpgradeVisuals();
     return this.refs;
   }
@@ -392,7 +398,7 @@ export class YachtBuilder {
     // внутрішня обшивка (видно лише зсередини салону)
     const lining = new THREE.Mesh(
       hullGeometry(0.06, DECK_Y - 0.05, false),
-      new THREE.MeshStandardMaterial({ color: 0xd9c8a6, map: this.veneerTex, roughness: 0.75, side: THREE.BackSide }),
+      new THREE.MeshStandardMaterial({ color: 0xd9c8a6, map: this.veneerTex, roughness: 0.75, side: THREE.BackSide, envMapIntensity: 0.2 }),
     );
     lining.receiveShadow = true;
     this.g.add(lining);
@@ -453,11 +459,13 @@ export class YachtBuilder {
     this.g.add(deck);
 
     // стеля салону під бічними палубами (білий headliner)
+    this.interior = true;
     for (const s of [-1, 1]) {
       this.box(this.g, 0.9, 0.03, HOUSE.z1 - HOUSE.z0 + 1.1, s * (HOUSE.x + 0.43), DECK_Y - 0.135, (HOUSE.z0 + HOUSE.z1) / 2 + 0.3, HEADLINER, false);
     }
     this.box(this.g, 2.0, 0.03, 1.4, 0, DECK_Y - 0.135, HOUSE.z1 + 0.7, HEADLINER, false);
     this.box(this.g, 2.6, 0.03, 1.0, 0, DECK_Y - 0.135, HOUSE.z0 - 0.5, HEADLINER, false);
+    this.interior = false;
 
     // тиковий планшир (toerail) по обрису
     const rail: THREE.Vector3[] = [];
@@ -840,7 +848,7 @@ export class YachtBuilder {
   // ── салон у корпусі ──
   private buildInterior() {
     const g = this.g;
-    const wood = new THREE.MeshStandardMaterial({ color: 0xffffff, map: this.veneerTex, roughness: 0.6 });
+    const wood = new THREE.MeshStandardMaterial({ color: 0xffffff, map: this.veneerTex, roughness: 0.6, envMapIntensity: 0.25 });
     const woodDark = this.mat(0x6a4426, 0.7);
     const counter = this.mat(0xe9e4da, 0.3, 0.05);
     const cushion = this.mat(CUSHION, 0.95);
@@ -849,7 +857,7 @@ export class YachtBuilder {
     const soleTex = this.teakTex.clone();
     soleTex.repeat.set(1 / 0.6, 1 / 1.4);
     soleTex.needsUpdate = true;
-    this.box(g, 1.9, 0.06, 3.3, 0, S - 0.03, 1.15, new THREE.MeshStandardMaterial({ color: 0xffe6c8, map: soleTex, roughness: 0.55 }), false);
+    this.box(g, 1.9, 0.06, 3.3, 0, S - 0.03, 1.15, new THREE.MeshStandardMaterial({ color: 0xffe6c8, map: soleTex, roughness: 0.55, envMapIntensity: 0.25 }), false);
     // трап компаньйона: 5 сходинок + тятиви + поручні
     const steps = 5;
     for (let i = 0; i < steps; i++) {
@@ -958,6 +966,30 @@ export class YachtBuilder {
     this.refs.glowMats.push(lm);
     this.refs.interiorLight.position.set(0, HOUSE.top - 0.3, 1.5);
     g.add(this.refs.interiorLight);
+    // обшивка рубки зсередини: дерево нижче й вище вікон (вікна лишаються видні)
+    {
+      const H = HOUSE.top - DECK_Y;
+      const winC = DECK_Y + H * 0.58;
+      const len = HOUSE.z1 - HOUSE.z0 - 0.25;
+      const zc = (HOUSE.z0 + HOUSE.z1) / 2 + 0.05;
+      for (const s of [-1, 1]) {
+        const lo0 = DECK_Y - 0.14;
+        const lo1 = winC - 0.15;
+        const low = this.box(g, 0.03, lo1 - lo0, len, s * (HOUSE.x - 0.12), (lo0 + lo1) / 2, zc, wood, false);
+        low.rotation.z = s * 0.1;
+        const hi0 = winC + 0.15;
+        const hi1 = HOUSE.top - 0.05;
+        const high = this.box(g, 0.03, hi1 - hi0, len, s * (HOUSE.x - 0.15), (hi0 + hi1) / 2, zc, wood, false);
+        high.rotation.z = s * 0.1;
+        // стики вікон (рамки)
+        this.box(g, 0.05, 0.03, len, s * (HOUSE.x - 0.13), lo1, zc, woodDark, false);
+      }
+      // носова стінка рубки зсередини
+      this.box(g, HOUSE.x * 2 - 0.3, H + 0.1, 0.03, 0, DECK_Y + H / 2 - 0.05, HOUSE.z1 - 0.2, wood, false);
+      // кормова — обабіч компаньйона
+      const sideW = HOUSE.x - STAIR.x - 0.1;
+      for (const s of [-1, 1]) this.box(g, sideW, H + 0.1, 0.03, s * (STAIR.x + sideW / 2 + 0.02), DECK_Y + H / 2 - 0.05, HOUSE.z0 + 0.09, wood, false);
+    }
     // стеля рубки зсередини (headliner)
     this.box(g, HOUSE.x * 2 - 0.16, 0.02, HOUSE.z1 - 0.45 - 0.2, 0, HOUSE.top - 0.04, (0.45 + HOUSE.z1) / 2 - 0.1, HEADLINER, false);
   }

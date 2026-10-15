@@ -325,3 +325,9 @@
 .map-legend .lg-land { background: #4a5d3f; }
 .map-legend .lg-rock { background: #6a7076; }
 .map-legend .lg-wp { background: #78dcff; }
+
+/* м'яка віньєтка поверх 3D (під HUD) */
+#vignette {
+  position: fixed; inset: 0; pointer-events: none; z-index: 1;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,0) 58%, rgba(0,8,16,0.38) 100%);
+}

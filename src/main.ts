@@ -10,6 +10,7 @@ import { Boat, BOAT, MOOR, MOOR_HEADING } from './world/boat';
 import { Port } from './world/port';
 import { Player } from './world/player';
 import { Sky } from './world/sky';
+import { SkyEnvironment } from './world/graphics';
 import { ParticlePool } from './world/particles';
 import { Stations } from './game/stations';
 import { Fishing } from './game/fishing';
@@ -53,6 +54,7 @@ class Game {
   private sunLight: THREE.DirectionalLight;
   private hemi: THREE.HemisphereLight;
   private moonLight: THREE.DirectionalLight;
+  private skyEnv: SkyEnvironment;
 
   // ігри
   private game = new GameState();
@@ -100,12 +102,14 @@ class Game {
     // світло
     this.sunLight = new THREE.DirectionalLight(0xfff2dd, 1.6);
     this.sunLight.castShadow = true;
+    // тіні: тісніший фрустум навколо човна — чіткі тіні такелажу й рубки
     this.sunLight.shadow.mapSize.set(2048, 2048);
     const sc = this.sunLight.shadow.camera;
-    sc.left = -70;
-    sc.right = 70;
-    sc.top = 70;
-    sc.bottom = -70;
+    sc.left = -34;
+    sc.right = 34;
+    sc.top = 34;
+    sc.bottom = -34;
+    this.sunLight.shadow.normalBias = 0.03;
     sc.near = 10;
     sc.far = 400;
     this.sunLight.shadow.bias = -0.0004;
@@ -116,6 +120,13 @@ class Game {
     this.moonLight = new THREE.DirectionalLight(0x8aa8d8, 0.0);
     this.scene.add(this.moonLight);
     this.scene.add(this.moonLight.target);
+
+    // відбиття неба на матеріалах (IBL)
+    this.skyEnv = new SkyEnvironment(this.renderer, this.scene);
+    // віньєтка (CSS-оверлей — без пост-обробки)
+    const vig = document.createElement('div');
+    vig.id = 'vignette';
+    document.getElementById('app')!.appendChild(vig);
 
     // модулі
     this.ocean = new Ocean(this.scene);
@@ -441,7 +452,7 @@ class Game {
 
     // океан
     this.ocean.setConditions(this.weather.intensity, this.weather.windDir);
-    this.ocean.setHull(this.boat.group);
+    this.ocean.setHull(this.boat.group, this.boat.vel.length());
     this.ocean.update(dt, t, this.camera.position, this.time.sunDir, this.time.skyHorizon, this.time.fogColor, this.fogDensity(), this.time.sunStrength, this.weather.flash);
 
     // паливо
@@ -657,7 +668,9 @@ class Game {
     this._v2.set(-time.sunDir.x, Math.max(time.sunDir.y, 0.2), -time.sunDir.z).normalize().multiplyScalar(140).add(this.boat.pos);
     this.moonLight.position.copy(this._v2);
     this.moonLight.target.position.copy(this.boat.pos);
-    this.hemi.intensity = (0.25 + time.daylight * 0.5) * (1 - this.weather.cloudiness * 0.3);
+    // IBL уже дає розсіяне світло неба — півсфера слабша, ніж без нього
+    this.hemi.intensity = (0.18 + time.daylight * 0.32) * (1 - this.weather.cloudiness * 0.3);
+    this.skyEnv.update(simDt || 0.016, time.skyZenith, time.skyHorizon, time.sunDir, time.sunStrength * (1 - this.weather.cloudiness * 0.6));
     this.hemi.color.copy(time.skyHorizon);
 
     // порт
