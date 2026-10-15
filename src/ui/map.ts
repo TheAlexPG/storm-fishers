@@ -188,6 +188,7 @@ export class MapView {
 
     // ── скелі ──
     for (const r of rocks) {
+      if (r.kind) continue;
       const px = mx(r.x);
       const pz = my(r.z);
       c.beginPath();

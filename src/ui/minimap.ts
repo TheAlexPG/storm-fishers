@@ -88,6 +88,7 @@ export class Minimap {
     // скелі
     c.fillStyle = '#8a949c';
     for (const r of rocks) {
+      if (r.kind) continue;
       const [px, pz] = toMap(r.x, r.z);
       c.beginPath();
       c.arc(px, pz, 2.2, 0, Math.PI * 2);

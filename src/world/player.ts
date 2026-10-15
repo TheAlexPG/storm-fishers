@@ -175,8 +175,8 @@ export class Player {
         const l = Math.hypot(dx, dz) || 1;
         dx /= l;
         dz /= l;
-        const nx = this.wx + dx * speed * dt;
-        const nz = this.wz + dz * speed * dt;
+        // будинки й реквізит — тверді
+        const [nx, nz] = port.resolveSolids(this.wx + dx * speed * dt, this.wz + dz * speed * dt, PLAYER_R);
         const plat = this.platformNear(nx, nz, port, 0);
         if (plat) {
           this.wx = nx;

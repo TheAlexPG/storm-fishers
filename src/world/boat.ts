@@ -48,6 +48,8 @@ export interface RockObstacle {
   x: number;
   z: number;
   r: number;
+  /** не скеля (пірс, пришвартовані човни) — колізія є, на карті не малюється */
+  kind?: 'pier';
 }
 
 export class Boat {

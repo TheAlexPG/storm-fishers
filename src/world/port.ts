@@ -79,6 +79,16 @@ interface HouseOpts {
   doorLamp?: boolean;
 }
 
+/** перешкода для ходьби: прямокутник (hw/hd — півширини, ry — поворот) або коло (r) */
+export interface Solid {
+  x: number;
+  z: number;
+  hw?: number;
+  hd?: number;
+  ry?: number;
+  r?: number;
+}
+
 interface Bobber {
   obj: THREE.Object3D;
   baseY: number;
@@ -91,10 +101,15 @@ export class Port {
   group = new THREE.Group();
   platforms: Platform[] = [
     { x0: -24, z0: -40, x1: 24, z1: -18, y: DECK_Y }, // причал
+    // дві сходинки з причалу на набережну (раніше гравець «висів» над нижньою)
+    { x0: -25, z0: -40.8, x1: 25, z1: -40, y: 1.36 },
+    { x0: -25, z0: -41.6, x1: 25, z1: -40.8, y: 1.63 },
     { x0: -60, z0: -130, x1: 60, z1: -40, y: G }, // земля
     { x0: -34.5, z0: -40, x1: -31.5, z1: -24, y: DECK_Y }, // пірс для човнів (захід)
   ];
   rocks: RockObstacle[] = [];
+  /** тверді перешкоди для гравця на суші/причалі: будинки (OBB) і реквізит (кола) */
+  solids: Solid[] = [];
 
   private lighthouseLight!: THREE.SpotLight;
   private lampLights: THREE.PointLight[] = [];
@@ -264,6 +279,7 @@ export class Port {
     const M = this.M;
     const rng = this.rng;
     const base = T(o.x, o.y0 ?? G, o.z, o.ry ?? 0);
+    this.solidBox(o.x, o.z, o.w + 0.3, o.d + 0.3, o.ry ?? 0);
     const at = (x: number, y: number, z: number, ry = 0, rx = 0, rz = 0) => base.clone().multiply(T(x, y, z, ry, rx, rz));
     const { w, d, h, rh } = o;
     const B = 0.35;
@@ -359,6 +375,59 @@ export class Port {
       chimney = new THREE.Vector3().setFromMatrixPosition(at(cx, top + 0.2, cz));
     }
     return { M: base, chimney };
+  }
+
+  // ───────────────────────── колізії ─────────────────────────
+
+  private solidBox(x: number, z: number, w: number, d: number, ry = 0) {
+    this.solids.push({ x, z, hw: w / 2, hd: d / 2, ry });
+  }
+
+  private solidCircle(x: number, z: number, r: number) {
+    this.solids.push({ x, z, r });
+  }
+
+  /** виштовхнути коло (x, z, r) з усіх твердих перешкод */
+  resolveSolids(x: number, z: number, r: number): [number, number] {
+    for (const o of this.solids) {
+      const dx = x - o.x;
+      const dz = z - o.z;
+      if (o.r != null) {
+        const R = o.r + r;
+        const d2 = dx * dx + dz * dz;
+        if (d2 < R * R) {
+          const d = Math.sqrt(d2) || 1e-4;
+          x = o.x + (dx / d) * R;
+          z = o.z + (dz / d) * R;
+        }
+        continue;
+      }
+      const hw = o.hw!, hd = o.hd!;
+      if (Math.abs(dx) > hw + hd + r && Math.abs(dz) > hw + hd + r) continue;
+      // у локаль прямокутника (поворот −ry)
+      const c = Math.cos(o.ry ?? 0), sn = Math.sin(o.ry ?? 0);
+      let lx = dx * c - dz * sn;
+      let lz = dx * sn + dz * c;
+      const qx = Math.max(-hw, Math.min(hw, lx));
+      const qz = Math.max(-hd, Math.min(hd, lz));
+      const ex = lx - qx, ez = lz - qz;
+      const e2 = ex * ex + ez * ez;
+      if (e2 > r * r) continue;
+      if (e2 > 1e-8) {
+        const e = Math.sqrt(e2);
+        lx = qx + (ex / e) * r;
+        lz = qz + (ez / e) * r;
+      } else {
+        // центр усередині — до найближчої грані
+        const px = hw - Math.abs(lx), pz = hd - Math.abs(lz);
+        if (px < pz) lx = Math.sign(lx || 1) * (hw + r);
+        else lz = Math.sign(lz || 1) * (hd + r);
+      }
+      // назад у світ (поворот +ry)
+      x = o.x + lx * c + lz * sn;
+      z = o.z - lx * sn + lz * c;
+    }
+    return [x, z];
   }
 
   // ───────────────────────── побудова ─────────────────────────
@@ -506,6 +575,7 @@ export class Port {
   }
 
   private bollard(x: number, z: number, y: number) {
+    this.solidCircle(x, z, 0.25);
     const M = this.M;
     this.cy(M.iron, 0.24, 0.28, 0.12, x, y + 0.06, z, 12);
     this.cy(M.iron, 0.16, 0.2, 0.5, x, y + 0.36, z, 12);
@@ -532,6 +602,7 @@ export class Port {
   }
 
   private crate(x: number, y: number, z: number, s: number, ry: number) {
+    if (y < 2) this.solidBox(x, z, s, s, ry);
     this.add(boxGeo(s, s, s, 0.6, 1.2), this.M.crate, T(x, y + s / 2, z, ry));
   }
 
@@ -543,6 +614,7 @@ export class Port {
   }
 
   private barrel(x: number, y: number, z: number, ry: number) {
+    if (y < 2) this.solidCircle(x, z, 0.4);
     const M = this.M;
     const g = new THREE.CylinderGeometry(0.36, 0.33, 0.9, 12);
     this.add(g, M.woodDark, T(x, y + 0.45, z, ry));
@@ -550,6 +622,7 @@ export class Port {
   }
 
   private fishBoxes(x: number, y: number, z: number, ry: number) {
+    this.solidCircle(x, z, 0.55);
     const M = this.M;
     const base = T(x, y, z, ry);
     const put = (dx: number, dy: number, dz: number, mat: THREE.Material, full: boolean) => {
@@ -564,6 +637,7 @@ export class Port {
   }
 
   private netPile(x: number, y: number, z: number, ry: number) {
+    this.solidCircle(x, z, 0.7);
     const M = this.M;
     const g = new THREE.IcosahedronGeometry(1, 1);
     const p = g.attributes.position as THREE.BufferAttribute;
@@ -588,6 +662,7 @@ export class Port {
   }
 
   private bench(x: number, y: number, z: number, ry: number) {
+    this.solidBox(x, z, 1.6, 0.5, ry);
     const M = this.M;
     const b = T(x, y, z, ry);
     const at = (dx: number, dy: number, dz: number) => b.clone().multiply(T(dx, dy, dz));
@@ -601,6 +676,7 @@ export class Port {
 
   /** маленький вантажний кран-стріла на краю причалу */
   private davit(x: number, z: number, top: number) {
+    this.solidCircle(x, z, 0.3);
     const M = this.M;
     this.cy(M.yellowPaint, 0.14, 0.18, 3.4, x, top + 1.7, z, 10);
     this.add(boxGeo(0.14, 0.14, 2.6), M.yellowPaint, T(x, top + 3.25, z + 1.0, 0, -0.25));
@@ -631,11 +707,11 @@ export class Port {
     this.mooredBoat(-37.2, -29.2, 0.05, 6.4, 0x2f6f9f, 0);
     this.mooredBoat(-37.0, -36.0, -0.04, 5.2, 0xb8432e, 1);
     this.rocks.push(
-      { x: -33, z: -26, r: 1.6 },
-      { x: -33, z: -31, r: 1.6 },
-      { x: -33, z: -36, r: 1.6 },
-      { x: -37.2, z: -29.2, r: 2.3 },
-      { x: -37.0, z: -36.0, r: 2.0 },
+      { x: -33, z: -26, r: 1.6, kind: 'pier' },
+      { x: -33, z: -31, r: 1.6, kind: 'pier' },
+      { x: -33, z: -36, r: 1.6, kind: 'pier' },
+      { x: -37.2, z: -29.2, r: 2.3, kind: 'pier' },
+      { x: -37.0, z: -36.0, r: 2.0, kind: 'pier' },
     );
   }
 
@@ -767,6 +843,8 @@ export class Port {
     this.pool(9.2, G, -44, 4.5);
     // острівець і колонки
     this.bx(M.concrete, 3.6, 0.2, 1.3, 9.2, G + 0.1, -44);
+    this.solidBox(9.2, -44, 3.6, 1.3);
+    for (const [px, pz] of [[7.2, -42.6], [11.2, -42.6], [7.2, -45.4], [11.2, -45.4]]) this.solidCircle(px, pz, 0.14);
     for (const px of [8.5, 10.0]) {
       this.bx(M.whitePaint, 0.7, 1.5, 0.5, px, G + 0.95, -44);
       this.bx(M.redPaint, 0.72, 0.3, 0.52, px, G + 1.6, -44);
@@ -774,6 +852,7 @@ export class Port {
       this.add(new THREE.TorusGeometry(0.28, 0.025, 4, 10, Math.PI), M.rubber, T(px + 0.36, G + 0.9, -44, Math.PI / 2, 0, -Math.PI / 2));
     }
     // цистерна за кіоском
+    this.solidBox(6, -51.4, 3.6, 1.8);
     this.add(cylGeo(0.85, 0.85, 3.4, 14), M.whitePaint, T(6, G + 1.3, -51.4, 0, 0, Math.PI / 2));
     for (const sx of [-1, 1]) this.bx(M.concrete, 0.3, 0.6, 1.2, 6 + sx * 1.1, G + 0.3, -51.4);
 
@@ -800,6 +879,7 @@ export class Port {
     this.anchor(18.6, -54.5);
     this.upturnedHull(21.5, -56.5, 0.25);
     this.bx(M.woodDark, 2.2, 0.08, 0.8, 17.9, G + 0.9, -56.5); // верстак
+    this.solidBox(17.9, -56.5, 2.2, 0.8);
     for (const sx of [-1, 1]) this.bx(M.woodDark, 0.08, 0.9, 0.7, 17.9 + sx * 1.0, G + 0.45, -56.5);
 
     // ── хата: кремова, сині віконниці, садочок ──
@@ -823,6 +903,7 @@ export class Port {
   }
 
   private planter(x: number, z: number) {
+    this.solidBox(x, z, 0.9, 0.45);
     const M = this.M;
     this.bx(M.woodDark, 0.9, 0.45, 0.45, x, G + 0.23, z);
     const f = new THREE.IcosahedronGeometry(0.22, 0);
@@ -860,11 +941,13 @@ export class Port {
   }
 
   private tyreStack(x: number, z: number) {
+    this.solidCircle(x, z, 0.55);
     const t = new THREE.TorusGeometry(0.34, 0.14, 6, 12);
     for (let i = 0; i < 3; i++) this.add(t, this.M.rubber, T(x + (i % 2) * 0.05, G + 0.14 + i * 0.27, z, 0, Math.PI / 2));
   }
 
   private anchor(x: number, z: number) {
+    this.solidCircle(x, z, 0.6);
     const M = this.M;
     this.bx(M.iron, 0.12, 1.4, 0.12, x, G + 0.85, z, 0.3);
     this.add(new THREE.TorusGeometry(0.55, 0.06, 4, 10, Math.PI), M.iron, T(x, G + 0.65, z, 0.3, 0, Math.PI));
@@ -874,6 +957,7 @@ export class Port {
 
   /** перевернутий човен на козлах біля майстерні */
   private upturnedHull(x: number, z: number, ry: number) {
+    this.solidBox(x, z, 1.6, 4.2, ry);
     const M = this.M;
     const g = new THREE.SphereGeometry(1, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
     this.add(g, M.whitePaint, T(x, G + 0.85, z, ry, 0, 0, 0.95, 0.6, 2.7));
@@ -889,11 +973,13 @@ export class Port {
   /** окреме дерево (листяне або ялина) — додається в загальну інстанс-систему */
   private extraTrees: TreeSpot[] = [];
   private tree(x: number, z: number, s: number, leafy: boolean) {
+    this.solidCircle(x, z, 0.35 * s);
     this.extraTrees.push({ x, z, s, leafy });
   }
 
   /** маяк біля набережної: смугаста вежа, галерея, лінза, будиночок доглядача */
   private buildLighthouse() {
+    this.solidCircle(-32, -52, 3.35);
     const M = this.M;
     const X = -32, Z = -52;
     const lh = new THREE.Group();
