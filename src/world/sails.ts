@@ -210,21 +210,22 @@ export class SailRig {
     this.boomAngle = damp(this.boomAngle, this.side * want, this.hoist > 0.05 ? 2.2 : 0.6, dt);
 
     // перевантаження: шторм з повними парусами → розрив
-    this.overload = q / OVERPOWER_Q;
+    // (рахуємо й від справжнього вітру: шквали б'ють і на швидкому ходу)
+    this.overload = (this.hoist * (0.5 * this.aws * this.aws + 0.5 * this.tws * this.tws)) / OVERPOWER_Q;
     this.warnT -= dt;
     if (this.overload > 0.85 && this.warnT <= 0 && this.mode !== 0) {
       this.warnT = 12;
       this.onEvent?.(this.mode === 2 ? 'Паруси перевантажені — візьми риф (F)!' : 'Навіть риф не тримає — спускай паруси!', 'warn');
     }
     if (this.overload > 1) {
-      this.stressT += dt * (this.overload - 1) * 2.5;
+      this.stressT += dt * (0.15 + (this.overload - 1) * 4);
       if (this.stressT > 4) {
         this.stressT = 0;
         this.mode = 0;
         this.onEvent?.('💥 Шквал порвав парус! Паруси спущено.', 'bad');
       }
     } else {
-      this.stressT = Math.max(0, this.stressT - dt * 0.5);
+      this.stressT = Math.max(0, this.stressT - dt * (this.overload < 0.8 ? 0.6 : 0.12));
     }
 
     // у світ: тяга вздовж курсу + 12 % бокової сили як дрейф (кіль тримає решту)
