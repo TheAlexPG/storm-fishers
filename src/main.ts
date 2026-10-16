@@ -190,6 +190,7 @@ class Game {
       this.audio.thump(power / 6);
     };
     this.boat.sails.onEvent = (msg, kind) => this.hud.toast(msg, kind, 4000);
+    this.fishing.onEvent = (msg, kind) => this.hud.toast(msg, kind, 4500);
     this.boat.onEngineStall = () => {
       this.hud.toast('Хвиля заглушила двигун! Запусти його на двигунній (E)', 'bad');
       this.audio.snap();
@@ -247,7 +248,7 @@ class Game {
     this.phase = 'play';
     this.requestLock();
     this.hud.toast('Вітаємо на борту «Шторму»! Почни з порту: продавай, прокачуй, лови.', 'good', 6000);
-    this.hud.toast('Порада: пальне дороге — у вітер іди під парусами (F за штурвалом). Двигун — для штилю й причалу.', 'warn', 9000);
+    this.hud.toast('Порада: пальне дороге — у вітер іди під парусами (підніми їх фалом біля щогли). Двигун — для штилю й причалу.', 'warn', 9000);
   }
 
   private continueGame() {
@@ -315,14 +316,13 @@ class Game {
     });
   }
 
-  private openDialog(kind: 'shop' | 'radio' | 'panel') {
+  private openDialog(kind: 'shop' | 'radio') {
     this.phase = 'dialog';
     this.expectUnlock = true;
     document.exitPointerLock();
     this.saveTimer = 30;
     if (kind === 'shop') this.dialogs.shop(this.game);
-    else if (kind === 'radio') this.dialogs.radio(this.game, this.weather, this.time);
-    else this.dialogs.gauges(this.game, this.weather, this.time, this.boat, this.player);
+    else this.dialogs.radio(this.game, this.weather, this.time);
   }
 
   // ── штурвальна карта (M) ──
@@ -383,10 +383,6 @@ class Game {
     // E — дія
     if (locked && input.pressed('KeyE') && this.phase === 'play' && !this.dialogs.isOpen) {
       this.doInteract();
-    }
-    // F — паруси (за штурвалом)
-    if (locked && input.pressed('KeyF') && this.phase === 'play' && this.player.wheeling) {
-      this.cycleSails();
     }
     // Esc — меню паузи / продовження / закрити карту (працює і без pointer lock)
     if (input.pressed('Escape')) {
@@ -481,9 +477,15 @@ class Game {
     this.player.updateEnergy(dt);
 
     // човен
+    this.boat.night = this.time.isNight;
     this.boat.update(dt, t, this.ocean, this.weather, g, this.particles, this.audio, this.port.rocks, this.port.platforms[0]);
 
     // станції
+    // відійшов від щогли — робота з фалами переривається
+    if (this.stations.active?.id === 'sails' && this.player.nearest?.id !== 'st:sails') {
+      this.stations.stop();
+      this.hud.toast('Відійшов від щогли — фал кинуто', 'warn', 2000);
+    }
     this.stations.update(dt, this.time.hours);
 
     // ловля
@@ -572,7 +574,7 @@ class Game {
 
     if (id === 'st:wheel') {
       p.wheeling = !p.wheeling;
-      if (p.wheeling) this.hud.toast('Штурвал: W/S — газ, A/D — рильє, F — паруси. E — вийти.', 'warn', 3500);
+      if (p.wheeling) this.hud.toast('Штурвал: W/S — газ, A/D — рильє, E — вийти. Прибори — на тумбі перед колесом.', 'warn', 3500);
       return;
     }
     if (id === 'st:rod') {
@@ -589,15 +591,21 @@ class Game {
       return;
     }
     if (id === 'st:sails') {
-      this.cycleSails();
+      // фізична робота біля щогли: тягнути фал / риф-шкентель займає час і сили
+      if (this.stations.active?.id === 'sails') return;
+      const m = this.boat.sails.mode;
+      const [label, dur, cost] = m === 0 ? ['Тягнемо фал — піднімаємо паруси…', 3.5, 4] as const
+        : m === 2 ? ['Беремо риф…', 2.5, 2] as const
+        : ['Травимо фал — спускаємо паруси…', 2.0, 1] as const;
+      if (!g.spendEnergy(cost)) {
+        this.hud.toast('Занадто втомлений, щоб тягнути фали', 'warn', 2500);
+        return;
+      }
+      this.stations.startTimed('sails', label, dur, () => this.cycleSails());
       return;
     }
     if (id === 'st:radio') {
       this.openDialog('radio');
-      return;
-    }
-    if (id === 'st:panel') {
-      this.openDialog('panel');
       return;
     }
     if (id === 'st:bed' || id === 'port:house') {

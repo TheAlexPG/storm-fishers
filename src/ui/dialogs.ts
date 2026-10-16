@@ -1,12 +1,10 @@
 import { formatMoney } from '../core/math';
-import { fishSellPrice, FISH_BY_ID, ZONE_NAMES, zoneFromDist } from '../game/fish';
+import { fishSellPrice, FISH_BY_ID, ZONE_NAMES } from '../game/fish';
 import { UPGRADES, upgradeCost } from '../game/upgrades';
 import type { GameState } from '../game/state';
 import type { Weather } from '../core/weather';
 import type { TimeCycle } from '../core/time';
 import type { AudioEngine } from '../core/audio';
-import type { Boat } from '../world/boat';
-import type { Player } from '../world/player';
 
 // ─────────────────────────────────────────────────────────────
 // Оверлеї: вступ, пауза, магазин, радіо.
@@ -285,44 +283,6 @@ export class Dialogs {
       <div class="radio-item"><b>Рибальський звіт дня:</b>${repRows || 'сигнал загубився…'}</div>
       <div class="radio-item"><b>Ціни на ринку:</b> ${game.priceTrendText} (тиждень ${game.priceWeek})</div>
       <div class="btn-row"><button class="btn" data-close>Вимкнути (Esc)</button></div>
-    `, true);
-    this.panel.querySelector('[data-close]')!.addEventListener('click', () => this.close());
-  }
-
-  /** приборна панель: суднові показники (E на панелі у кокпіті) */
-  gauges(game: GameState, weather: Weather, time: TimeCycle, boat: Boat, player: Player) {
-    this.escAllowed = true;
-    const kn = boat.vel.length() * 1.944;
-    const deg = Math.round(((boat.heading * 180) / Math.PI) % 360) % 360;
-    const P8 = ['П', 'ПСх', 'Сх', 'СхПд', 'Пд', 'ПдЗх', 'Зх', 'ЗхП'];
-    const course = `${P8[Math.round(deg / 45) % 8]} · ${String(deg).padStart(3, '0')}°`;
-    const throttlePct = Math.round(Math.abs(boat.throttle) * 100);
-    // запас ходу: паливо / (|газ|·0.055 л/с) · швидкість (м/с)
-    let range = '—';
-    if (boat.engineOn && Math.abs(boat.throttle) > 0.05) {
-      const km = (game.fuel / (Math.abs(boat.throttle) * 0.055)) * (boat.vel.length() / 1000);
-      range = `≈ ${km >= 1 ? km.toFixed(1).replace('.', ',') : Math.round(km * 10) / 10} км`;
-    }
-    const wave = 0.1 + weather.intensity * 2.5;
-    const water = 11 + 4 * time.daylight;
-    const zone = ZONE_NAMES[zoneFromDist(Math.hypot(boat.pos.x, boat.pos.z))];
-    const loc = player.inCabin ? 'у салоні' : player.sheltered ? 'у кокпіті (під дахом)' : 'на палубі';
-    this.show(`
-      <h1>🧭 ПРИБОРНА ПАНЕЛЬ</h1>
-      <p class="sub">Суднові показники · ти ${loc}</p>
-      <div class="panel-grid">
-        <div class="pv"><span>Курс</span><b>${course}</b></div>
-        <div class="pv"><span>Швидкість</span><b>${kn.toFixed(1)} вузлів</b></div>
-        <div class="pv"><span>Газ</span><b>${throttlePct} %</b></div>
-        <div class="pv"><span>Паливо</span><b>${Math.round(game.fuel)} / ${game.maxFuel} л</b></div>
-        <div class="pv"><span>Запас ходу</span><b>${range}</b></div>
-        <div class="pv"><span>Двигун</span><b>${boat.engineOn ? (boat.engineLoad > 0.5 ? 'навантажений' : 'працює') : 'зупинений'}</b></div>
-        <div class="pv"><span>Вітер</span><b>${weather.wind.toFixed(1)} м/с</b></div>
-        <div class="pv"><span>Хвиля</span><b>${wave.toFixed(1)} м</b></div>
-        <div class="pv"><span>Темп. води</span><b>${water.toFixed(1)} °C</b></div>
-        <div class="pv"><span>Зона</span><b>${zone}</b></div>
-      </div>
-      <div class="btn-row"><button class="btn" data-close>Закрити (Esc)</button></div>
     `, true);
     this.panel.querySelector('[data-close]')!.addEventListener('click', () => this.close());
   }

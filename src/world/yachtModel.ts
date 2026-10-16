@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { eff } from '../game/upgrades';
+import { HelmDisplay } from './helmDisplay';
 import {
   HALF_LEN, HULL_LEN, DECK_Y, SOLE_Y, WATERLINE_Y, HOUSE, RIG, COCKPIT, STAIR,
   hullHalfWidth, hullBottomY, sheerY,
@@ -29,6 +30,10 @@ export interface YachtRefs {
   spotlight: THREE.SpotLight | null;
   /** згорнутий на штагу стаксель (ховається, коли парус розгорнуто) */
   furledJib: THREE.Object3D[];
+  helmDisplay: HelmDisplay | null;
+  /** основна вудка: шарнір у тримачі, вудлище вздовж локальної +Y */
+  rod: THREE.Group;
+  rodLen: number;
 }
 
 // ── палітра ──
@@ -136,9 +141,7 @@ function dialTexture(kind: 'rpm' | 'fuel' | 'speed' | 'compass'): THREE.CanvasTe
   const ctx = c.getContext('2d')!;
   const C = S / 2;
   const R = C - 8;
-  const mirror = kind !== 'compass';
   ctx.translate(C, C);
-  if (mirror) ctx.scale(-1, 1);
   const label = (tx: number, ty: number, str: string, size: number, color: string) => {
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -146,7 +149,7 @@ function dialTexture(kind: 'rpm' | 'fuel' | 'speed' | 'compass'): THREE.CanvasTe
     ctx.fillStyle = color;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(str, mirror ? C - tx : C + tx, C + ty);
+    ctx.fillText(str, C + tx, C + ty);
     ctx.restore();
   };
   ctx.beginPath();
@@ -319,6 +322,9 @@ export class YachtBuilder {
       lights: [],
       spotlight: null,
       furledJib: [],
+      helmDisplay: null,
+      rod: new THREE.Group(),
+      rodLen: 2.4,
     };
   }
 
@@ -373,11 +379,40 @@ export class YachtBuilder {
     this.buildHelm();
     this.buildRig();
     this.buildDeckGear();
+    this.buildRod();
     this.interior = true;
     this.buildInterior();
     this.interior = false;
     this.buildUpgradeVisuals();
     return this.refs;
+  }
+
+  // ── основна вудка в тримачі на правому борту носа ──
+  private buildRod() {
+    const g = this.g;
+    const steel = this.mat(STEEL, 0.25, 0.9);
+    const butt = new THREE.Vector3(0.42, DECK_Y + 0.32, 3.75);
+    // тримач-трубка на стійці леєра
+    this.rod(g, new THREE.Vector3(0.42, DECK_Y, 3.7), new THREE.Vector3(0.42, DECK_Y + 0.42, 3.82), 0.03, steel);
+    const rod = this.refs.rod;
+    rod.position.copy(butt);
+    rod.rotation.set(0.82, 0, -0.18); // нахил уперед і трохи за борт
+    g.add(rod);
+    const L = this.refs.rodLen;
+    const blank = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.02, L, 6).translate(0, L / 2, 0), this.mat(0x1d232a, 0.35, 0.4));
+    blank.castShadow = true;
+    rod.add(blank);
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.38, 8).translate(0, 0.1, 0), this.mat(0x3a2a1c, 0.9));
+    rod.add(grip);
+    const reel = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.05, 12), this.mat(0xc9a227, 0.35, 0.7));
+    reel.rotation.z = Math.PI / 2;
+    reel.position.set(0, 0.36, -0.06);
+    rod.add(reel);
+    for (const f of [0.35, 0.6, 0.85]) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.018 - f * 0.008, 0.003, 4, 10), steel);
+      ring.position.set(0, L * f, -0.02);
+      rod.add(ring);
+    }
   }
 
   // ── корпус + кіль + перо керма ──
@@ -655,10 +690,10 @@ export class YachtBuilder {
     const steel = this.mat(STEEL, 0.25, 0.9);
     const dark = this.mat(0x1f2328, 0.5, 0.4);
     // тумба
-    this.cyl(g, 0.09, 0.12, 0.9, 0, DECK_Y + 0.45, -3.05, dark, 12);
+    this.cyl(g, 0.09, 0.12, 1.02, 0, DECK_Y + 0.51, -3.0, dark, 12);
     // колесо Ø0.9: нержавійка з шкіряним ободом, обличчям до корми
     const wheel = new THREE.Group();
-    wheel.position.set(0, DECK_Y + 0.82, -3.38);
+    wheel.position.set(0, DECK_Y + 0.72, -3.38);
     g.add(wheel);
     const rim = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.025, 8, 36), this.mat(0x2b211a, 0.7));
     wheel.add(rim);
@@ -670,7 +705,7 @@ export class YachtBuilder {
     const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.08, 12), steel);
     hub.rotation.x = Math.PI / 2;
     wheel.add(hub);
-    this.rod(g, new THREE.Vector3(0, DECK_Y + 0.82, -3.38), new THREE.Vector3(0, DECK_Y + 0.82, -3.1), 0.03, steel);
+    this.rod(g, new THREE.Vector3(0, DECK_Y + 0.72, -3.38), new THREE.Vector3(0, DECK_Y + 0.72, -3.1), 0.03, steel);
     // поручень навколо тумби
     const guard = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.018, 6, 20, Math.PI), steel);
     guard.position.set(0, DECK_Y + 0.92, -2.95);
@@ -678,20 +713,36 @@ export class YachtBuilder {
     guard.rotation.z = Math.PI;
     g.add(guard);
     // пульт приборів на тумбі (нахилений до стерновика)
-    const pod = this.box(g, 1.1, 0.12, 0.38, 0, DECK_Y + 1.0, -2.98, dark);
-    pod.rotation.x = 0.55;
-    const tilt = -Math.PI / 2 + 0.55;
+    const pod = this.box(g, 1.36, 0.12, 0.4, 0, DECK_Y + 1.1, -2.98, dark);
+    pod.rotation.x = -0.55; // верхня грань — до стерновика
+    // орієнтація приладів: обличчям до стерновика (нормаль угору й до корми),
+    // «верх» шкали — від стерновика вперед; правий край — праворуч від нього (−X)
+    const faceQ = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(
+      new THREE.Vector3(-1, 0, 0),
+      new THREE.Vector3(0, Math.sin(0.55), Math.cos(0.55)),
+      new THREE.Vector3(0, Math.cos(0.55), -Math.sin(0.55)),
+    ));
     const dials: Array<[number, 'rpm' | 'fuel' | 'speed' | 'compass']> = [
-      [-0.39, 'rpm'],
-      [-0.13, 'fuel'],
-      [0.13, 'speed'],
-      [0.39, 'compass'],
+      // зліва від стерновика (+X) — двигун і паливо, справа — швидкість і компас
+      [0.55, 'rpm'],
+      [0.32, 'fuel'],
+      [-0.32, 'speed'],
+      [-0.55, 'compass'],
     ];
     const n = new THREE.Vector3(0, Math.cos(0.55), -Math.sin(0.55)); // нормаль пульта
+    // багатофункціональний дисплей по центру пульта
+    const mfd = new HelmDisplay(0.4, 0.262);
+    mfd.mesh.position.set(0, DECK_Y + 1.1, -2.98).addScaledVector(n, 0.072);
+    mfd.mesh.quaternion.copy(faceQ);
+    g.add(mfd.mesh);
+    const frame = this.box(g, 0.44, 0.02, 0.3, 0, DECK_Y + 1.1, -2.98, this.mat(0x0b0e11, 0.4, 0.3), false);
+    frame.position.addScaledVector(n, 0.06);
+    frame.rotation.x = -0.55;
+    this.refs.helmDisplay = mfd;
     for (const [dx, kind] of dials) {
       const dial = new THREE.Group();
-      dial.position.set(dx, DECK_Y + 1.0, -2.98).addScaledVector(n, 0.065);
-      dial.rotation.x = tilt;
+      dial.position.set(dx, DECK_Y + 1.1, -2.98).addScaledVector(n, 0.065);
+      dial.quaternion.copy(faceQ);
       g.add(dial);
       const bezel = new THREE.Mesh(new THREE.TorusGeometry(0.105, 0.012, 6, 24), steel);
       dial.add(bezel);
@@ -723,7 +774,7 @@ export class YachtBuilder {
     // лампа двигуна (зелена ON)
     this.refs.onLampMat = new THREE.MeshStandardMaterial({ color: 0x1d3326, emissive: 0x27e07a, emissiveIntensity: 0.9, roughness: 0.4 });
     const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.03, 0.05), this.refs.onLampMat);
-    lamp.position.set(0.5, DECK_Y + 1.0, -2.98).addScaledVector(n, 0.07);
+    lamp.position.set(0.435, DECK_Y + 1.1, -2.98).addScaledVector(n, 0.07).addScaledVector(new THREE.Vector3(0, Math.sin(0.55), Math.cos(0.55)), 0.14);
     g.add(lamp);
     // ручка газу (праворуч на тумбі)
     this.box(g, 0.1, 0.16, 0.12, 0.17, DECK_Y + 0.75, -3.08, dark);

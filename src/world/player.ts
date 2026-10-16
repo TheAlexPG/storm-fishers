@@ -24,6 +24,8 @@ const SWIM = 2.3;
 
 // станції в салоні (доступні лише внизу)
 const CABIN_STATIONS = new Set(['kitchen', 'radio', 'bed']);
+/** ближча досяжність: до щогли треба реально підійти бічною палубою */
+const STATION_REACH: Record<string, number> = { sails: 1.7 };
 const PLAYER_R = 0.22; // радіус тіла для колізій
 
 /** рівень на яхті: палуба / трап компаньйона / салон у корпусі */
@@ -334,12 +336,15 @@ export class Player {
     let bestD = 3.2;
 
     if (this.mode === 'boat') {
+      // за штурвалом E завжди означає «вийти» — інакше найближчою виявлялась
+      // сусідня станція і з-за керма було не встати
+      if (this.wheeling) return { id: 'st:wheel', label: this.stationLabel('wheel', boat) };
       for (const [id, sp] of Object.entries(STATION_POS)) {
         // каютні станції — лише зсередини; палубні — лише на палубі
         if (this.inCabin ? !CABIN_STATIONS.has(id) : CABIN_STATIONS.has(id)) continue;
         const w = boat.localToWorld(sp.x, sp.y ?? BOAT.deckY, sp.z, this._v);
         const d = Math.hypot(p.x - w.x, p.y - w.y - 0.4, p.z - w.z);
-        if (d < bestD) {
+        if (d < bestD && d < (STATION_REACH[id] ?? 3.2)) {
           bestD = d;
           best = { id: 'st:' + id, label: this.stationLabel(id, boat) };
         }
@@ -383,9 +388,8 @@ export class Player {
 
   private stationLabel(id: string, boat: Boat): string {
     switch (id) {
-      case 'wheel': return this.wheeling ? 'Вийти зі штурвала' : 'Керування (газ W/S, рильє A/D, паруси F)';
-      case 'panel': return 'Приборна панель';
-      case 'sails': return boat.sails.mode === 0 ? 'Лебідка — підняти паруси' : boat.sails.mode === 2 ? 'Лебідка — взяти риф' : 'Лебідка — спустити паруси';
+      case 'wheel': return this.wheeling ? 'Вийти зі штурвала' : 'Стати за штурвал (газ W/S, рильє A/D)';
+      case 'sails': return boat.sails.mode === 0 ? 'Фал на щоглі — підняти паруси' : boat.sails.mode === 2 ? 'Риф-шкентель — взяти риф' : 'Фал — спустити паруси';
       case 'rod': return 'Вудка — закинути / зняти';
       case 'engine': return boat.engineOn ? 'Ремонт двигуна' : 'Запустити двигун!';
       case 'pump': return boat.deckWater > 5 ? 'Осушити палубу' : 'Помпа (палуба суха)';

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Ocean } from '../core/ocean';
-import { clamp, rand } from '../core/math';
+import { clamp, rand, compassDeg } from '../core/math';
 import { eff } from '../game/upgrades';
 import type { GameState } from '../game/state';
 import type { Weather } from '../core/weather';
@@ -9,7 +9,9 @@ import type { AudioEngine } from '../core/audio';
 import type { Platform } from './port';
 import { YachtBuilder } from './yachtModel';
 import { SailRig } from './sails';
-import { DECK_Y, SOLE_Y } from './yachtLayout';
+import type { HelmDisplay } from './helmDisplay';
+import { ZONE_NAMES, zoneFromDist } from '../game/fish';
+import { DECK_Y, SOLE_Y, RIG, HOUSE } from './yachtLayout';
 
 // ─────────────────────────────────────────────────────────────
 // Вітрильна яхта «Шторм» (меш — yachtModel.ts, компонування — yachtLayout.ts):
@@ -33,11 +35,11 @@ export const MOOR_HEADING = Math.PI / 2;
 // станції (локальні координати палуби, y = deckY)
 export const STATION_POS: Record<string, { x: number; z: number; y?: number }> = {
   wheel: { x: 0, z: -3.75 },
-  panel: { x: 0, z: -2.95, y: DECK_Y + 0.6 },
   engine: { x: 0.62, z: -4.05 },
   pump: { x: -0.62, z: -4.05 },
   rod: { x: 0, z: 3.9 },
-  sails: { x: -0.75, z: -2.75 },
+  // фали й риф-шкентелі — біля щогли на даху рубки (підходити з бічної палуби)
+  sails: { x: 0, z: RIG.mastZ - 0.25, y: HOUSE.top },
   // салон у корпусі (y = підлога салону)
   kitchen: { x: -0.4, z: 1.15, y: SOLE_Y },
   radio: { x: 0.4, z: 0.95, y: SOLE_Y },
@@ -105,7 +107,6 @@ export class Boat {
   private lights: Array<{ light: THREE.PointLight; lamp: THREE.Mesh }> = [];
   private spotlight: THREE.SpotLight | null = null;
   private exhaustTip = new THREE.Vector3();
-  private rodTip = new THREE.Vector3(0, 2.2, 4.45);
   private bowPoint = new THREE.Vector3(0, 0.6, 4.4);
 
   // приборна панель: стрілки (RPM/паливо/швидкість) + компасна шкала + лампа ON
@@ -114,6 +115,21 @@ export class Boat {
   private needleSpeed = new THREE.Group();
   private compassCard = new THREE.Group();
   private onLampMat: THREE.MeshStandardMaterial | null = null;
+  private helmDisplay: HelmDisplay | null = null;
+  private rodGroup = new THREE.Group();
+  private rodLen = 2.4;
+  private rodBaseRot = 0;
+  /** кінчик основної вудки у світі (з урахуванням вигину) */
+  rodTipWorld(out: THREE.Vector3): THREE.Vector3 {
+    this.rodGroup.updateMatrixWorld();
+    return this.rodGroup.localToWorld(out.set(0, this.rodLen, 0));
+  }
+  /** вигин вудки 0..1 (натяг волосіні) */
+  setRodBend(f: number) {
+    this.rodGroup.rotation.x = this.rodBaseRot + clamp(f, 0, 1) * 0.55;
+  }
+  /** ніч (притлумлений дисплей) — виставляє main */
+  night = false;
   private flag: THREE.Mesh | null = null;
 
   // маркери станцій
@@ -155,6 +171,10 @@ export class Boat {
     this.needleSpeed = r.needleSpeed;
     this.compassCard = r.compassCard;
     this.onLampMat = r.onLampMat;
+    this.helmDisplay = r.helmDisplay;
+    this.rodGroup = r.rod;
+    this.rodLen = r.rodLen;
+    this.rodBaseRot = r.rod.rotation.x;
     this.flag = r.flag;
     this.exhaustTip.copy(r.exhaustTip);
     this.upg = r.upg;
@@ -483,7 +503,7 @@ export class Boat {
     }
 
     // приборна панель + прапор на мачті
-    this.updatePanel(game);
+    this.updatePanel(dt, game, weather, this.night);
     if (this.flag) this.flag.rotation.y = Math.sin(t * 3.1) * 0.25;
 
     // звук
@@ -502,19 +522,51 @@ export class Boat {
     this.sails.updateWindex(this.heading, this.vel, weather.windDir);
   }
 
-  /** приборна панель: стрілки RPM/паливо/швидкість, компасна шкала, лампа ON */
-  updatePanel(game: GameState) {
+  /** приборна панель: стрілки RPM/паливо/швидкість, компасна шкала, лампа ON, дисплей */
+  updatePanel(dt: number, game: GameState, weather: Weather, night: boolean) {
     const kn = this.vel.length() * 1.944; // вузли
     const rpm = this.engineOn ? 700 + Math.abs(this.throttle) * 2100 + this.engineLoad * 400 : 0;
     const fuelMax = eff.maxFuel(game.upgrades.fuel);
     const sweep = (n: THREE.Group, f: number) => {
-      n.rotation.z = -Math.PI * 0.75 + clamp(f, 0, 1) * Math.PI * 1.5;
+      n.rotation.z = Math.PI * 0.75 - clamp(f, 0, 1) * Math.PI * 1.5; // за годинниковою
     };
     sweep(this.needleRpm, rpm / 3000);
     sweep(this.needleFuel, fuelMax > 0 ? game.fuel / fuelMax : 0);
     sweep(this.needleSpeed, kn / 12);
-    this.compassCard.rotation.z = -this.heading;
+    // картка: під курсовою рискою — компасний курс (π − heading)
+    this.compassCard.rotation.z = Math.PI - this.heading;
     if (this.onLampMat) this.onLampMat.emissiveIntensity = this.engineOn ? 0.9 : 0.05;
+    if (this.helmDisplay) {
+      const thr = Math.abs(this.throttle);
+      // витрата як у main: |газ|^1.4 · 0.07 л/с
+      const lps = Math.pow(thr, 1.4) * 0.07;
+      const spd = this.vel.length();
+      const rangeKm = this.engineOn && thr > 0.05 && spd > 0.3 ? (game.fuel / lps) * spd / 1000 : null;
+      const s = this.sails;
+      this.helmDisplay.update(dt, {
+        headingDeg: compassDeg(this.heading),
+        knots: kn,
+        throttle: this.throttle,
+        engineOn: this.engineOn,
+        rpm,
+        fuel: game.fuel,
+        fuelMax,
+        rangeKm,
+        awa: s.awa,
+        aws: s.aws,
+        tws: s.tws,
+        windFromStarboard: s.windFromStarboard,
+        sailLabel: s.label(),
+        sailMode: s.mode,
+        overload: s.overload,
+        luffing: s.luffing,
+        wave: 0.1 + weather.intensity * 2.5,
+        zone: ZONE_NAMES[zoneFromDist(Math.hypot(this.pos.x, this.pos.z))],
+        hull: game.hull,
+        hullMax: game.maxHull,
+        night,
+      });
+    }
   }
 
   /** осушення палуби помпою */

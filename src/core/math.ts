@@ -74,3 +74,13 @@ export function formatTime(hours: number): string {
   const m = Math.floor((hours % 1) * 60);
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
+
+/**
+ * Компасний курс, ° (0 = північ = світ −Z, за годинниковою через схід = +X) —
+ * та сама конвенція, що й пеленги на HUD/карті. heading — кут човна
+ * (0 → нос на +Z, зростання — поворот ліворуч).
+ */
+export function compassDeg(heading: number): number {
+  const d = 180 - (heading * 180) / Math.PI;
+  return ((d % 360) + 360) % 360;
+}

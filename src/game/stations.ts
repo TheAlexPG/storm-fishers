@@ -101,7 +101,7 @@ export class Stations {
     }
   }
 
-  private startTimed(id: string, label: string, duration: number, done: () => void): { ok: boolean; msg?: string } {
+  startTimed(id: string, label: string, duration: number, done: () => void): { ok: boolean; msg?: string } {
     this.active = {
       id,
       label,

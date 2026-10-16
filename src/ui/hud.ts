@@ -1,4 +1,4 @@
-import { formatMoney, formatTime } from '../core/math';
+import { formatMoney, formatTime, compassDeg } from '../core/math';
 import { MOOR } from '../world/boat';
 import type { GameState } from '../game/state';
 import type { TimeCycle } from '../core/time';
@@ -87,7 +87,7 @@ export class Hud {
       </div>
       <div class="controls-hint">
         <kbd>WASD</kbd> рух · <kbd>Миша</kbd> погляд · <kbd>Shift</kbd> біг · <kbd>E</kbd> дія<br>
-        <kbd>M</kbd> карта · <kbd>Esc</kbd> меню · у штурвалі: <kbd>W/S</kbd> газ, <kbd>A/D</kbd> рильє, <kbd>F</kbd> паруси<br>
+        <kbd>M</kbd> карта · <kbd>Esc</kbd> меню · у штурвалі: <kbd>W/S</kbd> газ, <kbd>A/D</kbd> рильє · паруси — <kbd>E</kbd> біля щогли<br>
         у воді: <kbd>Space</kbd> сплестись, <kbd>C</kbd> зануритись
       </div>
       <div class="lock-hint">🖱️ Клікни по екрану, щоб захопити мишу</div>
@@ -245,17 +245,15 @@ export class Hud {
     if (!c || !this.compass) return;
     const w = 300; // логічний розмір (dpr закладений у transform)
     const h = 36;
-    const deg = ((headingRad * 180) / Math.PI) % 360;
-    const d0 = deg < 0 ? deg + 360 : deg;
+    const d0 = compassDeg(headingRad);
     c.clearRect(0, 0, w, h);
     const pxPerDeg = w / 180; // ±90° по боках
     const cx = w / 2;
     const base = h - 12;
     const P8 = ['П', 'ПСх', 'Сх', 'СхПд', 'Пд', 'ПдЗх', 'Зх', 'ЗхП'];
     const wrap = (a: number) => {
-      let d = (a - d0 + 540) % 360;
-      if (d > 180) d -= 360;
-      return d;
+      // різниця кутів у діапазоні −180..180 (раніше без −180 — стрічка показувала зворотний курс)
+      return ((a - d0 + 540) % 360) - 180;
     };
     // риска
     for (let a = 0; a < 360; a += 5) {

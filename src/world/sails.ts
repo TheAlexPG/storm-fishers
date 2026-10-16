@@ -215,7 +215,7 @@ export class SailRig {
     this.warnT -= dt;
     if (this.overload > 0.85 && this.warnT <= 0 && this.mode !== 0) {
       this.warnT = 12;
-      this.onEvent?.(this.mode === 2 ? 'Паруси перевантажені — візьми риф (F)!' : 'Навіть риф не тримає — спускай паруси!', 'warn');
+      this.onEvent?.(this.mode === 2 ? 'Паруси перевантажені — йди до щогли, бери риф!' : 'Навіть риф не тримає — спускай паруси!', 'warn');
     }
     if (this.overload > 1) {
       this.stressT += dt * (0.15 + (this.overload - 1) * 4);

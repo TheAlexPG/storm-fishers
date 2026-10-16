@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { clamp, rand } from '../core/math';
-import { Boat, BOAT, STATION_POS } from '../world/boat';
+import { Boat } from '../world/boat';
 import { FISH, FISH_BY_ID, makeFish, zoneFromDist } from './fish';
 import { eff } from './upgrades';
 import type { GameState } from './state';
@@ -38,6 +38,10 @@ export class Fishing {
   private runTimer = 0;
   private overTension = 0;
   private lineBreakAt = 90;
+  private castDist = 10;
+  private _d = new THREE.Vector3();
+  /** повідомлення для HUD */
+  onEvent: ((msg: string, kind: 'warn' | 'bad' | 'good') => void) | null = null;
 
   constructor(private scene: THREE.Scene, private audio: AudioEngine) {
     this.lineGeo = new THREE.BufferGeometry();
@@ -59,9 +63,11 @@ export class Fishing {
     if (!game.spendEnergy(2)) return false;
     const rodLvl = game.upgrades.rod;
     const dist = eff.castDist(rodLvl) * rand(0.85, 1.15);
-    // поплавок вперед від носа (вудка на носовій палубі)
-    const fwd = new THREE.Vector3(Math.sin(boat.heading), 0, Math.cos(boat.heading));
-    const base = boat.localToWorld(0, BOAT.deckY + 0.5, 3.9, new THREE.Vector3());
+    this.castDist = dist;
+    // поплавок вперед від носа, трохи на правий борт (вудка в тримачі праворуч)
+    const h = boat.heading - 0.15;
+    const fwd = new THREE.Vector3(Math.sin(h), 0, Math.cos(h));
+    const base = boat.rodTipWorld(new THREE.Vector3());
     this.bobberPos.copy(base).addScaledVector(fwd, dist);
     this.state = 'waiting';
     // базовий час: 5–30 с, зона, погода, вудка, радіо
@@ -142,11 +148,29 @@ export class Fishing {
     if (this.state === 'idle') {
       this.bobber.visible = false;
       this.line.visible = false;
+      boat.setRodBend(0);
       return;
     }
 
-    // вудка: кінчик у світі (вудка на носі)
-    boat.localToWorld(0, BOAT.deckY + 1.0, 4.6, this.rodTipWorld);
+    // вигин вудлища: натяг волосіні
+    boat.setRodBend(
+      this.state === 'fight' ? 0.15 + this.fightTension / 115
+        : this.state === 'bite' ? 0.25 + 0.15 * Math.sin(t * 22)
+        : 0.05,
+    );
+    // кінчик вудки у світі
+    boat.rodTipWorld(this.rodTipWorld);
+
+    if (this.state === 'waiting' || this.state === 'bite') {
+      // човен відійшов — волосінь натягнулась, вудку змотано
+      const dx = this.bobberPos.x - this.rodTipWorld.x;
+      const dz = this.bobberPos.z - this.rodTipWorld.z;
+      if (Math.hypot(dx, dz) > this.castDist * 1.6 + 8) {
+        this.reelIn();
+        this.onEvent?.('Човен відійшов — волосінь натягнулась, вудку змотано. Для риболовлі стань на місці.', 'warn');
+        return;
+      }
+    }
 
     if (this.state === 'waiting') {
       // поплавок плаває по хвилях
@@ -206,11 +230,13 @@ export class Fishing {
         this.catchFish(weather);
         return;
       }
-      // поплавок (риба) біжить від човна
-      const fwd = new THREE.Vector3(Math.sin(boat.heading), 0, Math.cos(boat.heading));
-      const target = new THREE.Vector3().copy(boat.pos).addScaledVector(fwd, -(this.fightDist + 5));
-      const h = ocean.heightAt(target.x, target.z, t);
-      this.bobber.position.set(target.x, h + 0.05, target.z);
+      // поплавок (риба) — на волосіні від кінчика вудки, у бік, куди закинуто
+      const dir = this._d.set(this.bobber.position.x - this.rodTipWorld.x, 0, this.bobber.position.z - this.rodTipWorld.z);
+      if (dir.lengthSq() < 1e-4) dir.set(Math.sin(boat.heading), 0, Math.cos(boat.heading));
+      dir.normalize();
+      const tx = this.rodTipWorld.x + dir.x * (this.fightDist + 2);
+      const tz = this.rodTipWorld.z + dir.z * (this.fightDist + 2);
+      this.bobber.position.set(tx, ocean.heightAt(tx, tz, t) + 0.05, tz);
     }
 
     // лінія від вудки до поплавка
