@@ -88,7 +88,6 @@ export class Boat {
   private _fwd = new THREE.Vector3();
   private _n = new THREE.Vector3();
   private _f = new THREE.Vector3();
-  private _r = new THREE.Vector3();
   private _t = new THREE.Vector3();
   // фізична поза БЕЗ візуального триму: group тримає візуальну позу (ніс
   // припіднятий на ході), а буївність і тяга рахуються від чистої фізичної —
@@ -297,6 +296,11 @@ export class Boat {
     this._t.set(0, 0, 0);
 
     const buoyEff = 1 - 0.25 * (this.deckWater / 100);
+    // плечі сил — в осях КОРПУСУ (крен навколо поздовжньої осі, тангаж — поперечної).
+    // Раніше бралися світові x/z: на курсі 90° тангаж змішувався з креном,
+    // на 180° крен міняв знак — човен сам розгойдувався до ±37° навіть у штиль
+    const ch = Math.cos(this.heading);
+    const sh = Math.sin(this.heading);
     for (const lp of this.gridLocal) {
       this.physicsToLocal(lp.x, lp.y, lp.z, this._v);
       const h = ocean.heightAt(this._v.x, this._v.z, t);
@@ -304,7 +308,11 @@ export class Boat {
       if (depth > 0) {
         // вертикальна буївність + демпфування по вертикалі
         const Fb = this.buoyK * buoyEff * depth;
-        const relVy = this.vel.y + this.angVel.z * (this._v.x - this.pos.x) - this.angVel.x * (this._v.z - this.pos.z);
+        const wx = this._v.x - this.pos.x;
+        const wz = this._v.z - this.pos.z;
+        const armX = wx * ch - wz * sh; // локальне x (правий борт +)
+        const armZ = wx * sh + wz * ch; // локальне z (ніс +)
+        const relVy = this.vel.y + this.angVel.z * armX - this.angVel.x * armZ;
         const Fd = -this.buoyDamp * relVy;
         this._f.y += Fb + Fd;
         // хвиля штовхає по схилу (напрямок нормалі)
@@ -313,9 +321,8 @@ export class Boat {
         this._f.x += this._n.x * push;
         this._f.z += this._n.z * push;
         // момент від розподілу сил → крен/тангаж (τ = r × F, F — вгору)
-        this._r.set(this._v.x - this.pos.x, 0, this._v.z - this.pos.z);
-        this._t.x += -this._r.z * (Fb + Fd);
-        this._t.z += this._r.x * (Fb + Fd);
+        this._t.x += -armZ * (Fb + Fd);
+        this._t.z += armX * (Fb + Fd);
       }
     }
 

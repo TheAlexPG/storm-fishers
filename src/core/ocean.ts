@@ -157,6 +157,25 @@ float hullHalfW(float z) {
   if (t < 0.0) return 1.8 - 0.25 * t * t;
   return 1.8 * pow(max(0.0, 1.0 - pow(t, 2.2)), 0.75);
 }
+// smoothstep без обмеження edge0 < edge1 (дзеркало smooth у yachtLayout.ts)
+float smoothAny(float a, float b, float x) {
+  float t = clamp((x - a) / (b - a), 0.0, 1.0);
+  return t * t * (3.0 - 2.0 * t);
+}
+// кіль-лінія (дзеркало hullBottomY у yachtLayout.ts)
+float hullBotY(float z) {
+  float t = z / 4.7;
+  if (t >= 0.0) return -0.85 + 1.9 * pow(smoothAny(0.55, 1.0, t), 1.8);
+  return -0.85 + 1.45 * smoothAny(-0.35, -1.0, t);
+}
+// напівширина корпусу на висоті y (дзеркало hullXAt у yachtModel.ts)
+float hullXAtY(float y, float z) {
+  float bot = hullBotY(z);
+  if (y <= bot) return 0.0;
+  float r = clamp((1.05 - y) / (1.05 - bot), 0.0, 1.0);
+  float th = asin(pow(r, 1.0 / 1.6));
+  return hullHalfW(z) * sqrt(cos(th));
+}
 
 float hash(vec2 p){
   p = fract(p * vec2(123.34, 456.21));
@@ -187,7 +206,7 @@ float fbm(vec2 p){
 void main() {
   // вода не заходить у корпус (салон нижче ватерлінії, кокпіт, трап)
   vec3 hl = (uHullInv * vec4(vWorldPos, 1.0)).xyz;
-  if (abs(hl.z) < 4.68 && hl.y < 1.05 && abs(hl.x) < hullHalfW(hl.z) - 0.02) discard;
+  if (abs(hl.z) < 4.68 && hl.y < 1.05 && abs(hl.x) < hullXAtY(hl.y, hl.z) - 0.02) discard;
 
   vec3 N = normalize(vNormalW);
   vec3 V = normalize(uCamPos - vWorldPos);
