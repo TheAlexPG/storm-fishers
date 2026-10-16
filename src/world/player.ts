@@ -110,7 +110,10 @@ export class Player {
       if (this.wheeling) {
         // керування човном
         boat.throttle = damp(boat.throttle, inF, 2.2, dt);
-        boat.rudder = damp(boat.rudder, inL, 3.0, dt);
+        // рильє: знак перевернутий — зростання heading крутить човен ЛІВОРУЧ
+        // (нос (sin h, cos h) рухається проти годинникової), а D = «вправо».
+        // Тому D → rudder −1 → поворот на право, як у справжнього штурвала.
+        boat.rudder = damp(boat.rudder, -inL, 3.0, dt);
         // тримаємось біля штурвала
         this.localX = STATION_POS.wheel.x;
         this.localZ = STATION_POS.wheel.z;

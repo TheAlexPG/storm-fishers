@@ -90,6 +90,12 @@ export class Boat {
   private _f = new THREE.Vector3();
   private _r = new THREE.Vector3();
   private _t = new THREE.Vector3();
+  // фізична поза БЕЗ візуального триму: group тримає візуальну позу (ніс
+  // припіднятий на ході), а буївність і тяга рахуються від чистої фізичної —
+  // тож трим носа не додає жодної сили/моменту й не чіпає стабільність
+  private physGroup = new THREE.Object3D();
+  /** поточний візуальний трим носа, рад (0 у спокої) */
+  bowLift = 0;
 
   // візуали апгрейдів
   private upg: Record<string, THREE.Object3D[]> = {};
@@ -215,10 +221,32 @@ export class Boat {
   // ── Трансформ ──
 
   syncTransform() {
+    // фізична поза (без триму) — для буївності та точки застосування тяги
+    this.physGroup.position.copy(this.pos);
+    this.physGroup.rotation.set(this.pitch, this.heading, this.roll, 'YXZ');
+    this.physGroup.updateMatrixWorld();
+    // візуальна поза: динамічний трим — на прямому ході ніс припіднімається
+    // (displacement hull: тиск води під носом росте з швидкістю, корма сідає).
+    // Тільки візуал: фізичні сили рахуються від physGroup, тож жодного впливу
+    // на стабільність. Квадрат відношення швидкості: у спокої й на малому
+    // ході — точно нуль; на задньому ході (fwd < 0) — теж нуль.
+    const fwdSpeed = Math.max(
+      0,
+      this.vel.x * Math.sin(this.heading) + this.vel.z * Math.cos(this.heading),
+    );
+    const ratio = Math.min(fwdSpeed / 9, 1);
+    this.bowLift = 0.08 * ratio * ratio;
     this.group.position.copy(this.pos);
-    this.group.rotation.set(this.pitch, this.heading, this.roll, 'YXZ');
+    this.group.rotation.set(this.pitch - this.bowLift, this.heading, this.roll, 'YXZ');
   }
 
+  /** локаль фізичної пози (без триму) → світ: буївність, точка тяги */
+  private physicsToLocal(lx: number, ly: number, lz: number, out: THREE.Vector3): THREE.Vector3 {
+    out.set(lx, ly, lz);
+    return this.physGroup.localToWorld(out);
+  }
+
+  /** локаль візуальної пози (з тримом носа) → світ: гравець, риболовля, частинки */
   localToWorld(lx: number, ly: number, lz: number, out: THREE.Vector3): THREE.Vector3 {
     out.set(lx, ly, lz);
     return this.group.localToWorld(out);
@@ -270,7 +298,7 @@ export class Boat {
 
     const buoyEff = 1 - 0.25 * (this.deckWater / 100);
     for (const lp of this.gridLocal) {
-      this.localToWorld(lp.x, lp.y, lp.z, this._v);
+      this.physicsToLocal(lp.x, lp.y, lp.z, this._v);
       const h = ocean.heightAt(this._v.x, this._v.z, t);
       const depth = h - this._v.y;
       if (depth > 0) {
@@ -320,7 +348,7 @@ export class Boat {
 
     // тяга (у кормі)
     if (thrust !== 0) {
-      const stern = this.localToWorld(0, -0.3, -4.2, this._v);
+      const stern = this.physicsToLocal(0, -0.3, -4.2, this._v);
       this._f.x += fwd.x * thrust;
       this._f.z += fwd.z * thrust;
       this._t.y += (stern.z - this.pos.z) * fwd.x * thrust - (stern.x - this.pos.x) * fwd.z * thrust;
