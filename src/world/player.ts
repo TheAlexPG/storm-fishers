@@ -60,6 +60,7 @@ export class Player {
   shakeZ = 0;
 
   private bobPhase = 0;
+  private headBob = 0;
   private railPush = 0;
   private inWaterT = 0;
   private _v = new THREE.Vector3();
@@ -90,6 +91,13 @@ export class Player {
     this.level = 'deck';
     this.floorY = BOAT.deckY;
     this.yaw = 0; // у кокпіт, погляд на штурвал/порт
+  }
+
+  /** на борту: голова з поточної пози човна (викликати після boat.update) */
+  syncHead(boat: Boat) {
+    if (this.mode !== 'boat') return;
+    boat.localToWorld(this.localX, this.floorY + EYE, this.localZ, this.head);
+    this.head.y += this.headBob;
   }
 
   /** свіжий кадр: миша + рух + переходи */
@@ -156,12 +164,11 @@ export class Player {
           }
         }
       }
-      // голова
-      boat.localToWorld(this.localX, this.floorY + EYE, this.localZ, this.head);
-      if (moving) {
-        this.bobPhase += dt * (running ? 11 : 7.5);
-        this.head.y += Math.sin(this.bobPhase) * 0.035;
-      }
+      // голова (остаточно — у syncHead після кроку човна, інакше камера
+      // відстає на кадр від палуби й на ходу «смикається»)
+      if (moving) this.bobPhase += dt * (running ? 11 : 7.5);
+      this.headBob = moving ? Math.sin(this.bobPhase) * 0.035 : 0;
+      this.syncHead(boat);
       // у салоні? (внизу або вже на трапі нижче рівня палуби)
       this.inCabin = this.level === 'below' || (this.level === 'stairs' && this.floorY < BOAT.deckY - 0.7);
       // під дахом: салон, трап або кокпіт під hardtop — укриття в негоду

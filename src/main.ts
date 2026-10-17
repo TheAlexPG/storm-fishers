@@ -479,6 +479,8 @@ class Game {
     // човен
     this.boat.night = this.time.isNight;
     this.boat.update(dt, t, this.ocean, this.weather, g, this.particles, this.audio, this.port.rocks, this.port.platforms[0]);
+    // камера — від пози човна саме цього кадру
+    this.player.syncHead(this.boat);
 
     // станції
     // відійшов від щогли — робота з фалами переривається

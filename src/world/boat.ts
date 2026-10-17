@@ -257,6 +257,9 @@ export class Boat {
     this.bowLift = 0.08 * ratio * ratio;
     this.group.position.copy(this.pos);
     this.group.rotation.set(this.pitch - this.bowLift, this.heading, this.roll, 'YXZ');
+    // одразу оновити матрицю: localToWorld (гравець, вудка, частинки) мусить
+    // бачити позу цього кадру, а не минулого рендера
+    this.group.updateMatrixWorld();
   }
 
   /** локаль фізичної пози (без триму) → світ: буївність, точка тяги */
