@@ -11,6 +11,9 @@ export class Input {
 
   private downHandler = (e: KeyboardEvent) => {
     if (e.repeat) return;
+    // набір тексту (нік, код кімнати, чат) — не керування
+    const t = e.target as HTMLElement | null;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
     this.keys.add(e.code);
   };
   private upHandler = (e: KeyboardEvent) => {

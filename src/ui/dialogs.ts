@@ -12,6 +12,25 @@ import type { AudioEngine } from '../core/audio';
 
 type CloseFn = () => void;
 
+export interface CoopLobby {
+  nick: string;
+  code: string;
+  onHost: (nick: string) => Promise<void>;
+  onJoin: (nick: string, code: string) => Promise<void>;
+}
+
+export interface CoopPause {
+  room: string;
+  link: string;
+  host: boolean;
+  players: Array<{ nick: string; color: string; host: boolean; me: boolean }>;
+  onLeave: () => void;
+}
+
+function esc(v: string): string {
+  return v.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+}
+
 export class Dialogs {
   private overlay: HTMLElement;
   private panel: HTMLElement;
@@ -40,6 +59,8 @@ export class Dialogs {
 
   /** escAllowed = чи закривається меню по Esc (у паузі — ні, бо Esc і так виводить з pointer lock) */
   private escAllowed = true;
+  /** кооп-гість: покупки для спільного човна (паливо/ремонт/апгрейд) — капітану */
+  onBoatPurchase: ((p: { fuel?: number; repair?: boolean; upgrade?: string }) => void) | null = null;
 
   private show(html: string, escAllowed: boolean) {
     this.panel.innerHTML = html;
@@ -64,7 +85,7 @@ export class Dialogs {
 
   // ── ВСТУП ──
 
-  intro(hasSave: boolean, onNew: () => void, onContinue: () => void) {
+  intro(hasSave: boolean, onNew: () => void, onContinue: () => void, coop?: CoopLobby) {
     this.escAllowed = false;
     this.show(`
       <h1 class="intro-title">ШТОРМОВИЙ РИБАЛ</h1>
@@ -86,7 +107,64 @@ export class Dialogs {
         ${hasSave ? '<button class="btn" data-act="continue">Продовжити</button>' : ''}
         <button class="btn primary" data-act="new">Нова гра</button>
       </div>
+      ${coop ? `
+      <h2>👥 Грати з друзями</h2>
+      <div class="coop-lobby">
+        <label class="coop-field"><span>Нік</span>
+          <input id="coop-nick" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Твоє ім'я" value="${esc(coop.nick)}"></label>
+        <div class="coop-actions">
+          <button class="btn primary" data-act="host">Створити кімнату</button>
+          <span class="coop-or">або</span>
+          <input id="coop-code" maxlength="4" autocomplete="off" spellcheck="false" placeholder="КОД" value="${esc(coop.code)}">
+          <button class="btn" data-act="join">Приєднатися</button>
+        </div>
+        <div class="coop-msg" id="coop-msg">Капітан (хто створив кімнату) веде човен і світ зі свого сейву. Друзі відкривають ту саму адресу гри й вводять код — одна яхта на всіх, у кожного свій гаманець і улов.</div>
+      </div>` : ''}
     `, false);
+    if (coop) {
+      const nickEl = this.panel.querySelector('#coop-nick') as HTMLInputElement;
+      const codeEl = this.panel.querySelector('#coop-code') as HTMLInputElement;
+      const msgEl = this.panel.querySelector('#coop-msg') as HTMLElement;
+      const btns = this.panel.querySelectorAll('[data-act="host"], [data-act="join"]');
+      codeEl.addEventListener('input', () => {
+        codeEl.value = codeEl.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      });
+      const run = async (join: boolean) => {
+        const nick = nickEl.value.trim();
+        if (!nick) {
+          msgEl.textContent = 'Введи нік';
+          msgEl.className = 'coop-msg bad';
+          nickEl.focus();
+          return;
+        }
+        const code = codeEl.value.trim();
+        if (join && code.length !== 4) {
+          msgEl.textContent = 'Код кімнати — 4 символи (його бачить капітан у меню паузи)';
+          msgEl.className = 'coop-msg bad';
+          codeEl.focus();
+          return;
+        }
+        this.audio.resume();
+        this.audio.click();
+        btns.forEach((b) => ((b as HTMLButtonElement).disabled = true));
+        msgEl.textContent = join ? 'Під\'єднуємось…' : 'Створюємо кімнату…';
+        msgEl.className = 'coop-msg';
+        try {
+          if (join) await coop.onJoin(nick, code);
+          else await coop.onHost(nick);
+          this.close();
+        } catch (e) {
+          msgEl.textContent = (e as Error).message || 'Помилка з\'єднання';
+          msgEl.className = 'coop-msg bad';
+          btns.forEach((b) => ((b as HTMLButtonElement).disabled = false));
+        }
+      };
+      this.panel.querySelector('[data-act="host"]')!.addEventListener('click', () => void run(false));
+      this.panel.querySelector('[data-act="join"]')!.addEventListener('click', () => void run(true));
+      codeEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') void run(true);
+      });
+    }
     this.panel.querySelector('[data-act="new"]')!.addEventListener('click', () => {
       this.audio.resume();
       this.audio.click();
@@ -106,24 +184,43 @@ export class Dialogs {
 
   // ── ПАУЗА ──
 
-  pause(opts: { onResume: () => void; onReset: () => void; sound: boolean; onToggleSound: () => void; playTime: number }) {
+  pause(opts: { onResume: () => void; onReset: () => void; sound: boolean; onToggleSound: () => void; playTime: number; coop?: CoopPause }) {
     this.escAllowed = false;
     this.show(`
       <h1 style="font-size:26px">ПАУЗА</h1>
-      <p class="sub">Час зупинений. Море чекає.</p>
+      <p class="sub">${opts.coop ? 'Світ живе далі — екіпаж у морі.' : 'Час зупинений. Море чекає.'}</p>
       <div class="btn-row">
         <button class="btn primary" data-act="resume">Продовжити</button>
         <button class="btn" data-act="sound">Звук: ${opts.sound ? 'вкл' : 'вимк'}</button>
-        <button class="btn danger" data-act="reset">Скинути гру</button>
+        ${opts.coop ? '' : '<button class="btn danger" data-act="reset">Скинути гру</button>'}
       </div>
+      ${opts.coop ? `
+      <h2>👥 Кімната <span class="coop-code">${esc(opts.coop.room)}</span></h2>
+      <p class="sub">${opts.coop.host ? 'Ти — капітан. Друзі: відкрити гру за адресою нижче й ввести код (або просто перейти за посиланням).' : 'Ти в екіпажі. Човном і світом керує капітан.'}</p>
+      <div class="coop-link"><input readonly value="${esc(opts.coop.link)}"><button class="btn" data-act="copy">Копіювати</button></div>
+      <div class="coop-players">${opts.coop.players.map((p) => `<span class="coop-chip" style="--c:${p.color}">${esc(p.nick)}${p.host ? ' ⚓' : ''}${p.me ? ' (ти)' : ''}</span>`).join('')}</div>
+      <div class="btn-row"><button class="btn danger" data-act="leave">${opts.coop.host ? 'Закрити кімнату' : 'Покинути кімнату'}</button></div>` : ''}
       <h2>Керування</h2>
       <div class="intro-keys">
         <kbd>WASD</kbd><span>рух · у штурвалі: W/S газ, A/D рильє</span>
         <kbd>E</kbd><span>станції / магазин / залізти</span>
         <kbd>Space</kbd><span>тяга лінії · у воді — сплестись</span>
         <kbd>M</kbd><span>карта (штурвальна)</span>
+        ${opts.coop ? '<kbd>Enter</kbd><span>чат з екіпажем</span>' : ''}
       </div>
     `, false);
+    if (opts.coop) {
+      const c = opts.coop;
+      this.panel.querySelector('[data-act="copy"]')!.addEventListener('click', (e) => {
+        void navigator.clipboard?.writeText(c.link).catch(() => {});
+        (this.panel.querySelector('.coop-link input') as HTMLInputElement).select();
+        (e.target as HTMLElement).textContent = 'Скопійовано ✓';
+      });
+      this.panel.querySelector('[data-act="leave"]')!.addEventListener('click', () => {
+        this.close();
+        c.onLeave();
+      });
+    }
     this.panel.querySelector('[data-act="resume"]')!.addEventListener('click', () => {
       this.audio.click();
       this.close();
@@ -133,7 +230,7 @@ export class Dialogs {
       opts.onToggleSound();
       this.panel.querySelector('[data-act="sound"]')!.textContent = `Звук: ${!opts.sound ? 'вкл' : 'вимк'}`;
     });
-    this.panel.querySelector('[data-act="reset"]')!.addEventListener('click', () => {
+    this.panel.querySelector('[data-act="reset"]')?.addEventListener('click', () => {
       if (confirm('Точно скинути весь прогрес?')) {
         this.close();
         opts.onReset();
@@ -225,6 +322,7 @@ export class Dialogs {
           const cost = fuelPrice * (game.maxFuel - game.fuel);
           if (game.money >= cost) {
             game.money -= cost;
+            this.onBoatPurchase?.({ fuel: game.maxFuel - game.fuel });
             game.fuel = game.maxFuel;
           }
         } else {
@@ -233,6 +331,7 @@ export class Dialogs {
           if (game.money >= cost) {
             game.money -= cost;
             game.addFuel(liters);
+            this.onBoatPurchase?.({ fuel: liters });
           }
         }
         this.audio.click();
@@ -244,6 +343,7 @@ export class Dialogs {
       if (game.money >= 100) {
         game.money -= 100;
         game.hull = game.maxHull;
+        this.onBoatPurchase?.({ repair: true });
         this.audio.click();
         refresh();
       }
@@ -252,6 +352,7 @@ export class Dialogs {
       b.addEventListener('click', () => {
         const id = (b as HTMLElement).dataset.upg as any;
         if (game.buyUpgrade(id)) {
+          this.onBoatPurchase?.({ upgrade: id });
           this.audio.catchJingle();
           refresh();
         }

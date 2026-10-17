@@ -515,6 +515,59 @@ export class Boat {
     this.syncTransform();
   }
 
+  /**
+   * Кооп-клієнт: поза приходить від капітана (applyNet), тут — лише візуал:
+   * паруси, бризки, вихлоп, прилади, звук. Фізики й пошкоджень немає.
+   */
+  updateRemote(dt: number, t: number, ocean: Ocean, weather: Weather, game: GameState, particles: ParticlePool, audio: AudioEngine) {
+    this.sails.compute(dt, this.heading, this.vel, weather.windDir, weather.wind);
+    this.sails.updateMeshes(dt, performance.now() / 1000);
+    this.sails.updateWindex(this.heading, this.vel, weather.windDir);
+    const deckWorld = this.pos.y + BOAT.deckY;
+    const crest = ocean.heightAt(this.pos.x, this.pos.z, t) + 0.5 * weather.intensity;
+    if (crest > deckWorld - 0.12 && weather.intensity > 0.45 && Math.random() < dt * 2) {
+      particles.splash(this.pos.x + rand(-1.5, 1.5), deckWorld, this.pos.z + rand(-1.5, 1.5), 0.7);
+    }
+    this.syncTransform();
+    const speed = this.vel.length();
+    const fwd = this.forward(this._fwd);
+    this.localToWorld(0, 0.7, 4.3, this.bowPoint);
+    particles.spray(this.bowPoint, fwd, speed * Math.abs(this.throttle) + speed * 0.4, dt);
+    if (this.engineOn && this.throttle > 0.05) {
+      this.localToWorld(this.exhaustTip.x, this.exhaustTip.y, this.exhaustTip.z, this._t);
+      particles.exhaust(this._t, Math.abs(this.throttle), dt);
+    }
+    this.engineLoad = clamp(speed / 10, 0, 1) * Math.abs(this.throttle);
+    this.updatePanel(dt, game, weather, this.night);
+    if (this.flag) this.flag.rotation.y = Math.sin(t * 3.1) * 0.25;
+    audio.setEngine(Math.abs(this.throttle), this.engineOn, this.engineLoad);
+  }
+
+  /** кооп: компактна поза для мережі */
+  netState(): number[] {
+    const r = (v: number, k = 1000) => Math.round(v * k) / k;
+    return [
+      r(this.pos.x), r(this.pos.y), r(this.pos.z), r(this.heading, 1e4), r(this.pitch, 1e4), r(this.roll, 1e4),
+      r(this.vel.x, 100), r(this.vel.y, 100), r(this.vel.z, 100), r(this.throttle, 100), r(this.rudder, 100),
+      this.engineOn ? 1 : 0, r(this.deckWater, 10), this.sails.mode, this.sinking ? 1 : 0,
+    ];
+  }
+
+  /** кооп-клієнт: виставити позу (вже інтерпольовану) */
+  applyNet(b: number[]) {
+    this.pos.set(b[0], b[1], b[2]);
+    this.heading = b[3];
+    this.pitch = b[4];
+    this.roll = b[5];
+    this.vel.set(b[6], b[7], b[8]);
+    this.throttle = b[9];
+    this.rudder = b[10];
+    this.engineOn = b[11] === 1;
+    this.deckWater = b[12];
+    this.sails.mode = b[13] as 0 | 1 | 2;
+    this.sinking = b[14] === 1;
+  }
+
   /** сили вітрил → загальні сили/моменти кадру; анімація парусів */
   private applySails(dt: number, weather: Weather) {
     const sf = this.sails.compute(dt, this.heading, this.vel, weather.windDir, weather.wind);

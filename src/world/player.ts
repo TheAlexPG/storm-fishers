@@ -55,6 +55,8 @@ export class Player {
   nearest: Interactable | null = null;
   /** позиція голови (для камери) */
   head = new THREE.Vector3();
+  /** йде цього кадру (для аватара в коопі) */
+  moving = false;
   /** додані нахили (хвилі, тряска) */
   shakeX = 0;
   shakeZ = 0;
@@ -238,6 +240,7 @@ export class Player {
       }
     }
 
+    this.moving = moving || (this.mode === 'water' && (inF !== 0 || inL !== 0));
     this.nearest = this.findNearest(boat, port);
   }
 

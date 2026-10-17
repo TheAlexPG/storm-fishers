@@ -1,8 +1,31 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
+import { attachRelay, netInfoMiddleware } from './server/relay.mjs';
+
+/** кооп-реле на тому ж порту, що й гра (ws://<host>:5173/net) */
+function coopRelay(): Plugin {
+  return {
+    name: 'storm-coop-relay',
+    configureServer(server) {
+      server.middlewares.use(netInfoMiddleware);
+      if (server.httpServer) attachRelay(server.httpServer);
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(netInfoMiddleware);
+      if (server.httpServer) attachRelay(server.httpServer);
+    },
+  };
+}
 
 export default defineConfig({
   base: './',
-  server: { port: 5173, host: true },
+  plugins: [coopRelay()],
+  server: {
+    port: 5173,
+    host: true,
+    // гра з друзями через інтернет: тунель на цей порт (cloudflared / ngrok / localtunnel)
+    allowedHosts: ['.trycloudflare.com', '.ngrok-free.app', '.ngrok.app', '.loca.lt'],
+  },
+  preview: { port: 4173, host: true },
   build: {
     target: 'es2020',
     chunkSizeWarningLimit: 1600,

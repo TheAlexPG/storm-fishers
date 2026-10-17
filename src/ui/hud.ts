@@ -50,6 +50,11 @@ export class Hud {
   private elSail!: HTMLElement;
   private lastSail = '-';
   private hintEl: HTMLElement;
+  private elRoster!: HTMLElement;
+  private elChatLog!: HTMLElement;
+  private elChatInput!: HTMLInputElement;
+  private chatSend: ((text: string) => void) | null = null;
+  private rosterKey = '';
 
   constructor() {
     const root = document.createElement('div');
@@ -75,6 +80,11 @@ export class Hud {
       </div>
       <div class="hud-tr">
         <div class="hold-chip hud-card">🐟 Трюм <b class="h">0/8</b></div>
+        <div class="roster hud-card"></div>
+      </div>
+      <div class="chat">
+        <div class="chat-log"></div>
+        <input class="chat-input" maxlength="160" autocomplete="off" spellcheck="false" placeholder="Повідомлення екіпажу… (Enter — надіслати, Esc — закрити)">
       </div>
       <div class="toasts"></div>
       <div class="prompt"><kbd>E</kbd><span class="ptext"></span></div>
@@ -126,6 +136,22 @@ export class Hud {
     this.compass = root.querySelector<HTMLCanvasElement>('.compass-strip');
     this.compassCtx = this.compass?.getContext('2d') ?? null;
     this.setupCompassDpi();
+    this.elRoster = root.querySelector('.roster')!;
+    this.elChatLog = root.querySelector('.chat-log')!;
+    this.elChatInput = root.querySelector('.chat-input')!;
+    this.elChatInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const v = this.elChatInput.value;
+        this.elChatInput.value = '';
+        this.closeChat();
+        if (v.trim()) this.chatSend?.(v);
+        e.preventDefault();
+      } else if (e.key === 'Escape') {
+        this.closeChat();
+      }
+      e.stopPropagation();
+    });
+    this.elChatInput.addEventListener('blur', () => this.closeChat());
     this.chipPort = root.querySelector('#chip-port')!;
     this.chipWp = root.querySelector('#chip-wp')!;
     this._day = elDay;
@@ -352,6 +378,59 @@ export class Hud {
     }, ms);
     // не більше 4 одночасно
     while (this.toasts.children.length > 4) this.toasts.firstChild?.remove();
+  }
+
+  // ── кооп: екіпаж і чат ──
+
+  /** список гравців у кімнаті (порожній — сховати) */
+  setRoster(list: Array<{ nick: string; color: string; host: boolean; me: boolean }>) {
+    const key = list.map((p) => p.nick + p.color + p.host).join('|');
+    if (key === this.rosterKey) return;
+    this.rosterKey = key;
+    this.elRoster.classList.toggle('show', list.length > 0);
+    this.elRoster.replaceChildren(
+      ...list.map((p) => {
+        const row = document.createElement('div');
+        row.className = 'roster-row' + (p.me ? ' me' : '');
+        const dot = document.createElement('i');
+        dot.style.background = p.color;
+        const name = document.createElement('span');
+        name.textContent = p.nick + (p.host ? ' ⚓' : '');
+        row.append(dot, name);
+        return row;
+      }),
+    );
+  }
+
+  chatLine(nick: string, text: string, color: string) {
+    const row = document.createElement('div');
+    row.className = 'chat-line';
+    const n = document.createElement('b');
+    n.style.color = color;
+    n.textContent = nick + ': ';
+    const t = document.createElement('span');
+    t.textContent = text;
+    row.append(n, t);
+    this.elChatLog.appendChild(row);
+    while (this.elChatLog.children.length > 8) this.elChatLog.firstChild?.remove();
+    // рядок гасне за 12 с (поки чат закритий)
+    setTimeout(() => row.classList.add('old'), 12000);
+  }
+
+  get chatOpen(): boolean {
+    return this.root.classList.contains('chatting');
+  }
+
+  openChat(send: (text: string) => void) {
+    this.chatSend = send;
+    this.root.classList.add('chatting');
+    // фокус після поточного keydown (інакше Enter одразу «надішле» порожнє)
+    setTimeout(() => this.elChatInput.focus(), 0);
+  }
+
+  private closeChat() {
+    this.root.classList.remove('chatting');
+    if (document.activeElement === this.elChatInput) this.elChatInput.blur();
   }
 
   /** підказка «клікни, щоб захопити мишу», коли граємо без pointer lock */

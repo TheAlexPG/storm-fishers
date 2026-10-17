@@ -224,9 +224,14 @@ export class GameState {
   }
 
   /** записує готовий SaveData (наприклад, з даними світу) */
+  /** окремий слот для кооп-гостя: його гроші/улов, без чіпання соло-сейву */
+  static saveKey = SAVE_KEY;
+  static readonly SOLO_KEY = SAVE_KEY;
+  static readonly COOP_KEY = 'storm-fishers-coop-v1';
+
   static write(data: SaveData) {
     try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+      localStorage.setItem(GameState.saveKey, JSON.stringify(data));
     } catch {
       /* приватний режим */
     }
@@ -234,7 +239,7 @@ export class GameState {
 
   static load(): Partial<SaveData> | null {
     try {
-      const raw = localStorage.getItem(SAVE_KEY);
+      const raw = localStorage.getItem(GameState.saveKey);
       if (!raw) return null;
       return JSON.parse(raw) as Partial<SaveData>;
     } catch {
@@ -262,7 +267,7 @@ export class GameState {
 
   static clear() {
     try {
-      localStorage.removeItem(SAVE_KEY);
+      localStorage.removeItem(GameState.saveKey);
     } catch {
       /* ignore */
     }
@@ -270,7 +275,7 @@ export class GameState {
 
   static hasSave(): boolean {
     try {
-      return localStorage.getItem(SAVE_KEY) != null;
+      return localStorage.getItem(GameState.saveKey) != null;
     } catch {
       return false;
     }

@@ -118,6 +118,20 @@ export class Weather {
     return Math.round(this.intensity * 100);
   }
 
+  /** кооп-клієнт: стан погоди від капітана */
+  applyNet(intensity: number, target: number, windDir: number, flash: number) {
+    this.intensity = intensity;
+    this.target = target;
+    this.windDir = windDir;
+    this.flash = Math.max(this.flash, flash);
+    this.holdTimer = 1e9;
+  }
+
+  /** кооп-клієнт: лише згасання спалаху (решта — від капітана) */
+  updatePassive(dt: number) {
+    this.flash = Math.max(0, this.flash - dt * 2.2);
+  }
+
   restore(v: number) {
     this.intensity = v / 100;
     this.target = this.intensity;

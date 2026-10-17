@@ -97,6 +97,8 @@ export class SailRig {
   overload = 0;      // 0..1+ — наскільки перевантажено
   /** події: попередження/розрив */
   onEvent: ((msg: string, kind: 'warn' | 'bad' | 'good') => void) | null = null;
+  /** кооп-клієнт: режим приходить від капітана — без розривів/попереджень тут */
+  passive = false;
 
   private boomAngle = 0;
   private side = 1; // +1 — гік на +X
@@ -203,7 +205,7 @@ export class SailRig {
     // автотрим гіка: кут ≈ (awa − 20°)/2 на підвітряний борт
     const want = clamp(((this.awa - 20) / 2) * (Math.PI / 180), 0.08, 1.45);
     const newSide = lx >= 0 ? -1 : 1; // вітер дме в +X → гік іде на +X (θ < 0)
-    if (newSide !== this.side && this.hoist > 0.3 && this.awa > 150) {
+    if (newSide !== this.side && this.hoist > 0.3 && this.awa > 150 && !this.passive) {
       this.onEvent?.('Поворот фордевінд — гік перекинувся!', 'warn');
     }
     this.side = newSide;
@@ -213,6 +215,7 @@ export class SailRig {
     // (рахуємо й від справжнього вітру: шквали б'ють і на швидкому ходу)
     this.overload = (this.hoist * (0.5 * this.aws * this.aws + 0.5 * this.tws * this.tws)) / OVERPOWER_Q;
     this.warnT -= dt;
+    if (this.passive) return { fx: 0, fz: 0, torqueRoll: 0 };
     if (this.overload > 0.85 && this.warnT <= 0 && this.mode !== 0) {
       this.warnT = 12;
       this.onEvent?.(this.mode === 2 ? 'Паруси перевантажені — йди до щогли, бери риф!' : 'Навіть риф не тримає — спускай паруси!', 'warn');

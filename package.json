@@ -8,13 +8,16 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "serve": "npm run build && node server/relay.mjs"
   },
   "dependencies": {
-    "three": "^0.161.0"
+    "three": "^0.161.0",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "@types/three": "^0.161.2",
+    "@types/ws": "^8.18.2",
     "typescript": "^5.4.5",
     "vite": "^5.2.8"
   }

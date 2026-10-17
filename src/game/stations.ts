@@ -31,6 +31,8 @@ export class Stations {
   stains: Stain[] = [];
   private stainTimer = 20;
   private group = new THREE.Group();
+  /** кооп-клієнт: дії над спільним човном ідуть до капітана */
+  onBoatAction: ((a: 'engine' | 'repair', v?: number) => void) | null = null;
 
   constructor(private boat: Boat, private game: GameState, private audio: AudioEngine) {
     boat.group.add(this.group);
@@ -43,6 +45,7 @@ export class Stations {
         if (!this.boat.engineOn) {
           return this.startTimed('engine', 'Запуск двигуна…', 2.0, () => {
             this.boat.restartEngine();
+            this.onBoatAction?.('engine');
             this.audio.click();
           });
         }
@@ -50,6 +53,7 @@ export class Stations {
         if (!this.game.spendEnergy(15)) return { ok: false, msg: 'Занадто втомлений (E → койка)' };
         return this.startTimed('engine', 'Ремонт двигуна…', 3.0, () => {
           this.game.repair(25);
+          this.onBoatAction?.('repair', 25);
           this.audio.click();
         });
       }
