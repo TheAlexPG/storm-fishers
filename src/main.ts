@@ -721,7 +721,7 @@ class Game {
 
     // кооп: знімок світу (капітан), свій гравець і аватари екіпажу
     this.coop.hostSend(dt, t, this.boat, this.weather, this.time, g);
-    this.coop.tick(dt, this.boat, this.player, this.stations.active?.id === 'pump');
+    this.coop.tick(dt, this.boat, this.player, this.stations.active?.id === 'pump', this.fishing, this.ocean, t);
 
     // ловля
     this.fishing.update(dt, t, this.boat, this.ocean, input, g, this.weather, this.time);
@@ -775,6 +775,7 @@ class Game {
   }
 
   private lastDay = 1;
+  private mapRefreshT = 0;
   private lastWeather: string = 'calm';
 
   private objectiveToast(k: string): string {
@@ -968,7 +969,18 @@ class Game {
     this.underwater.classList.toggle('show', inWater);
 
     // мінімапа
+    const friends = this.coop.active ? this.coop.friendMarkers() : [];
+    this.minimap.friends = friends;
+    this.mapView.friends = friends;
     this.minimap.update(this.boat.pos.x, this.boat.pos.z, this.boat.heading, this.port.rocks, time.isNight);
+    // відкрита мапа в коопі — друзі й човен рухаються (~4 рази/с)
+    if (this.phase === 'map' && this.coop.active) {
+      this.mapRefreshT -= this.clockDelta;
+      if (this.mapRefreshT <= 0) {
+        this.mapRefreshT = 0.25;
+        this.mapView.refresh(this.boat.pos.x, this.boat.pos.z, this.boat.heading, this.port.rocks, g);
+      }
+    }
 
     // HUD
     const prompt = this.currentPrompt();

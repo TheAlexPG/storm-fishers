@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { NetSession, type GameMsg, type PeerInfo } from './session';
 import { Avatar, colorForId, type NetPlayer } from '../world/avatar';
 import type { Boat } from '../world/boat';
+import type { Ocean } from '../core/ocean';
+import type { Fishing } from '../game/fishing';
 import type { Player } from '../world/player';
 import type { Weather } from '../core/weather';
 import type { TimeCycle } from '../core/time';
@@ -43,6 +45,15 @@ export type BoatAction =
   | { a: 'fuel'; v: number }
   | { a: 'hullFull' }
   | { a: 'upgrade'; id: string };
+
+export interface FriendMarker {
+  x: number;
+  z: number;
+  nick: string;
+  color: string;
+  onBoat: boolean;
+  fishing: boolean;
+}
 
 export interface CoopHandlers {
   /** капітан: гість зробив дію над човном */
@@ -365,7 +376,7 @@ export class Coop {
   }
 
   /** кожен кадр: свій стан іншим + анімація аватарів */
-  tick(dt: number, boat: Boat, player: Player, pumping: boolean) {
+  tick(dt: number, boat: Boat, player: Player, pumping: boolean, fishing: Fishing, ocean: Ocean, t: number) {
     if (!this.active) return;
     this.playerTimer -= dt;
     if (this.playerTimer <= 0) {
@@ -383,11 +394,24 @@ export class Coop {
         wh: player.wheeling ? 1 : 0,
         mv: player.moving ? 1 : 0,
       };
+      const fs = fishing.netState();
+      if (fs) st.f = fs;
       const msg: GameMsg = { k: 'p', s: st };
       if (this.isClient && player.wheeling) msg.helm = [r(this.myHelm[0]), r(this.myHelm[1])];
       if (pumping) msg.pump = 1;
       this.session!.send(msg);
     }
-    for (const r of this.peers.values()) r.avatar.update(dt, boat);
+    for (const r of this.peers.values()) r.avatar.update(dt, boat, ocean, t);
+  }
+
+  /** друзі для мапи/мінімапи: світова позиція, колір, нік, чи на борту, чи рибалить */
+  friendMarkers(): FriendMarker[] {
+    const out: FriendMarker[] = [];
+    for (const [id, r] of this.peers) {
+      if (!r.state || !r.avatar.root.visible) continue;
+      const p = r.avatar.worldPos;
+      out.push({ x: p.x, z: p.z, nick: r.info.nick, color: this.colorOf(id), onBoat: r.state.m === 0, fishing: !!r.state.f });
+    }
+    return out;
   }
 }

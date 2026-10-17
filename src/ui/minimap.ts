@@ -10,6 +10,8 @@ export class Minimap {
   private ctx: CanvasRenderingContext2D;
   visible = true;
   private readonly size = 160;
+  /** кооп: друзі (світові координати) */
+  friends: Array<{ x: number; z: number; color: string; onBoat: boolean }> = [];
   private readonly scale = 1.45; // м/px → ~55 м радіус
 
   constructor() {
@@ -17,7 +19,11 @@ export class Minimap {
     this.canvas.id = 'minimap';
     this.canvas.width = this.size;
     this.canvas.height = this.size;
-    document.body.appendChild(this.canvas);
+    // у правий верхній блок HUD (над трюмом); без нього canvas падав під
+    // повноекранний рендер і мінімапи не було видно взагалі
+    const slot = document.querySelector('#hud .hud-tr');
+    if (slot) slot.prepend(this.canvas);
+    else document.body.appendChild(this.canvas);
     this.ctx = this.canvas.getContext('2d')!;
   }
 
@@ -93,6 +99,23 @@ export class Minimap {
       c.beginPath();
       c.arc(px, pz, 2.2, 0, Math.PI * 2);
       c.fill();
+    }
+
+    // друзі поза човном (на борту вони й так у центрі)
+    for (const f of this.friends) {
+      if (f.onBoat) continue;
+      const [px, pz] = toMap(f.x, f.z);
+      const dx = px - cx, dz = pz - cx;
+      const d = Math.hypot(dx, dz);
+      // за межею кола — притиснути до краю (видно напрямок)
+      const k = d > R - 7 ? (R - 7) / d : 1;
+      c.beginPath();
+      c.arc(cx + dx * k, cx + dz * k, 3.6, 0, Math.PI * 2);
+      c.fillStyle = f.color;
+      c.fill();
+      c.strokeStyle = 'rgba(255,255,255,0.85)';
+      c.lineWidth = 1.2;
+      c.stroke();
     }
 
     // човен (стрілка в центрі, обертання по heading)

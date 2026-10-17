@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Boat } from './boat';
+import type { Ocean } from '../core/ocean';
 
 // ─────────────────────────────────────────────────────────────
 // Аватар іншого гравця (кооп): рибалка в зюйдвестці + нік над головою.
@@ -21,6 +22,8 @@ export interface NetPlayer {
   wh: 0 | 1;
   /** йде */
   mv: 0 | 1;
+  /** риболовля: [1 чекає / 2 клює / 3 боротьба, x, z, натяг] */
+  f?: [number, number, number, number];
 }
 
 const JACKETS = [0xf2c12e, 0xe0522f, 0x2f7fd0, 0x3fae5a, 0xa04bc0, 0xf08a24, 0x1fb3b0, 0xd23c6e];
@@ -48,6 +51,14 @@ export class Avatar {
   private syaw = 0;
   private smode = -1;
   private _v = new THREE.Vector3();
+  // риболовля
+  private rod = new THREE.Group();
+  private rodTip = new THREE.Object3D();
+  private bobber: THREE.Mesh;
+  private line: THREE.Line;
+  private bx = 0;
+  private bz = 0;
+  private fishing = false;
 
   constructor(scene: THREE.Scene, public nick: string, color: number) {
     const std = (c: number, r = 0.8) => new THREE.MeshStandardMaterial({ color: c, roughness: r });
@@ -90,6 +101,35 @@ export class Avatar {
     add(this.head, new THREE.SphereGeometry(0.15, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), std(color, 0.5), 0, 0.14, 0);
     add(this.head, new THREE.CylinderGeometry(0.24, 0.26, 0.02, 14), std(color, 0.5), 0, 0.14, -0.03);
 
+    // вудка в правій руці (видно лише під час риболовлі)
+    const rodMat = std(0x2a2a2a, 0.4);
+    const rodMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.024, 2.2, 6), rodMat);
+    rodMesh.position.y = 1.1;
+    this.rod.add(rodMesh);
+    const reel = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.04, 10), std(0x9aa4ac, 0.35));
+    reel.rotation.z = Math.PI / 2;
+    reel.position.set(0.04, 0.2, 0);
+    this.rod.add(reel);
+    this.rodTip.position.y = 2.2;
+    this.rod.add(this.rodTip);
+    this.rod.position.set(0, -0.6, 0);
+    this.rod.rotation.x = 1.0; // від руки вперед і вгору
+    this.rod.visible = false;
+    this.armR.add(this.rod);
+    // поплавок кольору куртки + біла верхівка (видно, чий)
+    this.bobber = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), std(color, 0.4));
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), std(0xffffff, 0.4));
+    cap.position.y = 0.08;
+    this.bobber.add(cap);
+    this.bobber.visible = false;
+    scene.add(this.bobber);
+    const lg = new THREE.BufferGeometry();
+    lg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(9 * 3), 3));
+    this.line = new THREE.Line(lg, new THREE.LineBasicMaterial({ color: 0xdde8ee, transparent: true, opacity: 0.6 }));
+    this.line.frustumCulled = false;
+    this.line.visible = false;
+    scene.add(this.line);
+
     // нік
     this.labelCanvas = document.createElement('canvas');
     this.labelCanvas.width = 256;
@@ -124,7 +164,12 @@ export class Avatar {
     (this.label.material.map as THREE.Texture).needsUpdate = true;
   }
 
-  update(dt: number, boat: Boat) {
+  /** світова позиція (для мап) */
+  get worldPos(): THREE.Vector3 {
+    return this.root.position;
+  }
+
+  update(dt: number, boat: Boat, ocean: Ocean, t: number) {
     const s = this.state;
     if (!s) return;
     this.root.visible = true;
@@ -155,7 +200,15 @@ export class Avatar {
     const sw = s.mv ? Math.sin(this.phase) * 0.55 : 0;
     this.legL.rotation.x = sw;
     this.legR.rotation.x = -sw;
-    if (s.wh) {
+    const f = s.f;
+    this.fishing = !!f && s.m === 0;
+    this.rod.visible = this.fishing;
+    if (this.fishing) {
+      // тримає вудку перед собою; у боротьбі — тягне на себе
+      const pull = f![0] === 3 ? Math.sin(this.phase * 3) * 0.12 + 0.25 : 0;
+      this.armR.rotation.set(-0.75 + pull, 0, -0.12);
+      this.armL.rotation.set(-0.9 + pull, 0.3, 0.25);
+    } else if (s.wh) {
       // руки на колесі
       this.armL.rotation.set(-1.15, 0, 0.18);
       this.armR.rotation.set(-1.15, 0, -0.18);
@@ -168,10 +221,57 @@ export class Avatar {
       this.armR.rotation.set(sw * 0.7, 0, 0.08);
     }
     this.head.rotation.x = -s.pitch * 0.6;
+    this.updateBobber(dt, ocean, t);
+  }
+
+  private updateBobber(dt: number, ocean: Ocean, t: number) {
+    const f = this.state?.f;
+    if (!this.fishing || !f) {
+      this.bobber.visible = false;
+      this.line.visible = false;
+      this.bx = this.bz = 0;
+      return;
+    }
+    const [st, x, z, tension] = f;
+    // перший кадр закиду — одразу на місце, далі плавно (риба тягне під час боротьби)
+    if (!this.bobber.visible) {
+      this.bx = x;
+      this.bz = z;
+    } else {
+      const k = 1 - Math.exp(-8 * dt);
+      this.bx += (x - this.bx) * k;
+      this.bz += (z - this.bz) * k;
+    }
+    const h = ocean.heightAt(this.bx, this.bz, t);
+    const y = st === 2 ? h - 0.12 + Math.sin(t * 22) * 0.07 : st === 3 ? h + 0.05 : h + 0.06 + Math.sin(t * 2.3 + this.phase) * 0.02;
+    this.bobber.position.set(this.bx, y, this.bz);
+    this.bobber.visible = true;
+    // волосінь: кінчик вудки → поплавок, провисає (менше, коли натягнута)
+    this.root.updateMatrixWorld(true);
+    const tip = this.rodTip.getWorldPosition(this._v);
+    const attr = this.line.geometry.getAttribute('position') as THREE.BufferAttribute;
+    const sag = st === 3 ? 0.6 * (1 - Math.min(1, tension / 90)) + 0.05 : 0.9;
+    for (let i = 0; i <= 8; i++) {
+      const u = i / 8;
+      attr.setXYZ(
+        i,
+        tip.x + (this.bx - tip.x) * u,
+        tip.y + (y - tip.y) * u - Math.sin(u * Math.PI) * sag,
+        tip.z + (this.bz - tip.z) * u,
+      );
+    }
+    attr.needsUpdate = true;
+    this.line.visible = true;
   }
 
   dispose(scene: THREE.Scene) {
     scene.remove(this.root);
+    scene.remove(this.bobber);
+    scene.remove(this.line);
+    for (const o of [this.bobber, this.line]) {
+      (o.geometry as THREE.BufferGeometry).dispose();
+      (o.material as THREE.Material).dispose();
+    }
     this.root.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.geometry) m.geometry.dispose();

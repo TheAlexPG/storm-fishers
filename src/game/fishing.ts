@@ -285,6 +285,14 @@ export class Fishing {
     };
   }
 
+  /** кооп: [стан 1 чекає / 2 клює / 3 боротьба, x, z, натяг] або null */
+  netState(): [number, number, number, number] | null {
+    if (this.state === 'idle') return null;
+    const s = this.state === 'waiting' ? 1 : this.state === 'bite' ? 2 : 3;
+    const r = (v: number) => Math.round(v * 100) / 100;
+    return [s, r(this.bobber.position.x), r(this.bobber.position.z), Math.round(this.state === 'fight' ? this.fightTension : 0)];
+  }
+
   /** підказка для HUD */
   prompt(): string | null {
     switch (this.state) {

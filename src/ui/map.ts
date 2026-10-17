@@ -76,10 +76,18 @@ export class MapView {
     return this.el.classList.contains('open');
   }
 
+  /** кооп: друзі (світові координати) */
+  friends: Array<{ x: number; z: number; nick: string; color: string; onBoat: boolean; fishing: boolean }> = [];
+
   show(boatX: number, boatZ: number, heading: number, rocks: RockObstacle[], game: GameState) {
     this.el.classList.add('open');
     this.resize();
     this.render(boatX, boatZ, heading, rocks, game);
+  }
+
+  /** перемалювати відкриту мапу (друзі рухаються) без зміни розміру */
+  refresh(boatX: number, boatZ: number, heading: number, rocks: RockObstacle[], game: GameState) {
+    if (this.isOpen) this.render(boatX, boatZ, heading, rocks, game);
   }
 
   hide() {
@@ -279,6 +287,45 @@ export class MapView {
       c.strokeStyle = 'rgba(255,255,255,0.5)';
       c.lineWidth = 1;
       c.stroke();
+    }
+
+    // ── друзі (кооп) ──
+    {
+      const aboard: string[] = [];
+      c.font = '700 12px -apple-system, "Segoe UI", sans-serif';
+      c.textAlign = 'left';
+      for (const f of this.friends) {
+        if (f.onBoat) {
+          aboard.push(f.nick);
+          continue;
+        }
+        const px = mx(f.x);
+        const pz = my(f.z);
+        c.beginPath();
+        c.arc(px, pz, 6, 0, Math.PI * 2);
+        c.fillStyle = f.color;
+        c.fill();
+        c.strokeStyle = '#ffffff';
+        c.lineWidth = 2;
+        c.stroke();
+        c.fillStyle = 'rgba(6,18,28,0.7)';
+        const tw = c.measureText(f.nick).width;
+        c.fillRect(px + 9, pz - 9, tw + 10, 18);
+        c.fillStyle = '#ffffff';
+        c.fillText(f.nick, px + 14, pz + 4);
+      }
+      if (aboard.length) {
+        const txt = `на борту: ${aboard.join(', ')}`;
+        c.font = '600 12px -apple-system, "Segoe UI", sans-serif';
+        c.textAlign = 'center';
+        const tw = c.measureText(txt).width;
+        const bx = mx(boatX);
+        const by = my(boatZ) + 24;
+        c.fillStyle = 'rgba(6,18,28,0.7)';
+        c.fillRect(bx - tw / 2 - 6, by - 12, tw + 12, 18);
+        c.fillStyle = '#e8f4f6';
+        c.fillText(txt, bx, by + 1);
+      }
     }
 
     // ── компасна роза ──
