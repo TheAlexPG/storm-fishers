@@ -5,3 +5,6 @@ dist/
 .vite/
 test-results/
 playwright-report/
+.claude/
+.vercel/
+.env*
