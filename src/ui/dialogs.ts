@@ -188,7 +188,7 @@ export class Dialogs {
 
   // ── ПАУЗА ──
 
-  pause(opts: { onResume: () => void; onReset: () => void; sound: boolean; onToggleSound: () => void; playTime: number; coop?: CoopPause }) {
+  pause(opts: { onResume: () => void; onReset: () => void; sound: boolean; onToggleSound: () => void; music: boolean; onToggleMusic: () => void; playTime: number; coop?: CoopPause }) {
     this.escAllowed = false;
     this.show(`
       <h1>Пауза</h1>
@@ -196,6 +196,7 @@ export class Dialogs {
       <div class="btn-row">
         <button class="btn primary" data-act="resume">Продовжити</button>
         <button class="btn" data-act="sound">Звук: ${opts.sound ? 'вкл' : 'вимк'}</button>
+        <button class="btn" data-act="music">Музика: ${opts.music ? 'вкл' : 'вимк'}</button>
         ${opts.coop ? '' : '<button class="btn danger" data-act="reset">Скинути гру</button>'}
       </div>
       ${opts.coop ? `
@@ -232,9 +233,17 @@ export class Dialogs {
       this.close();
       opts.onResume();
     });
+    let sound = opts.sound;
     this.panel.querySelector('[data-act="sound"]')!.addEventListener('click', () => {
       opts.onToggleSound();
-      this.panel.querySelector('[data-act="sound"]')!.textContent = `Звук: ${!opts.sound ? 'вкл' : 'вимк'}`;
+      sound = !sound;
+      this.panel.querySelector('[data-act="sound"]')!.textContent = `Звук: ${sound ? 'вкл' : 'вимк'}`;
+    });
+    let music = opts.music;
+    this.panel.querySelector('[data-act="music"]')!.addEventListener('click', () => {
+      opts.onToggleMusic();
+      music = !music;
+      this.panel.querySelector('[data-act="music"]')!.textContent = `Музика: ${music ? 'вкл' : 'вимк'}`;
     });
     this.panel.querySelector('[data-act="reset"]')?.addEventListener('click', () => {
       if (confirm('Точно скинути весь прогрес?')) {

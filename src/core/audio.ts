@@ -3,10 +3,14 @@
 // Мотор, вітер, дощ, хвилі, сплески, блискавка, UI, клювання.
 // ─────────────────────────────────────────────────────────────
 
+import { Music, type MusicMood } from './music';
+
 export class AudioEngine {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   muted = false;
+  musicOn = true;
+  private music: Music | null = null;
 
   // вузли "живих" звуків
   private engineOsc: OscillatorNode | null = null;
@@ -92,6 +96,8 @@ export class AudioEngine {
       this.engineFilter.connect(this.engineGain).connect(this.master!);
       this.engineOsc.start();
       this.engineOsc2.start();
+      this.music = new Music(ctx, this.master!);
+      this.music.setOn(this.musicOn);
     } catch {
       this.ctx = null;
     }
@@ -118,6 +124,16 @@ export class AudioEngine {
     if (this.master && this.ctx) {
       this.master.gain.setTargetAtTime(m ? 0 : 0.55, this.ctx.currentTime, 0.05);
     }
+  }
+
+  setMusic(on: boolean) {
+    this.musicOn = on;
+    this.music?.setOn(on);
+  }
+
+  /** кожен кадр: настрій музики */
+  updateMusic(mood: MusicMood) {
+    this.music?.update(mood);
   }
 
   /** мотор: throttle 0..1, engineOn, load 0..1 */

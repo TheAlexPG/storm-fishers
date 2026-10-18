@@ -230,6 +230,20 @@ class Game {
     };
     this.boat.onSunk = () => this.handleSunk();
 
+    // звук стартує з першого жесту (політика автоплею) — музика грає вже в заставці
+    try {
+      this.audio.setMusic(localStorage.getItem('storm-music') !== 'off');
+    } catch {
+      /* ок */
+    }
+    const wake = () => {
+      this.audio.resume();
+      window.removeEventListener('pointerdown', wake);
+      window.removeEventListener('keydown', wake);
+    };
+    window.addEventListener('pointerdown', wake);
+    window.addEventListener('keydown', wake);
+
     // старт
     Input.instance.attach(this.renderer.domElement);
     this.showIntro();
@@ -526,6 +540,15 @@ class Game {
       },
       sound: !this.audio.muted,
       onToggleSound: () => this.audio.setMuted(!this.audio.muted),
+      music: this.audio.musicOn,
+      onToggleMusic: () => {
+        this.audio.setMusic(!this.audio.musicOn);
+        try {
+          localStorage.setItem('storm-music', this.audio.musicOn ? 'on' : 'off');
+        } catch {
+          /* ок */
+        }
+      },
       playTime: this.playTime,
       coop: this.coop.active
         ? {
@@ -631,6 +654,11 @@ class Game {
       }
     }
     this.escSwallow = false;
+    this.audio.updateMusic({
+      night: 1 - this.time.daylight,
+      storm: clamp((this.weather.intensity - 0.45) / 0.5, 0, 1),
+      intro: this.phase === 'intro',
+    });
     // M — штурвальна карта (повноекранна)
     if (input.pressed('KeyM')) {
       if (this.phase === 'map') this.closeMap();
