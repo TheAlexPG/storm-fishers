@@ -164,6 +164,17 @@ export class Avatar {
     (this.label.material.map as THREE.Texture).needsUpdate = true;
   }
 
+  /** нік над головою (свій аватар — без ніка) */
+  showLabel(v: boolean) {
+    this.label.visible = v;
+  }
+
+  hide() {
+    this.root.visible = false;
+    this.bobber.visible = false;
+    this.line.visible = false;
+  }
+
   /** світова позиція (для мап) */
   get worldPos(): THREE.Vector3 {
     return this.root.position;

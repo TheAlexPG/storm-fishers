@@ -8,6 +8,8 @@ export class Input {
   mouseDX = 0;
   mouseDY = 0;
   pointerLocked = false;
+  /** накопичене коліщатко миші (з'їдає consumeWheel) */
+  wheel = 0;
 
   private downHandler = (e: KeyboardEvent) => {
     if (e.repeat) return;
@@ -24,6 +26,10 @@ export class Input {
     this.mouseDX += e.movementX;
     this.mouseDY += e.movementY;
   };
+  private wheelHandler = (e: WheelEvent) => {
+    if (!this.pointerLocked) return;
+    this.wheel += Math.sign(e.deltaY);
+  };
   private lockHandler = () => {
     this.pointerLocked = document.pointerLockElement != null;
   };
@@ -32,6 +38,7 @@ export class Input {
     window.addEventListener('keydown', this.downHandler);
     window.addEventListener('keyup', this.upHandler);
     window.addEventListener('mousemove', this.moveHandler);
+    window.addEventListener('wheel', this.wheelHandler, { passive: true });
     document.addEventListener('pointerlockchange', this.lockHandler);
     void el;
   }
@@ -40,6 +47,7 @@ export class Input {
     window.removeEventListener('keydown', this.downHandler);
     window.removeEventListener('keyup', this.upHandler);
     window.removeEventListener('mousemove', this.moveHandler);
+    window.removeEventListener('wheel', this.wheelHandler);
     document.removeEventListener('pointerlockchange', this.lockHandler);
   }
 
@@ -69,5 +77,11 @@ export class Input {
     this.mouseDX = 0;
     this.mouseDY = 0;
     return d;
+  }
+
+  consumeWheel(): number {
+    const w = this.wheel;
+    this.wheel = 0;
+    return w;
   }
 }

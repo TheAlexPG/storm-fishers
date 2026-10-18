@@ -179,6 +179,11 @@ export class Coop {
     return this.session?.nickOf(id) ?? '???';
   }
 
+  /** колір куртки свого аватара */
+  get myColor(): number {
+    return colorForId(this.myId);
+  }
+
   colorOf(id: number): string {
     return '#' + colorForId(id).toString(16).padStart(6, '0');
   }

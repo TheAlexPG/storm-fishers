@@ -6,7 +6,7 @@ import { Ocean } from './core/ocean';
 import { AudioEngine } from './core/audio';
 import { clamp, rand } from './core/math';
 import { GameState } from './game/state';
-import { Boat, BOAT, MOOR, MOOR_HEADING } from './world/boat';
+import { Boat, BOAT, MOOR, MOOR_HEADING, STATION_POS } from './world/boat';
 import { Port } from './world/port';
 import { Player } from './world/player';
 import { Sky } from './world/sky';
@@ -20,6 +20,8 @@ import { MapView } from './ui/map';
 import { Dialogs } from './ui/dialogs';
 import { zoneFromDist } from './game/fish';
 import { Coop, type BoatAction } from './net/coop';
+import { CameraRig } from './world/cameraRig';
+import { Avatar } from './world/avatar';
 import './styles.css';
 
 // ─────────────────────────────────────────────────────────────
@@ -84,6 +86,14 @@ class Game {
   private _v = new THREE.Vector3();
   private _v2 = new THREE.Vector3();
   private _fogGrey = new THREE.Color();
+  private rig: CameraRig;
+  /** «з-за корми» за штурвалом (V); запам'ятовується */
+  private chasePref = true;
+  private selfAvatar: Avatar | null = null;
+  private selfColor = -1;
+  /** скільки секунд миша не рухала камеру (для автодоводки за курсом) */
+  private camIdle = 0;
+  private lastYaw = 0;
 
   constructor() {
     // рендер
@@ -99,6 +109,12 @@ class Game {
 
     this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 4000);
     this.scene.fog = new THREE.FogExp2(0xbcd8e6, 0.0016);
+    this.rig = new CameraRig(this.camera);
+    try {
+      this.chasePref = localStorage.getItem('storm-cam') !== 'fp';
+    } catch {
+      /* ок */
+    }
 
     // світло
     this.sunLight = new THREE.DirectionalLight(0xfff2dd, 1.6);
@@ -617,6 +633,19 @@ class Game {
       if (this.phase === 'map') this.closeMap();
       else if (this.phase === 'play' && !this.dialogs.isOpen) this.openMap();
     }
+    // V — вид з-за корми / від першої особи (за штурвалом)
+    if (input.pressed('KeyV') && this.phase === 'play' && !this.dialogs.isOpen) {
+      this.chasePref = !this.chasePref;
+      try {
+        localStorage.setItem('storm-cam', this.chasePref ? 'chase' : 'fp');
+      } catch {
+        /* ок */
+      }
+      if (!this.player.wheeling) this.hud.toast(this.chasePref ? 'Вид з-за корми — коли стоїш за штурвалом' : 'Вид від першої особи', 'warn', 2200);
+    }
+    const wheelSteps = input.consumeWheel();
+    if (wheelSteps && this.rig.mode === 'chase') this.rig.zoom(wheelSteps);
+    this.updateCamMode(locked);
     // Space у битві — обробляється в fishing через input.down
 
     this.render();
@@ -949,8 +978,9 @@ class Game {
     // апгрейди-світло
     this.boat.applyUpgrades(g.upgrades, time.daylight);
 
-    // камера: first-person
+    // камера: від першої особи / з-за корми (V за штурвалом) / обліт у заставці
     const head = this.player.head;
+    const chase = this.rig.mode !== 'fp';
     // тряска: шторм + хвилі
     const shakeAmp = 0.008 + this.weather.intensity * 0.02;
     this.camShake.set(
@@ -958,19 +988,31 @@ class Game {
       (Math.sin(t * 11.1) + Math.sin(t * 5.9)) * 0.5 * shakeAmp,
       (Math.sin(t * 12.3)) * 0.5 * shakeAmp,
     );
-    this.camera.position.set(head.x + this.camShake.x, head.y + this.camShake.y, head.z + this.camShake.z);
-    this.camera.rotation.set(this.player.pitch + this.player.shakeX, this.player.yaw, this.player.shakeZ, 'YXZ');
     // нахил: позицію й курс ми наслідуємо човен повністю, а тангаж/крен — частково
     // (тіло стабілізує половину). Обертання у world-рамці (premultiply) —
     // коректно незалежно від того, куди гравець дивиться. Лише на палубі:
     // у воді тіло тримає рівновагу на хвилі, на причалі човен не наш.
+    let tilt: THREE.Quaternion | null = null;
     if (this.player.mode === 'boat') {
       this._tiltEuler.set(this.boat.pitch * this.tiltFollow, 0, this.boat.roll * this.tiltFollow);
-      this.camera.quaternion.premultiply(this._tiltQ.setFromEuler(this._tiltEuler));
+      tilt = this._tiltQ.setFromEuler(this._tiltEuler);
     }
+    this.rig.update(this.clockDelta, {
+      head,
+      yaw: this.player.yaw,
+      pitch: this.player.pitch + this.player.shakeX,
+      roll: this.player.shakeZ,
+      fpTilt: tilt,
+      shake: this.camShake,
+      boatPos: this.boat.pos,
+      waterAt: (x, z) => this.ocean.heightAt(x, z, t),
+      t,
+    });
+    // свій рибалка за штурвалом — видно лише збоку
+    this.updateSelfAvatar(chase);
 
     // підводне затемнення
-    const inWater = this.player.mode === 'water' && head.y < this.ocean.heightAt(head.x, head.z, t) + 0.15;
+    const inWater = !chase && this.player.mode === 'water' && head.y < this.ocean.heightAt(head.x, head.z, t) + 0.15;
     this.underwater.classList.toggle('show', inWater);
 
     // мінімапа
@@ -1018,6 +1060,67 @@ class Game {
     );
 
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /** який вигляд зараз: заставка — обліт, штурвал — з-за корми (якщо обрано) */
+  private updateCamMode(locked: boolean) {
+    const dt = this.clockDelta;
+    let m: 'fp' | 'chase' | 'orbit' = 'fp';
+    if (this.phase === 'intro') m = 'orbit';
+    else if (this.player.mode === 'boat' && this.player.wheeling && this.chasePref) m = 'chase';
+    else if (this.rig.mode === 'chase' && this.phase !== 'play') m = 'chase'; // меню поверх — не стрибаємо
+    if (m === 'chase' && this.rig.mode !== 'chase') {
+      // кут — з-за корми, трохи згори
+      this.player.yaw = this.boat.heading + Math.PI;
+      this.player.pitch = 0;
+    }
+    if (m === 'fp' && this.rig.mode === 'chase') {
+      // назад у голову — дивимось уперед по курсу
+      this.player.yaw = this.boat.heading + Math.PI;
+      this.player.pitch = -0.05;
+    }
+    this.rig.setMode(m);
+    // автодоводка: миша спокійна — камера сама заходить за корму
+    if (m === 'chase' && locked && this.phase === 'play') {
+      if (Math.abs(this.player.yaw - this.lastYaw) > 1e-4) this.camIdle = 0;
+      else this.camIdle += dt;
+      if (this.camIdle > 1.6 && this.boat.vel.length() > 0.4) {
+        const want = this.boat.heading + Math.PI;
+        const d = Math.atan2(Math.sin(want - this.player.yaw), Math.cos(want - this.player.yaw));
+        this.player.yaw += d * (1 - Math.exp(-0.8 * dt));
+      }
+      this.lastYaw = this.player.yaw;
+    }
+  }
+
+  /** свій рибалка: видно лише з-за корми / в заставці */
+  private updateSelfAvatar(show: boolean) {
+    const p = this.player;
+    if (!show || p.mode !== 'boat') {
+      this.selfAvatar?.hide();
+      return;
+    }
+    const color = this.coop.active ? this.coop.myColor : 0xf2c12e;
+    if (!this.selfAvatar || this.selfColor !== color) {
+      this.selfAvatar?.dispose(this.scene);
+      this.selfAvatar = new Avatar(this.scene, '', color);
+      this.selfAvatar.showLabel(false);
+      this.selfColor = color;
+    }
+    // у заставці — капітан за штурвалом
+    const atWheel = p.wheeling || this.phase === 'intro';
+    const w = STATION_POS.wheel;
+    this.selfAvatar.state = {
+      m: 0,
+      x: atWheel ? w.x : p.localX,
+      y: atWheel ? BOAT.deckY : p.floorY,
+      z: atWheel ? w.z : p.localZ,
+      yaw: atWheel ? this.boat.heading + Math.PI : p.yaw,
+      pitch: 0,
+      wh: atWheel ? 1 : 0,
+      mv: p.moving ? 1 : 0,
+    };
+    this.selfAvatar.update(this.clockDelta, this.boat, this.ocean, this.simTime);
   }
 
   private currentPrompt(): { text: string | null; bite: boolean } {

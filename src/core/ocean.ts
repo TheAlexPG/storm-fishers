@@ -218,7 +218,10 @@ void main() {
 
   // База: змішання глибокої та мілкої води за висотою хвилі + Френель
   float h = vWorldPos.y;
-  vec3 water = mix(uDeepColor, uShallowColor, smoothstep(-1.6, 1.4, h) * 0.55);
+  vec3 water = mix(uDeepColor, uShallowColor, smoothstep(-1.6, 1.4, h) * 0.65);
+  // власний колір води теж освітлений: вдень — бірюза, вночі — чорнило; трохи кольору неба
+  water *= 0.18 + 0.82 * uSunStrength;
+  water = mix(water, uSkyColor * 0.55, 0.18);
   vec3 col = mix(water, uSkyColor, fres * 0.85);
 
   // Сонячний блиск (specular) — «жирний» ефект
@@ -254,14 +257,14 @@ void main() {
     float s = -4.7 - hl.z; // відстань за транцем
     if (s > -0.2 && spd > 0.02) {
       float sc = max(s, 0.0);
-      float fade = exp(-sc / (9.0 + 24.0 * spd));
+      float fade = exp(-sc / (6.0 + 16.0 * spd));
       // турбулентна смуга від гвинта / транця
       float core = smoothstep(1.0 + sc * 0.045, 0.15, abs(hl.x));
       // «вуса» Кельвіна під ~19.5°
       float arm = smoothstep(0.55, 0.0, abs(abs(hl.x) - (1.5 + sc * 0.36)));
-      wake = (core * 0.75 + arm * 0.4) * fade * spd;
+      wake = (core * 0.7 + arm * 0.22) * fade * spd;
     }
-    float f = clamp(edge + wake, 0.0, 1.0) * smoothstep(0.25, 0.75, n + 0.2);
+    float f = clamp(edge + wake, 0.0, 1.0) * smoothstep(0.3, 0.75, n + 0.12);
     // уночі піна не світиться — бере освітлення неба
     vec3 foamCol = vec3(0.93, 0.96, 0.98) * clamp(0.12 + 0.88 * uSunStrength, 0.0, 1.0) + uSkyColor * 0.15;
     col = mix(col, foamCol, f * 0.8);
@@ -315,8 +318,8 @@ export class Ocean {
         uWaveQ: { value: qs },
         uSunDir: { value: new THREE.Vector3(0, 1, 0) },
         uCamPos: { value: new THREE.Vector3() },
-        uDeepColor: { value: new THREE.Color(0x06283a) },
-        uShallowColor: { value: new THREE.Color(0x0e6f7e) },
+        uDeepColor: { value: new THREE.Color(0x0b4660) },
+        uShallowColor: { value: new THREE.Color(0x1d9196) },
         uSkyColor: { value: new THREE.Color(0xbcd8e6) },
         uFogColor: { value: new THREE.Color(0xbcd8e6) },
         uFogDensity: { value: 0.0016 },
