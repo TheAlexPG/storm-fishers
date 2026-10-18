@@ -4,6 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Штормовий Рибал — Storm Fishers</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Unbounded:wght@500;600;700;800&display=swap" rel="stylesheet" />
     <style>
       html, body {
         margin: 0; padding: 0;
@@ -22,18 +25,20 @@
       #loading {
         position: fixed; inset: 0; z-index: 100;
         display: flex; flex-direction: column; align-items: center; justify-content: center;
-        background: linear-gradient(180deg, #06121e 0%, #0a2233 100%);
-        color: #cfe8ef; gap: 18px;
-        transition: opacity 0.6s ease;
+        background: linear-gradient(180deg, #f6c79a 0%, #e98f73 45%, #5d5a8a 100%);
+        color: #fff; gap: 22px;
+        font-family: 'Unbounded', 'Manrope', -apple-system, sans-serif;
+        transition: opacity 0.9s ease;
       }
       #loading.done { opacity: 0; pointer-events: none; }
-      #loading h1 { font-size: 34px; letter-spacing: 4px; margin: 0; color: #eaf6f8; font-weight: 800; }
-      #loading p { margin: 0; opacity: 0.7; }
+      #loading h1 { font-size: 40px; letter-spacing: 2px; margin: 0; font-weight: 800; text-align: center; line-height: 1.05; text-shadow: 0 4px 30px rgba(80, 40, 60, 0.35); }
+      #loading p { margin: 0; opacity: 0.85; font-family: 'Manrope', sans-serif; font-weight: 700; letter-spacing: 1px; }
       .spinner {
-        width: 42px; height: 42px; border-radius: 50%;
-        border: 3px solid rgba(55, 198, 181, 0.2); border-top-color: #37c6b5;
-        animation: spin 0.9s linear infinite;
+        width: 46px; height: 14px; border-radius: 50%;
+        border-bottom: 3px solid rgba(255, 255, 255, 0.9);
+        animation: bob 1.6s ease-in-out infinite;
       }
+      @keyframes bob { 0%, 100% { transform: translateY(0) rotate(-6deg); } 50% { transform: translateY(-8px) rotate(6deg); } }
       @keyframes spin { to { transform: rotate(360deg); } }
     </style>
   </head>
@@ -41,7 +46,7 @@
     <div id="app"></div>
     <div id="vignette"></div>
     <div id="loading">
-      <h1>ШТОРМОВИЙ РИБАЛ</h1>
+      <h1>Штормовий<br>Рибал</h1>
       <div class="spinner"></div>
       <p>готуємо море…</p>
     </div>

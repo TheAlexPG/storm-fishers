@@ -70,7 +70,7 @@ export class Coop {
   readonly peers = new Map<number, RemotePeer>();
   /** хто за штурвалом (id) — від капітана */
   helmOwner: number | null = null;
-  /** гість: свій газ/рильє, поки тримає штурвал (знімки його не перетирають) */
+  /** гість: свій газ/кермо, поки тримає штурвал (знімки його не перетирають) */
   myHelm: [number, number] = [0, 0];
 
   private snaps: Snap[] = [];

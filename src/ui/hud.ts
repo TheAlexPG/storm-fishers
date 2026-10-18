@@ -97,8 +97,8 @@ export class Hud {
       </div>
       <div class="controls-hint">
         <kbd>WASD</kbd> рух · <kbd>Миша</kbd> погляд · <kbd>Shift</kbd> біг · <kbd>E</kbd> дія<br>
-        <kbd>M</kbd> карта · <kbd>Esc</kbd> меню · у штурвалі: <kbd>W/S</kbd> газ, <kbd>A/D</kbd> рильє · паруси — <kbd>E</kbd> біля щогли<br>
-        у воді: <kbd>Space</kbd> сплестись, <kbd>C</kbd> зануритись
+        <kbd>M</kbd> карта · <kbd>Esc</kbd> меню · у штурвалі: <kbd>W/S</kbd> газ, <kbd>A/D</kbd> кермо, <kbd>V</kbd> вигляд · паруси — <kbd>E</kbd> біля щогли<br>
+        у воді: <kbd>Space</kbd> спливти, <kbd>C</kbd> пірнути · <kbd>H</kbd> сховати інтерфейс
       </div>
       <div class="lock-hint">🖱️ Клікни по екрану, щоб захопити мишу</div>
     `;
@@ -169,6 +169,33 @@ export class Hud {
     this.compassCtx?.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
+  private night = false;
+  private hintStart = 0;
+  private hintEl2: HTMLElement | null = null;
+
+  /** HUD у нічних тонах (темні картки, світлий текст) */
+  setNight(v: boolean) {
+    if (v === this.night) return;
+    this.night = v;
+    this.root.classList.toggle('night', v);
+  }
+
+  /** H — сховати весь HUD (фото / кіно) */
+  setHidden(v: boolean) {
+    this.root.classList.toggle('hidden', v);
+  }
+
+  get hidden(): boolean {
+    return this.root.classList.contains('hidden');
+  }
+
+  /** підказка керування: показати на кілька секунд (старт гри), далі зникає */
+  flashHints(seconds = 25) {
+    this.hintStart = performance.now() + seconds * 1000;
+    this.hintEl2 ??= this.root.querySelector('.controls-hint');
+    this.hintEl2?.classList.remove('faded');
+  }
+
   private _day!: HTMLElement;
   private elPromptText!: HTMLElement;
   private elLockHint!: HTMLElement;
@@ -186,6 +213,10 @@ export class Hud {
     speedKn?: number;
     sail?: string | null;
   }) {
+    if (this.hintStart && performance.now() > this.hintStart) {
+      this.hintStart = 0;
+      this.hintEl2?.classList.add('faded');
+    }
     if (game.money !== this.lastMoney) {
       this.elMoney.textContent = Math.round(game.money).toLocaleString('uk-UA');
       this.lastMoney = game.money;
@@ -272,6 +303,7 @@ export class Hud {
     const w = 300; // логічний розмір (dpr закладений у transform)
     const h = 36;
     const d0 = compassDeg(headingRad);
+    const ink = this.night ? '250,244,232' : '34,48,59';
     c.clearRect(0, 0, w, h);
     const pxPerDeg = w / 180; // ±90° по боках
     const cx = w / 2;
@@ -288,15 +320,15 @@ export class Hud {
       const x = cx + d * pxPerDeg;
       const major = a % 45 === 0;
       const mid = a % 15 === 0;
-      c.strokeStyle = major ? 'rgba(255,255,255,0.95)' : mid ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.35)';
+      c.strokeStyle = `rgba(${ink},${major ? 0.9 : mid ? 0.55 : 0.3})`;
       c.lineWidth = major ? 2 : 1;
       c.beginPath();
       c.moveTo(x, base);
       c.lineTo(x, base - (major ? 14 : mid ? 10 : 6));
       c.stroke();
       if (major) {
-        c.font = '700 11px -apple-system, "Segoe UI", sans-serif';
-        c.fillStyle = 'rgba(255,255,255,0.9)';
+        c.font = '800 10.5px Manrope, -apple-system, "Segoe UI", sans-serif';
+        c.fillStyle = `rgba(${ink},0.9)`;
         c.textAlign = 'center';
         c.fillText(P8[a / 45], x, base - 17);
       }
@@ -325,16 +357,16 @@ export class Hud {
         c.fill();
       }
     };
-    drawMark(Hud.bearing(boat.x, boat.z, MOOR.x, MOOR.z), '#ffd980', false);
-    if (wp) drawMark(Hud.bearing(boat.x, boat.z, wp.x, wp.z), '#78dcff', true);
+    drawMark(Hud.bearing(boat.x, boat.z, MOOR.x, MOOR.z), '#e39a2d', false);
+    if (wp) drawMark(Hud.bearing(boat.x, boat.z, wp.x, wp.z), this.night ? '#7fd6cc' : '#24878c', true);
     // рубка-лінія (курсова риска)
-    c.strokeStyle = '#ff6b5e';
+    c.strokeStyle = '#e2674a';
     c.lineWidth = 2;
     c.beginPath();
     c.moveTo(cx, 2);
     c.lineTo(cx, base);
     c.stroke();
-    c.fillStyle = '#ff6b5e';
+    c.fillStyle = '#e2674a';
     c.beginPath();
     c.moveTo(cx, 2);
     c.lineTo(cx + 5, -2);

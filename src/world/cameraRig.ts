@@ -21,6 +21,8 @@ export interface CamInput {
   /** висота води під точкою (камера не пірнає) */
   waterAt: (x: number, z: number) => number;
   t: number;
+  /** заставка: кут, звідки видно відкрите море (не крізь причал) */
+  orbitYaw?: number;
 }
 
 const FOV_FP = 70;
@@ -71,9 +73,9 @@ export class CameraRig {
       fov = FOV_CHASE;
       let yaw: number, elev: number, dist: number, lift: number;
       if (this.mode === 'orbit') {
-        yaw = c.t * 0.035 + 2.2;
-        elev = 0.2 + Math.sin(c.t * 0.05) * 0.06;
-        dist = 24;
+        yaw = (c.orbitYaw ?? 0) + Math.sin(c.t * 0.045) * 0.75;
+        elev = 0.16 + Math.sin(c.t * 0.06) * 0.05;
+        dist = 21;
         lift = 3.2;
       } else {
         yaw = c.yaw;

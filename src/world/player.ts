@@ -122,7 +122,7 @@ export class Player {
       if (this.wheeling) {
         // керування човном
         boat.throttle = damp(boat.throttle, inF, 2.2, dt);
-        // рильє: знак перевернутий — зростання heading крутить човен ЛІВОРУЧ
+        // кермо: знак перевернутий — зростання heading крутить човен ЛІВОРУЧ
         // (нос (sin h, cos h) рухається проти годинникової), а D = «вправо».
         // Тому D → rudder −1 → поворот на право, як у справжнього штурвала.
         boat.rudder = damp(boat.rudder, -inL, 3.0, dt);
@@ -398,7 +398,7 @@ export class Player {
 
   private stationLabel(id: string, boat: Boat): string {
     switch (id) {
-      case 'wheel': return this.wheeling ? 'Вийти зі штурвала' : 'Стати за штурвал (газ W/S, рильє A/D)';
+      case 'wheel': return this.wheeling ? 'Вийти зі штурвала' : 'Стати за штурвал (газ W/S, кермо A/D)';
       case 'sails': return boat.sails.mode === 0 ? 'Фал на щоглі — підняти паруси' : boat.sails.mode === 2 ? 'Риф-шкентель — взяти риф' : 'Фал — спустити паруси';
       case 'rod': return 'Вудка — закинути / зняти';
       case 'engine': return boat.engineOn ? 'Ремонт двигуна' : 'Запустити двигун!';

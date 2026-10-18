@@ -62,7 +62,8 @@ export class Dialogs {
   /** кооп-гість: покупки для спільного човна (паливо/ремонт/апгрейд) — капітану */
   onBoatPurchase: ((p: { fuel?: number; repair?: boolean; upgrade?: string }) => void) | null = null;
 
-  private show(html: string, escAllowed: boolean) {
+  private show(html: string, escAllowed: boolean, cls = '') {
+    this.overlay.className = 'overlay' + (cls ? ' ' + cls : '');
     this.panel.innerHTML = html;
     this.overlay.classList.add('show');
     this.open = true;
@@ -75,6 +76,7 @@ export class Dialogs {
     // (інтро) phase залишався б 'dialog' і світ би застигав.
     if (!this.open) return; // захист від подвійного закриття в одному кадрі
     this.overlay.classList.remove('show');
+    document.body.classList.remove('intro-mode');
     this.open = false;
     this.closeFn?.();
   }
@@ -88,27 +90,28 @@ export class Dialogs {
   intro(hasSave: boolean, onNew: () => void, onContinue: () => void, coop?: CoopLobby) {
     this.escAllowed = false;
     this.show(`
-      <h1 class="intro-title">ШТОРМОВИЙ РИБАЛ</h1>
-      <div class="intro-sub">Storm Fishers · pлавне море, жирні хвилі</div>
-      <p class="sub">
-        Ти — капітан рибальського човна «Шторм». Ходь по палубі, керування барраком,
-        ловля риби, рутини, погода і шторми. Продай улов у порту — прокачай човен — вийди далі в море.
-      </p>
-      <div class="intro-keys">
-        <kbd>WASD</kbd><span>рух / у штурвалі — газ і рильє</span>
-        <kbd>Миша</kbd><span>погляд</span>
-        <kbd>Shift</kbd><span>біг</span>
-        <kbd>E</kbd><span>дія: станції, магазин, залізти</span>
-        <kbd>Space</kbd><span>боротьба за рибу (тяга) / сплестись у воді</span>
-        <kbd>M</kbd><span>карта (штурвальна)</span>
-        <kbd>Esc</kbd><span>меню</span>
+      <h1 class="intro-title">Штормовий<span>Рибал</span></h1>
+      <div class="intro-sub">Storm Fishers · північне море</div>
+      <p class="intro-lead">Своя яхта, тихий порт і відкрите море. Лови рибу, лови вітер у паруси, повертайся додому до заходу — або встигни до шторму.</p>
+      <div class="intro-menu">
+        ${hasSave ? '<button class="btn primary" data-act="continue">Продовжити</button>' : ''}
+        <button class="btn ${hasSave ? '' : 'primary'}" data-act="new">${hasSave ? 'Нова гра' : 'Вийти в море'}</button>
       </div>
-      <div class="btn-row">
-        ${hasSave ? '<button class="btn" data-act="continue">Продовжити</button>' : ''}
-        <button class="btn primary" data-act="new">Нова гра</button>
-      </div>
+      <details class="intro-more">
+        <summary>Керування</summary>
+        <div class="intro-keys">
+          <kbd>WASD</kbd><span>ходити · за штурвалом — газ і кермо</span>
+          <kbd>Миша</kbd><span>роззирнутись</span>
+          <kbd>E</kbd><span>дія: штурвал, фали біля щогли, вудка, магазин</span>
+          <kbd>V</kbd><span>вид за штурвалом: з-за корми / від першої особи</span>
+          <kbd>Space</kbd><span>тягнути рибу · у воді — спливти</span>
+          <kbd>M</kbd><span>карта</span>
+          <kbd>H</kbd><span>сховати інтерфейс (для фото)</span>
+          <kbd>Esc</kbd><span>меню</span>
+        </div>
+      </details>
       ${coop ? `
-      <h2>👥 Грати з друзями</h2>
+      <h2>Грати з друзями</h2>
       <div class="coop-lobby">
         <label class="coop-field"><span>Нік</span>
           <input id="coop-nick" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Твоє ім'я" value="${esc(coop.nick)}"></label>
@@ -118,9 +121,10 @@ export class Dialogs {
           <input id="coop-code" maxlength="4" autocomplete="off" spellcheck="false" placeholder="КОД" value="${esc(coop.code)}">
           <button class="btn" data-act="join">Приєднатися</button>
         </div>
-        <div class="coop-msg" id="coop-msg">Капітан (хто створив кімнату) веде човен і світ зі свого сейву. Друзі відкривають ту саму адресу гри й вводять код — одна яхта на всіх, у кожного свій гаманець і улов.</div>
+        <div class="coop-msg" id="coop-msg">Одна яхта на всіх: хто створив кімнату — капітан, друзі вводять код. Гаманець і улов у кожного свій.</div>
       </div>` : ''}
-    `, false);
+    `, false, 'intro');
+    document.body.classList.add('intro-mode');
     if (coop) {
       const nickEl = this.panel.querySelector('#coop-nick') as HTMLInputElement;
       const codeEl = this.panel.querySelector('#coop-code') as HTMLInputElement;
@@ -187,7 +191,7 @@ export class Dialogs {
   pause(opts: { onResume: () => void; onReset: () => void; sound: boolean; onToggleSound: () => void; playTime: number; coop?: CoopPause }) {
     this.escAllowed = false;
     this.show(`
-      <h1 style="font-size:26px">ПАУЗА</h1>
+      <h1>Пауза</h1>
       <p class="sub">${opts.coop ? 'Світ живе далі — екіпаж у морі.' : 'Час зупинений. Море чекає.'}</p>
       <div class="btn-row">
         <button class="btn primary" data-act="resume">Продовжити</button>
@@ -195,17 +199,19 @@ export class Dialogs {
         ${opts.coop ? '' : '<button class="btn danger" data-act="reset">Скинути гру</button>'}
       </div>
       ${opts.coop ? `
-      <h2>👥 Кімната <span class="coop-code">${esc(opts.coop.room)}</span></h2>
+      <h2>Кімната <span class="coop-code">${esc(opts.coop.room)}</span></h2>
       <p class="sub">${opts.coop.host ? 'Ти — капітан. Друзі: відкрити гру за адресою нижче й ввести код (або просто перейти за посиланням).' : 'Ти в екіпажі. Човном і світом керує капітан.'}</p>
       <div class="coop-link"><input readonly value="${esc(opts.coop.link)}"><button class="btn" data-act="copy">Копіювати</button></div>
       <div class="coop-players">${opts.coop.players.map((p) => `<span class="coop-chip" style="--c:${p.color}">${esc(p.nick)}${p.host ? ' ⚓' : ''}${p.me ? ' (ти)' : ''}</span>`).join('')}</div>
       <div class="btn-row"><button class="btn danger" data-act="leave">${opts.coop.host ? 'Закрити кімнату' : 'Покинути кімнату'}</button></div>` : ''}
       <h2>Керування</h2>
       <div class="intro-keys">
-        <kbd>WASD</kbd><span>рух · у штурвалі: W/S газ, A/D рильє</span>
-        <kbd>E</kbd><span>станції / магазин / залізти</span>
-        <kbd>Space</kbd><span>тяга лінії · у воді — сплестись</span>
-        <kbd>M</kbd><span>карта (штурвальна)</span>
+        <kbd>WASD</kbd><span>ходити · за штурвалом: W/S газ, A/D кермо</span>
+        <kbd>E</kbd><span>дія: штурвал, фали, вудка, магазин</span>
+        <kbd>V</kbd><span>вид за штурвалом: з-за корми / від першої особи</span>
+        <kbd>Space</kbd><span>тягнути рибу · у воді — спливти</span>
+        <kbd>M</kbd><span>карта</span>
+        <kbd>H</kbd><span>сховати інтерфейс</span>
         ${opts.coop ? '<kbd>Enter</kbd><span>чат з екіпажем</span>' : ''}
       </div>
     `, false);

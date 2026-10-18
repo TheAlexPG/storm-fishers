@@ -322,6 +322,7 @@ class Game {
     this.lastWeather = this.weather.state();
     this.phase = 'play';
     this.requestLock();
+    this.hud.flashHints();
     const cap = this.coop.roster().find((p) => p.host)?.nick ?? 'капітан';
     this.hud.toast(`👥 Ти на борту «Шторму» в екіпажі ${cap}. Гроші й улов — твої, човен — спільний.`, 'good', 7000);
     this.hud.toast('Enter — чат з екіпажем', 'warn', 6000);
@@ -457,6 +458,7 @@ class Game {
     this.lastWeather = this.weather.state();
     this.phase = 'play';
     this.requestLock();
+    this.hud.flashHints();
     this.hud.toast('Вітаємо на борту «Шторму»! Почни з порту: продавай, прокачуй, лови.', 'good', 6000);
     this.hud.toast('Порада: пальне дороге — у вітер іди під парусами (підніми їх фалом біля щогли). Двигун — для штилю й причалу.', 'warn', 9000);
   }
@@ -488,6 +490,7 @@ class Game {
     this.lastWeather = this.weather.state();
     this.phase = 'play';
     this.requestLock();
+    this.hud.flashHints();
     this.hud.toast('Завантажено. Знову в море!', 'good');
   }
 
@@ -643,6 +646,8 @@ class Game {
       }
       if (!this.player.wheeling) this.hud.toast(this.chasePref ? 'Вид з-за корми — коли стоїш за штурвалом' : 'Вид від першої особи', 'warn', 2200);
     }
+    // H — сховати / показати інтерфейс (фото, кіно)
+    if (input.pressed('KeyH') && this.phase === 'play' && !this.dialogs.isOpen) this.hud.setHidden(!this.hud.hidden);
     const wheelSteps = input.consumeWheel();
     if (wheelSteps && this.rig.mode === 'chase') this.rig.zoom(wheelSteps);
     this.updateCamMode(locked);
@@ -713,7 +718,7 @@ class Game {
     if (locked && this.phase === 'play') {
       const crewHelm = this.coop.isClient && this.player.wheeling;
       if (crewHelm) {
-        // свій газ/рильє (знімок капітана ще не встиг їх побачити)
+        // свій газ/кермо (знімок капітана ще не встиг їх побачити)
         this.boat.throttle = this.coop.myHelm[0];
         this.boat.rudder = this.coop.myHelm[1];
       }
@@ -848,7 +853,7 @@ class Game {
         this.coop.myHelm = [this.boat.throttle, this.boat.rudder];
       }
       p.wheeling = !p.wheeling;
-      if (p.wheeling) this.hud.toast('Штурвал: W/S — газ, A/D — рильє, E — вийти. Прибори — на тумбі перед колесом.', 'warn', 3500);
+      if (p.wheeling) this.hud.toast('Штурвал: W/S — газ, A/D — кермо, E — вийти. Прибори — на тумбі перед колесом.', 'warn', 3500);
       return;
     }
     if (id === 'st:rod') {
@@ -1007,6 +1012,7 @@ class Game {
       boatPos: this.boat.pos,
       waterAt: (x, z) => this.ocean.heightAt(x, z, t),
       t,
+      orbitYaw: this.introYaw(),
     });
     // свій рибалка за штурвалом — видно лише збоку
     this.updateSelfAvatar(chase);
@@ -1042,6 +1048,7 @@ class Game {
       };
     }
     this.hud.setRoster(this.coop.active ? this.coop.roster() : []);
+    this.hud.setNight(time.daylight < 0.3);
     this.hud.update(
       g,
       time,
@@ -1060,6 +1067,17 @@ class Game {
     );
 
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /** заставка: камера з боку моря — від причалу через яхту, трохи в бік носа */
+  private introYaw(): number {
+    const d = this.port.platforms[0];
+    const cx = (d.x0 + d.x1) / 2, cz = (d.z0 + d.z1) / 2;
+    const bx = this.boat.pos.x, bz = this.boat.pos.z;
+    // найближча точка причалу до човна
+    const px = clamp(bx, d.x0, d.x1), pz = clamp(bz, d.z0, d.z1);
+    const ax = bx - px || bx - cx, az = bz - pz || bz - cz;
+    return Math.atan2(ax, az);
   }
 
   /** який вигляд зараз: заставка — обліт, штурвал — з-за корми (якщо обрано) */

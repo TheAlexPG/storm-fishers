@@ -232,6 +232,13 @@ void main() {
   float spec2 = pow(max(dot(N, H), 0.0), 36.0) * uSunStrength * 0.25;
   col += vec3(1.0, 0.9, 0.7) * spec2;
 
+  // місячна доріжка (місяць — навпроти сонця, як moonLight у main.ts)
+  vec3 Lm = normalize(vec3(-L.x, max(-L.y, 0.2), -L.z));
+  float moonI = clamp(1.0 - uSunStrength * 3.0, 0.0, 1.0);
+  float mspec = pow(max(dot(N, normalize(Lm + V)), 0.0), 140.0);
+  col += vec3(0.75, 0.85, 1.0) * mspec * moonI * 0.9;
+  col += vec3(0.5, 0.6, 0.85) * pow(max(dot(N, normalize(Lm + V)), 0.0), 20.0) * moonI * 0.06;
+
   // Підводне світіння (subsurface) — коли дивимось назустріч сонцю
   float sss = pow(max(dot(V, -L), 0.0), 3.0) * smoothstep(-1.0, 1.5, h);
   col += uShallowColor * sss * 0.5 * uSunStrength;
