@@ -215,6 +215,8 @@ function dialTexture(kind: 'rpm' | 'fuel' | 'speed' | 'compass'): THREE.CanvasTe
 // ── корпус ──
 
 export { hullXAt };
+export const FLAG_NU = 14;
+export const FLAG_NV = 7;
 
 /**
  * Лофт корпусу: 56 секцій × 33 точки (лівий борт → кіль → правий борт).
@@ -817,15 +819,29 @@ export class YachtBuilder {
     this.cyl(g, 0.05, 0.05, 0.12, -0.62, DECK_Y + 0.07, -4.05, this.mat(0x4a6b8a, 0.5, 0.4));
     const pumpH = this.rod(g, new THREE.Vector3(-0.62, DECK_Y + 0.12, -4.05), new THREE.Vector3(-0.45, DECK_Y + 0.45, -4.0), 0.018, steel);
     pumpH.castShadow = false;
-    // кормовий прапор на флагштоку
-    this.rod(g, new THREE.Vector3(0.95, sheerY(-4.5), -4.55), new THREE.Vector3(0.95, sheerY(-4.5) + 1.4, -4.75), 0.015, this.mat(TEAK, 0.6));
-    const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.32).translate(0, 0, -0.25).rotateY(Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x1f5fbf, side: THREE.DoubleSide, roughness: 0.9 }));
-    // жовта половина
-    const yellow = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.16).translate(0, -0.08, -0.25).rotateY(Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xf2c218, side: THREE.DoubleSide, roughness: 0.9 }));
-    yellow.position.x = 0.002;
-    flag.add(yellow);
-    (flag.geometry as THREE.BufferGeometry).translate(0, 0.08, 0);
-    flag.position.set(0.95, sheerY(-4.5) + 1.22, -4.73);
+    // кормовий прапор на флагштоку: вертикальне древко з наконечником, полотнище —
+    // сітка з кольорами вершин (синій верх, жовтий низ); форму щокадру задає
+    // Boat.updateFlag за вимпельним вітром
+    const fx = 0.95, fz = -4.62, fy0 = sheerY(-4.5);
+    const staff = this.rod(g, new THREE.Vector3(fx, fy0 - 0.05, fz), new THREE.Vector3(fx, fy0 + 1.45, fz), 0.022, this.mat(TEAK, 0.6));
+    staff.castShadow = true;
+    this.cyl(g, 0.035, 0.035, 0.05, fx, fy0 + 1.47, fz, this.mat(0xc9a227, 0.35, 0.8), 10);
+    this.cyl(g, 0.028, 0.032, 0.08, fx, fy0 + 0.02, fz, this.mat(STEEL, 0.25, 0.9), 10);
+    const geo = new THREE.PlaneGeometry(1, 1, FLAG_NU, FLAG_NV);
+    // дві смуги текстурою — межа різка (кольори вершин розмазували б її на рядок сітки)
+    const tex = canvasTex(4, 2, (ctx) => {
+      ctx.fillStyle = '#1f5fbf';
+      ctx.fillRect(0, 0, 4, 1);
+      ctx.fillStyle = '#f2c218';
+      ctx.fillRect(0, 1, 4, 1);
+    });
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestFilter;
+    tex.generateMipmaps = false;
+    const flag = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: tex, side: THREE.DoubleSide, roughness: 0.85 }));
+    flag.position.set(fx, fy0 + 1.4, fz); // верхній кут полотнища — біля наконечника
+    flag.castShadow = true;
+    flag.frustumCulled = false;
     g.add(flag);
     this.refs.flag = flag;
   }

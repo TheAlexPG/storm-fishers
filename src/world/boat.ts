@@ -7,7 +7,8 @@ import type { Weather } from '../core/weather';
 import type { ParticlePool } from './particles';
 import type { AudioEngine } from '../core/audio';
 import type { Platform } from './port';
-import { YachtBuilder } from './yachtModel';
+import { YachtBuilder, FLAG_NU, FLAG_NV } from './yachtModel';
+import { trueWindSpeed } from './sails';
 import { SailRig } from './sails';
 import type { HelmDisplay } from './helmDisplay';
 import { ZONE_NAMES, zoneFromDist } from '../game/fish';
@@ -569,7 +570,7 @@ export class Boat {
 
     // приборна панель + прапор на мачті
     this.updatePanel(dt, game, weather, this.night);
-    if (this.flag) this.flag.rotation.y = Math.sin(t * 3.1) * 0.25;
+    this.updateFlag(dt, t, weather);
 
     // звук
     audio.setEngine(Math.abs(this.throttle), this.engineOn, this.engineLoad);
@@ -601,7 +602,7 @@ export class Boat {
     }
     this.engineLoad = clamp(speed / 10, 0, 1) * Math.abs(this.throttle);
     this.updatePanel(dt, game, weather, this.night);
-    if (this.flag) this.flag.rotation.y = Math.sin(t * 3.1) * 0.25;
+    this.updateFlag(dt, t, weather);
     audio.setEngine(Math.abs(this.throttle), this.engineOn, this.engineLoad);
   }
 
@@ -685,6 +686,56 @@ export class Boat {
         night,
       });
     }
+  }
+
+  // ── прапор: полотнище за вимпельним вітром ──
+  private flagYaw = Math.PI; // куди «летить» прапор (у локалі човна, 0 = до носа)
+  private flagWind = 0;      // згладжена сила вимпельного вітру, м/с
+
+  private updateFlag(dt: number, t: number, weather: Weather) {
+    const flag = this.flag;
+    if (!flag) return;
+    // вимпельний вітер у локалі човна (+Z — нос, +X — лівий борт)
+    const tws = trueWindSpeed(weather.wind);
+    const awx = Math.sin(weather.windDir) * tws - this.vel.x;
+    const awz = -Math.cos(weather.windDir) * tws - this.vel.z;
+    const ch = Math.cos(this.heading), sh = Math.sin(this.heading);
+    const lx = awx * ch - awz * sh;
+    const lz = awx * sh + awz * ch;
+    const aws = Math.hypot(lx, lz);
+    const k = 1 - Math.exp(-dt * 2.5);
+    if (aws > 0.2) this.flagYaw += wrapAngle(Math.atan2(lx, lz) - this.flagYaw) * k;
+    this.flagWind += (aws - this.flagWind) * k;
+    const w = this.flagWind;
+    // слабкий вітер — полотнище обвисає вздовж древка; сильний — летить рівно й тріпоче
+    const droop = (1 - clamp((w - 0.8) / 5, 0, 1)) * 1.25;
+    const amp = 0.035 + 0.05 * clamp(w / 6, 0, 1) - 0.03 * clamp((w - 10) / 8, 0, 1);
+    const om = 5 + w * 0.9;
+    const L = 0.62, H = 0.41;
+    const dx = Math.sin(this.flagYaw), dz = Math.cos(this.flagYaw);
+    const pos = (flag.geometry as THREE.BufferGeometry).attributes.position as THREE.BufferAttribute;
+    let idx = 0;
+    for (let j = 0; j <= FLAG_NV; j++) {
+      const v = 1 - j / FLAG_NV; // 1 — верхній край (синій), 0 — нижній
+      for (let i = 0; i <= FLAG_NU; i++) {
+        const u = i / FLAG_NU;   // 0 — біля древка
+        // кут провисання росте до вільного краю
+        const a = droop * (0.55 + 0.45 * u);
+        const ca = Math.cos(a), sa = Math.sin(a);
+        // хорда: горизонтально за вітром → донизу при провисанні
+        const cx = dx * ca, cy = -sa, cz = dz * ca;
+        // «вгору» полотнища — перпендикуляр до хорди у вертикальній площині
+        const ux = -dx * sa, uy = ca, uz = -dz * sa;
+        const wave = Math.sin(u * 7.5 - t * om + v * 0.6) * amp * (0.25 + u) + Math.sin(u * 13 - t * om * 1.7) * amp * 0.25 * u;
+        const y = (v - 1) * H; // верхній край — біля наконечника
+        pos.setXYZ(idx++,
+          cx * u * L + ux * y + dz * wave,
+          cy * u * L + uy * y,
+          cz * u * L + uz * y - dx * wave);
+      }
+    }
+    pos.needsUpdate = true;
+    (flag.geometry as THREE.BufferGeometry).computeVertexNormals();
   }
 
   /** осушення палуби помпою */
