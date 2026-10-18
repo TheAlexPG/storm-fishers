@@ -1548,7 +1548,7 @@ class Game {
     const color = this.coop.active ? this.coop.myColor : 0xf2c12e;
     if (!this.selfAvatar || this.selfColor !== color) {
       this.selfAvatar?.dispose(this.scene);
-      this.selfAvatar = new Avatar(this.scene, '', color);
+      this.selfAvatar = new Avatar(this.scene, '', color, this.coop.active ? this.coop.myId : 1);
       this.selfAvatar.showLabel(false);
       this.selfColor = color;
     }

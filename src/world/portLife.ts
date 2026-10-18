@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mulberry32 } from '../core/math';
 import { GROUND_Y, terrainHeight } from './portTerrain';
+import { buildCharacter, HAIRS, SKINS, type CharacterLook } from './character';
 
 // ─────────────────────────────────────────────────────────────
 // Життя порту: трава (instanced, гойдається на вітрі), польові квіти,
@@ -101,6 +102,9 @@ interface Person {
   armR: THREE.Object3D;
   head: THREE.Object3D;
   torso: THREE.Object3D;
+  body: THREE.Object3D;
+  kneeL: THREE.Object3D;
+  kneeR: THREE.Object3D;
   pose: Pose;
   phase: number;
   path?: { ax: number; az: number; bx: number; bz: number; speed: number; t: number; dir: 1 | -1 };
@@ -231,73 +235,12 @@ export class PortLife {
 
   // ───────────── мешканці ─────────────
 
-  private person(opts: { jacket: number; pants: number; hat: 'sou' | 'cap' | 'beanie' | 'none'; hatColor?: number; skin?: number; apron?: number; scale?: number }): Person {
-    const std = (c: number, r = 0.85) => new THREE.MeshStandardMaterial({ color: c, roughness: r });
-    const root = new THREE.Group();
-    const body = new THREE.Group();
-    body.scale.setScalar(opts.scale ?? 1);
-    root.add(body);
-    const skin = std(opts.skin ?? 0xe0b48f, 0.7);
-    const jacket = std(opts.jacket);
-    const pants = std(opts.pants);
-    const boots = std(0x2a2522, 0.6);
-    const add = (parent: THREE.Object3D, geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) => {
-      const mm = new THREE.Mesh(geo, mat);
-      mm.position.set(x, y, z);
-      mm.castShadow = true;
-      parent.add(mm);
-      return mm;
-    };
-    // ноги (півот у стегні)
-    const mkLeg = (sx: number) => {
-      const leg = new THREE.Group();
-      leg.position.set(sx * 0.11, 0.9, 0);
-      body.add(leg);
-      add(leg, new THREE.CapsuleGeometry(0.075, 0.62, 3, 8), pants, 0, -0.42, 0);
-      add(leg, new THREE.BoxGeometry(0.13, 0.1, 0.26), boots, 0, -0.85, 0.04);
-      return leg;
-    };
-    const legL = mkLeg(-1);
-    const legR = mkLeg(1);
-    // тулуб
-    const torso = new THREE.Group();
-    torso.position.y = 0.9;
-    body.add(torso);
-    add(torso, new THREE.CapsuleGeometry(0.19, 0.4, 4, 10), jacket, 0, 0.32, 0).scale.set(1, 1, 0.75);
-    if (opts.apron != null) add(torso, new THREE.BoxGeometry(0.3, 0.55, 0.02), std(opts.apron), 0, 0.15, 0.15);
-    // руки (півот у плечі)
-    const mkArm = (sx: number) => {
-      const arm = new THREE.Group();
-      arm.position.set(sx * 0.25, 0.66, 0);
-      torso.add(arm);
-      add(arm, new THREE.CapsuleGeometry(0.06, 0.5, 3, 8), jacket, 0, -0.3, 0);
-      add(arm, new THREE.SphereGeometry(0.06, 8, 6), skin, 0, -0.62, 0);
-      return arm;
-    };
-    const armL = mkArm(-1);
-    const armR = mkArm(1);
-    // голова
-    const head = new THREE.Group();
-    head.position.y = 0.86;
-    torso.add(head);
-    add(head, new THREE.SphereGeometry(0.13, 12, 10), skin, 0, 0.1, 0);
-    add(head, new THREE.SphereGeometry(0.018, 6, 4), std(0x1a1a1a, 0.4), -0.045, 0.13, 0.12);
-    add(head, new THREE.SphereGeometry(0.018, 6, 4), std(0x1a1a1a, 0.4), 0.045, 0.13, 0.12);
-    const hc = opts.hatColor ?? 0x333333;
-    if (opts.hat === 'sou') {
-      // рибальська зюйдвестка
-      add(head, new THREE.SphereGeometry(0.15, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), std(hc, 0.5), 0, 0.14, 0);
-      add(head, new THREE.CylinderGeometry(0.24, 0.26, 0.02, 14), std(hc, 0.5), 0, 0.14, -0.03);
-    } else if (opts.hat === 'cap') {
-      add(head, new THREE.CylinderGeometry(0.14, 0.14, 0.08, 12), std(hc), 0, 0.22, 0);
-      add(head, new THREE.BoxGeometry(0.2, 0.02, 0.12), std(hc), 0, 0.19, 0.12);
-    } else if (opts.hat === 'beanie') {
-      add(head, new THREE.SphereGeometry(0.14, 12, 8, 0, Math.PI * 2, 0, Math.PI / 1.9), std(hc, 0.95), 0, 0.13, 0);
-    } else {
-      add(head, new THREE.SphereGeometry(0.135, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2.2), std(0x4a3524, 0.9), 0, 0.12, -0.01);
-    }
-    this.group.add(root);
-    return { root, legL, legR, armL, armR, head, torso, pose: 'stand', phase: this.rng() * 10 };
+  private person(opts: CharacterLook & { scale?: number }): Person {
+    const rig = buildCharacter(opts);
+    rig.body.scale.setScalar(opts.scale ?? 1);
+    this.group.add(rig.root);
+    const { root, legL, legR, kneeL, kneeR, armL, armR, head, torso, body } = rig;
+    return { root, body, legL, legR, kneeL, kneeR, armL, armR, head, torso, pose: 'stand', phase: this.rng() * 10 };
   }
 
   private place(p: Person, x: number, y: number, z: number, ry: number, pose: Pose, solid = true) {
@@ -305,17 +248,33 @@ export class PortLife {
     p.root.rotation.y = ry;
     p.pose = pose;
     if (pose === 'sit') {
-      p.legL.rotation.x = p.legR.rotation.x = -Math.PI / 2;
-      p.root.position.y = y - 0.45;
+      // стегна вперед, гомілки звисають до землі
+      p.legL.rotation.set(-Math.PI / 2 + 0.2, -0.1, 0);
+      p.legR.rotation.set(-Math.PI / 2 + 0.2, 0.1, 0);
+      p.kneeL.rotation.x = p.kneeR.rotation.x = Math.PI / 2 - 0.2;
+      p.root.position.y = y - 0.33;
       p.armL.rotation.x = p.armR.rotation.x = -0.6;
     }
     if (pose === 'fish') {
       p.armL.rotation.x = p.armR.rotation.x = -0.9;
       // вудка в руках
-      const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.015, 2.6, 5), new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.4 }));
-      rod.position.set(0, -0.58, 1.1);
-      rod.rotation.x = Math.PI / 2 - 0.5;
+      // вудка з кисті вперед-угору над водою (~35°), волосінь до поплавка
+      const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.018, 2.6, 5), new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.4 }));
+      rod.rotation.x = 1.86;
+      rod.position.set(0, -0.58 - 0.288 * 1.1, 0.956 * 1.1);
+      rod.castShadow = true;
       p.armR.add(rod);
+      const tip = new THREE.Object3D();
+      tip.position.y = 1.3;
+      rod.add(tip);
+      p.root.updateMatrixWorld(true);
+      const tp = tip.getWorldPosition(new THREE.Vector3());
+      const wl = 0.05;
+      const lg = new THREE.BufferGeometry().setFromPoints([tp, new THREE.Vector3(tp.x, wl + 0.08, tp.z)]);
+      this.group.add(new THREE.Line(lg, new THREE.LineBasicMaterial({ color: 0xdde8ee, transparent: true, opacity: 0.6 })));
+      const bob = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), new THREE.MeshStandardMaterial({ color: 0xe0522f, roughness: 0.4 }));
+      bob.position.set(tp.x, wl, tp.z);
+      this.group.add(bob);
     }
     if (solid) this.host.solids.push({ x, z, r: 0.35 });
     this.people.push(p);
@@ -323,17 +282,17 @@ export class PortLife {
 
   private buildPeople() {
     const Y = G;
-    // продавчиня біля магазину
-    this.place(this.person({ jacket: 0x2f5c8a, pants: 0x3a3a44, hat: 'none', apron: 0xf2efe6 }), -5.6, Y, -47.4, 0.4, 'stand');
-    // заправник
-    this.place(this.person({ jacket: 0xc23b2f, pants: 0x2b2f38, hat: 'cap', hatColor: 0xc23b2f }), 11.4, Y, -42.3, -0.6, 'stand');
-    // рибалка на краю причалу (спиною до порту)
-    this.place(this.person({ jacket: 0xf2c12e, pants: 0x2f3b30, hat: 'sou', hatColor: 0xf2c12e }), 20.5, 1.1, -18.9, 0, 'fish');
-    // дід на лавці біля хати
-    this.place(this.person({ jacket: 0x5b4636, pants: 0x3a3632, hat: 'cap', hatColor: 0x3d3d3d, skin: 0xd9a988 }), -4.3, Y, -58.85, Math.PI, 'sit', false);
+    // продавчиня біля магазину: пучок, окуляри, фартух поверх светра
+    this.place(this.person({ jacket: 0x2f5c8a, jacketKind: 'knit', pants: 0x3a3a44, hat: 'none', hair: 'bun', hairColor: HAIRS[2], skin: SKINS[0], glasses: true, apron: 0xf2efe6, brow: 0.2, boots: 0x6b4a33 }), -5.6, Y, -47.4, 0.4, 'stand');
+    // заправник: кепка, вуса, комбінезон, рукавиці
+    this.place(this.person({ jacket: 0xc23b2f, jacketKind: 'knit', pants: 0x2b2f38, bib: 0x2c4a6e, hat: 'cap', hatColor: 0xc23b2f, beard: 'mustache', hairColor: HAIRS[0], skin: SKINS[3], gloves: 0xe8dcc0, belly: true, width: 1.1 }), 11.4, Y, -42.3, -0.6, 'stand');
+    // рибалка на краю причалу (спиною до порту): зюйдвестка, борода, рятувальний жилет
+    this.place(this.person({ jacket: 0xf2c12e, pants: 0x2f3b30, bib: 0x3d5a40, hat: 'sou', hatColor: 0xf2c12e, beard: 'full', hairColor: HAIRS[3], skin: SKINS[1], boots: 0x2f4a33, vest: true }), 20.5, 1.1, -18.9, 0, 'fish');
+    // дід на лавці біля хати: кашкет, сива борода, окуляри, шарф, бушлат
+    this.place(this.person({ jacket: 0x5b4636, jacketKind: 'coat', pants: 0x3a3632, hat: 'cap', hatColor: 0x3d3d3d, skin: 0xd9a988, hair: 'bald', hairColor: HAIRS[6], beard: 'full', glasses: true, scarf: 0xb8362c, brow: 0.25, belly: true }), -4.3, Y, -58.98, 0, 'sit', false);
     // торговці на рибному ринку
-    this.place(this.person({ jacket: 0x456b4a, pants: 0x2b2b2b, hat: 'beanie', hatColor: 0x7a2f2f, apron: 0xd7d3c8 }), 32.5, Y, -47.6, 0, 'stand');
-    this.place(this.person({ jacket: 0x8a5a3a, pants: 0x333a44, hat: 'beanie', hatColor: 0x2a3f66 }), 36.3, Y, -46.2, 2.6, 'stand');
+    this.place(this.person({ jacket: 0x456b4a, jacketKind: 'knit', pants: 0x2b2b2b, bib: 0x3b3f44, hat: 'beanie', hatColor: 0x7a2f2f, hatAccent: 0xf2ead8, apron: 0xd7d3c8, beard: 'goatee', hairColor: HAIRS[0], skin: SKINS[4], gloves: 0x3f86c9, boots: 0xf2c12e, width: 1.12 }), 32.5, Y, -47.6, 0, 'stand');
+    this.place(this.person({ jacket: 0x8a5a3a, pants: 0x333a44, hat: 'beanie', hatColor: 0x2a3f66, hatAccent: 0xe0b44a, hair: 'long', hairColor: HAIRS[7], skin: SKINS[1], scarf: 0xe0b44a, brow: 0.15, stripes: false }), 36.3, Y, -46.2, 2.6, 'stand');
     // перехожі
     const walker = (ax: number, az: number, bx: number, bz: number, opts: Parameters<PortLife['person']>[0]) => {
       const p = this.person(opts);
@@ -341,10 +300,11 @@ export class PortLife {
       p.path = { ax, az, bx, bz, speed: 1.1 + this.rng() * 0.3, t: this.rng(), dir: 1 };
       this.people.push(p);
     };
-    walker(-52, -43.6, -28, -43.6, { jacket: 0x6d7f8c, pants: 0x2d2d33, hat: 'beanie', hatColor: 0x2b4b6f });
-    walker(-40, -70.3, 35, -70.3, { jacket: 0xa8423a, pants: 0x3c3f46, hat: 'none' });
-    walker(30, -43.4, 54, -43.4, { jacket: 0x3d5a40, pants: 0x2a2a2a, hat: 'sou', hatColor: 0xf2c12e });
-    walker(25.6, -105, 25.6, -74, { jacket: 0x9a8a72, pants: 0x3a3632, hat: 'none', scale: 0.72 });
+    walker(-52, -43.6, -28, -43.6, { jacket: 0x6d7f8c, jacketKind: 'coat', pants: 0x2d2d33, hat: 'beanie', hatColor: 0x2b4b6f, hatAccent: 0xf2ead8, beard: 'full', hairColor: HAIRS[5], skin: SKINS[2], brow: -0.1 });
+    walker(-40, -70.3, 35, -70.3, { jacket: 0xa8423a, jacketKind: 'knit', pants: 0x3c3f46, hat: 'bucket', hatColor: 0xd9c9a0, hatAccent: 0x6b4a33, hair: 'long', hairColor: HAIRS[4], skin: SKINS[0], backpack: 0x4f6b8a, glasses: true });
+    walker(30, -43.4, 54, -43.4, { jacket: 0x3d5a40, pants: 0x2a2a2a, hat: 'sou', hatColor: 0xf2c12e, beard: 'mustache', hairColor: HAIRS[1], skin: SKINS[5], boots: 0xf2c12e });
+    // дитина в жовтому дощовику з червоними чобітьми
+    walker(25.6, -105, 25.6, -74, { jacket: 0xf2c12e, pants: 0x2b4b6f, hat: 'beanie', hatColor: 0xd23c6e, hatAccent: 0xffffff, hair: 'short', hairColor: HAIRS[3], skin: SKINS[1], boots: 0xb8362c, brow: 0.25, width: 0.95, scale: 0.68 });
   }
 
   // ───────────── чайки ─────────────
@@ -433,15 +393,28 @@ export class PortLife {
         const sw = Math.sin(step) * 0.55;
         p.legL.rotation.x = sw;
         p.legR.rotation.x = -sw;
-        p.armL.rotation.x = -sw * 0.7;
-        p.armR.rotation.x = sw * 0.7;
+        p.kneeL.rotation.x = 0.05 + Math.max(0, sw) * 0.75;
+        p.kneeR.rotation.x = 0.05 + Math.max(0, -sw) * 0.75;
+        p.armL.rotation.set(-sw * 0.8, 0, -0.1);
+        p.armR.rotation.set(sw * 0.8, 0, 0.1);
+        p.torso.rotation.set(0.06, sw * 0.18, 0);
+        p.head.rotation.y = -sw * 0.12;
         p.root.position.y = G + Math.abs(Math.cos(step)) * 0.04;
         // уночі гуляють лише двоє
         p.root.visible = this.night < 0.6 || p.phase > 5;
       } else if (p.pose === 'stand') {
+        // озирається, переносить вагу з ноги на ногу, зрідка жестикулює
+        const shift = Math.sin(t * 0.4 + p.phase * 1.7);
+        p.body.position.x = shift * 0.018;
+        p.body.rotation.z = shift * 0.025;
+        p.legL.rotation.z = p.legR.rotation.z = -shift * 0.025;
+        p.kneeL.rotation.x = 0.04 + Math.max(0, shift) * 0.08;
+        p.kneeR.rotation.x = 0.04 + Math.max(0, -shift) * 0.08;
         p.head.rotation.y = Math.sin(t * 0.35 + p.phase) * 0.5;
-        p.armL.rotation.z = -0.08 + br * 0.03;
-        p.armR.rotation.z = 0.08 - br * 0.03;
+        p.head.rotation.z = -shift * 0.04;
+        const gest = Math.max(0, Math.sin(t * 0.21 + p.phase * 3) - 0.75) * 4;
+        p.armL.rotation.set(-0.08, 0, -0.12 + br * 0.03);
+        p.armR.rotation.set(-0.08 - gest * 0.9, 0, 0.12 - br * 0.03 + gest * 0.25);
       } else if (p.pose === 'fish') {
         p.armR.rotation.x = -0.9 + Math.sin(t * 0.8 + p.phase) * 0.05;
         p.head.rotation.x = 0.15;
