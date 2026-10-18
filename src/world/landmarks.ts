@@ -222,7 +222,7 @@ export class Landmarks {
     this.bell.position.y = h - 0.15;
     this.bell.rotation.set(this._n.z * 0.9, 0, -this._n.x * 0.9);
     // язик дзвона відстає — б'є, коли буй різко хитнувся
-    const sway = Math.sin(t * 1.3) * 0.25 + this._n.x * 2;
+    const sway = Math.sin(t * 0.9) * 0.08 + (this._n.x + this._n.z) * 2.2;
     const prev = this.bellClapper.rotation.z;
     this.bellClapper.rotation.z += (sway - prev) * (1 - Math.exp(-3 * dt));
     const ring = Math.abs(this.bellClapper.rotation.z - prev) / Math.max(dt, 1e-3);

@@ -876,11 +876,11 @@ class Game {
     // пам'ятки: дзвоновий буй, відкриття місць
     const ring = this.landmarks.update(dt, t, this.ocean);
     this.bellCd -= dt;
-    if (ring > 0.5 && this.bellCd <= 0) {
-      this.bellCd = 1.1 + Math.random();
+    if (ring > 0.9 && this.bellCd <= 0) {
+      this.bellCd = 1.6 + Math.random() * 2;
       const bl = LANDMARKS.find((l) => l.id === 'bell')!;
       const bd = Math.hypot(this.camera.position.x - bl.x, this.camera.position.z - bl.z);
-      this.audio.bell(clamp(1 - bd / 320, 0, 1) * clamp(ring, 0.5, 1.5) * 0.8);
+      this.audio.bell(clamp(1 - bd / 320, 0, 1) * clamp(ring * 0.6, 0.5, 1.2) * 0.8);
     }
     this.checkPlaces();
 
