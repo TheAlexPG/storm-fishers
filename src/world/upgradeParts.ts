@@ -603,7 +603,7 @@ export const PART_SPECS: Record<UpgradeId, PartSpec[]> = {
         tube(g, k.mat(0x4a4f55, 0.4, 0.7), pts, 0.055, 20, 8);
         return g;
       },
-      onBoat: (k) => sheerBar(k.mat(0x4a4f55, 0.4, 0.7), -0.4, 0.02, 0.055, -HALF_LEN + 0.3, HALF_LEN - 1.0),
+      onBoat: (k) => sheerBar(k.mat(0x4a4f55, 0.4, 0.7), -0.56, 0.02, 0.05, -HALF_LEN + 0.3, HALF_LEN - 1.0),
     },
     {
       view: -1.9,
