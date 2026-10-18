@@ -87,7 +87,7 @@ function makeCloudTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-function makeGullTexture(): THREE.CanvasTexture {
+export function makeGullTexture(): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = c.height = 64;
   const g = c.getContext('2d')!;

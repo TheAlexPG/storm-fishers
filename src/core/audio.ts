@@ -261,6 +261,32 @@ export class AudioEngine {
     o.stop(t + dur + 0.05);
   }
 
+  /** дзвін буя: негармонічні обертони, довге згасання */
+  bell(vol: number) {
+    const ctx = this.ensure();
+    if (!ctx || !this.master || vol <= 0.01) return;
+    const t = ctx.currentTime;
+    const f0 = 392;
+    for (const [m, a, d] of [[1, 1, 4], [2.76, 0.5, 2.6], [5.4, 0.25, 1.6], [8.93, 0.12, 0.9], [0.5, 0.3, 5]] as const) {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = f0 * m;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.12 * a * vol, t + 0.006);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+      o.connect(g).connect(this.master);
+      o.start(t);
+      o.stop(t + d + 0.1);
+    }
+  }
+
+  /** відкрито нове місце: тепле арпеджіо */
+  discover() {
+    const notes = [587, 740, 880, 1175];
+    notes.forEach((n, i) => setTimeout(() => this.beep(n, 0.5, 'triangle', 0.12), i * 140));
+  }
+
   /** стукіт об корпус (хвиля б'є) */
   thump(power: number) {
     this.beep(70 + power * 30, 0.12, 'sine', 0.22 * power);

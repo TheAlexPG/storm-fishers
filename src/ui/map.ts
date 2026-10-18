@@ -1,5 +1,6 @@
 import { PORT_POINTS } from '../world/port';
 import { terrainHeight } from '../world/portTerrain';
+import { LANDMARKS } from '../world/landmarks';
 import type { RockObstacle } from '../world/boat';
 import type { GameState } from '../game/state';
 import type { ZoneId } from '../core/types';
@@ -196,6 +197,31 @@ export class MapView {
         c.lineTo(px + Math.cos(a) * 4, pz + Math.sin(a) * 4);
       }
       c.stroke();
+    }
+
+    // ── пам'ятки: відкриті — з назвою, решта — «?» ──
+    for (const l of LANDMARKS) {
+      const px = mx(l.x), pz = my(l.z);
+      const found = game.places.includes(l.id);
+      c.beginPath();
+      c.arc(px, pz, found ? 6 : 9, 0, Math.PI * 2);
+      c.fillStyle = found ? '#e2674a' : 'rgba(42,58,70,0.08)';
+      c.fill();
+      c.lineWidth = 1.5;
+      c.strokeStyle = found ? '#fffaf0' : 'rgba(42,58,70,0.45)';
+      if (!found) c.setLineDash([3, 3]);
+      c.stroke();
+      c.setLineDash([]);
+      c.textAlign = 'center';
+      if (found) {
+        c.font = `700 12px ${FONT_D}`;
+        c.fillStyle = INK;
+        c.fillText(l.name, px, pz - 12);
+      } else {
+        c.font = `800 12px ${FONT}`;
+        c.fillStyle = INK_SOFT;
+        c.fillText('?', px, pz + 4);
+      }
     }
 
     // ── сті (радіо-звіти) ──

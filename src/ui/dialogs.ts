@@ -106,7 +106,8 @@ export class Dialogs {
           <kbd>V</kbd><span>вид за штурвалом: з-за корми / від першої особи</span>
           <kbd>Space</kbd><span>тягнути рибу · у воді — спливти</span>
           <kbd>M</kbd><span>карта</span>
-          <kbd>H</kbd><span>сховати інтерфейс (для фото)</span>
+          <kbd>P</kbd><span>фото-режим: вільна камера</span>
+          <kbd>H</kbd><span>сховати інтерфейс</span>
           <kbd>Esc</kbd><span>меню</span>
         </div>
       </details>
@@ -188,7 +189,7 @@ export class Dialogs {
 
   // ── ПАУЗА ──
 
-  pause(opts: { onResume: () => void; onReset: () => void; sound: boolean; onToggleSound: () => void; music: boolean; onToggleMusic: () => void; playTime: number; coop?: CoopPause }) {
+  pause(opts: { onResume: () => void; onReset: () => void; sound: boolean; onToggleSound: () => void; music: boolean; onToggleMusic: () => void; playTime: number; places?: Array<{ name: string; found: boolean }>; coop?: CoopPause }) {
     this.escAllowed = false;
     this.show(`
       <h1>Пауза</h1>
@@ -205,6 +206,9 @@ export class Dialogs {
       <div class="coop-link"><input readonly value="${esc(opts.coop.link)}"><button class="btn" data-act="copy">Копіювати</button></div>
       <div class="coop-players">${opts.coop.players.map((p) => `<span class="coop-chip" style="--c:${p.color}">${esc(p.nick)}${p.host ? ' ⚓' : ''}${p.me ? ' (ти)' : ''}</span>`).join('')}</div>
       <div class="btn-row"><button class="btn danger" data-act="leave">${opts.coop.host ? 'Закрити кімнату' : 'Покинути кімнату'}</button></div>` : ''}
+      ${opts.places ? `
+      <h2>Місця · ${opts.places.filter((p) => p.found).length}/${opts.places.length}</h2>
+      <div class="places">${opts.places.map((p) => `<span class="place${p.found ? ' found' : ''}">${p.found ? esc(p.name) : '???'}</span>`).join('')}</div>` : ''}
       <h2>Керування</h2>
       <div class="intro-keys">
         <kbd>WASD</kbd><span>ходити · за штурвалом: W/S газ, A/D кермо</span>
@@ -212,6 +216,7 @@ export class Dialogs {
         <kbd>V</kbd><span>вид за штурвалом: з-за корми / від першої особи</span>
         <kbd>Space</kbd><span>тягнути рибу · у воді — спливти</span>
         <kbd>M</kbd><span>карта</span>
+        <kbd>P</kbd><span>фото-режим</span>
         <kbd>H</kbd><span>сховати інтерфейс</span>
         ${opts.coop ? '<kbd>Enter</kbd><span>чат з екіпажем</span>' : ''}
       </div>

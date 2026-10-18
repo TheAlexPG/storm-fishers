@@ -24,6 +24,7 @@ const ZONE_SUB: Record<string, string> = { shore: 'тихі води біля д
 import { Coop, type BoatAction } from './net/coop';
 import { CameraRig } from './world/cameraRig';
 import { WindLines } from './world/windLines';
+import { Landmarks, LANDMARKS } from './world/landmarks';
 import { Avatar } from './world/avatar';
 import './styles.css';
 
@@ -92,6 +93,8 @@ class Game {
   private fogRaw = new THREE.Color(0xbcd8e6);
   private rig: CameraRig;
   private windLines: WindLines;
+  private landmarks: Landmarks;
+  private bellCd = 0;
   /** «з-за корми» за штурвалом (V); запам'ятовується */
   private chasePref = true;
   private selfAvatar: Avatar | null = null;
@@ -160,6 +163,7 @@ class Game {
     this.port = new Port(this.scene);
     this.particles = new ParticlePool(this.scene, 1100);
     this.windLines = new WindLines(this.scene);
+    this.landmarks = new Landmarks(this.scene, this.port.rocks);
     this.boat = new Boat(this.scene);
     this.player = new Player(this.game);
     this.stations = new Stations(this.boat, this.game, this.audio);
@@ -560,6 +564,7 @@ class Game {
         }
       },
       playTime: this.playTime,
+      places: LANDMARKS.map((l) => ({ name: l.name, found: this.game.places.includes(l.id) })),
       coop: this.coop.active
         ? {
             room: this.coop.room,
@@ -868,6 +873,17 @@ class Game {
     if (this.lastHours < 6 && h >= 6 && h < 7) this.dawnCard();
     this.lastHours = h;
 
+    // пам'ятки: дзвоновий буй, відкриття місць
+    const ring = this.landmarks.update(dt, t, this.ocean);
+    this.bellCd -= dt;
+    if (ring > 0.5 && this.bellCd <= 0) {
+      this.bellCd = 1.1 + Math.random();
+      const bl = LANDMARKS.find((l) => l.id === 'bell')!;
+      const bd = Math.hypot(this.camera.position.x - bl.x, this.camera.position.z - bl.z);
+      this.audio.bell(clamp(1 - bd / 320, 0, 1) * clamp(ring, 0.5, 1.5) * 0.8);
+    }
+    this.checkPlaces();
+
     // цілі: тости про досягнення
     for (const k of Object.keys(g.objectives) as Array<keyof typeof g.objectives>) {
       if (g.objectives[k] && !this.prevObjectives[k]) {
@@ -891,6 +907,23 @@ class Game {
   private prevPitch = 0;
   private lastZone: string | null = null;
   private lastHours = 8;
+
+  /** підплив до пам'ятки — місце відкрито */
+  private checkPlaces() {
+    const g = this.game;
+    const p = this.player;
+    const px = p.mode === 'boat' ? this.boat.pos.x : p.head.x;
+    const pz = p.mode === 'boat' ? this.boat.pos.z : p.head.z;
+    for (const l of LANDMARKS) {
+      if (g.places.includes(l.id)) continue;
+      if (Math.hypot(px - l.x, pz - l.z) > l.r) continue;
+      g.places.push(l.id);
+      this.hud.titleCard(l.name, `відкрито · ${l.sub}`);
+      this.hud.toast(`📍 Місця: ${g.places.length}/${LANDMARKS.length}`, 'good', 3500);
+      this.audio.discover();
+      this.saveGame();
+    }
+  }
 
   private dawnCard() {
     this.hud.titleCard(`День ${this.time.dayCount}`, 'світанок');

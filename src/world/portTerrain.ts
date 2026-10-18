@@ -266,7 +266,7 @@ export function buildTrees(parent: THREE.Object3D, rng: () => number, extra: Tre
 
 // ── скелі в морі та острови ──
 
-const ROCK_TOP = new THREE.Color(0x77726a);
+export const ROCK_TOP = new THREE.Color(0x77726a);
 const ROCK_MID = new THREE.Color(0x56585a);
 const ROCK_WET = new THREE.Color(0x2c302f);
 const ALGAE = new THREE.Color(0x3f4a2e);

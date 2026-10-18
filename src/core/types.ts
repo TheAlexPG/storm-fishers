@@ -80,6 +80,8 @@ export interface SaveData {
   hold: FishItem[];
   upgrades: UpgradeLevels;
   discovered: string[];
+  /** відкриті місця (пам'ятки в морі) */
+  places?: string[];
   objectives: ObjectiveState;
   timeHours: number;
   dayCount: number;
