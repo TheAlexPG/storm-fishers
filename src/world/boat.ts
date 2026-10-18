@@ -14,6 +14,7 @@ import type { HelmDisplay } from './helmDisplay';
 import { ZONE_NAMES, zoneFromDist } from '../game/fish';
 import { DECK_Y, SOLE_Y, RIG, HOUSE } from './yachtLayout';
 import { HOLDER_MOUNTS } from './upgradeParts';
+import { FISH_BOX } from './deckFish';
 import { holderCount } from '../game/upgrades';
 
 // ─────────────────────────────────────────────────────────────
@@ -50,6 +51,8 @@ export const STATION_POS: Record<string, { x: number; z: number; y?: number }> =
   radio: { x: 0.4, z: 0.95, y: SOLE_Y },
   bed: { x: 0, z: 2.45, y: SOLE_Y },
   // рибальські стійки (апгрейд «Стійки для вудок») — біля тримачів
+  // рибний ящик на баку — сюди кладуть рибу з рук
+  fishbox: { x: FISH_BOX.x + 0.3, z: FISH_BOX.z - 0.15 },
   holder0: { x: HOLDER_MOUNTS[0].stand[0], z: HOLDER_MOUNTS[0].stand[1] },
   holder1: { x: HOLDER_MOUNTS[1].stand[0], z: HOLDER_MOUNTS[1].stand[1] },
   holder2: { x: HOLDER_MOUNTS[2].stand[0], z: HOLDER_MOUNTS[2].stand[1] },

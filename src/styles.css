@@ -632,3 +632,27 @@ body.intro-mode #vignette { opacity: 0.6; }
 /* затемнення (сон) */
 #fade { position: fixed; inset: 0; z-index: 40; pointer-events: none; background: #0b1020; opacity: 0; transition: opacity 1.6s ease; }
 #fade.on { opacity: 1; transition: opacity 0.9s ease; }
+
+/* страховка */
+.ins-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; overflow-y: auto; min-height: 0; }
+.ins-card { background: #fff; border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 1px 0 rgba(34,48,59,0.06); border: 2px solid transparent; font-size: 12px; }
+.ins-card.on { border-color: var(--sea); }
+.ins-card.tier0 { background: #fbf1ee; }
+.ins-card.tier4 { background: linear-gradient(160deg, #fff, #fff6e2); }
+.ins-name { font-family: var(--font-display); font-weight: 600; font-size: 14px; }
+.ins-fee { font-weight: 800; font-size: 16px; color: #a8620f; }
+.ins-fee small { font-size: 11px; color: var(--text-soft); font-weight: 600; }
+.ins-card ul { margin: 0; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; font-weight: 600; }
+.ins-card p { margin: 0; color: var(--text-soft); line-height: 1.4; flex: 1; }
+.ins-card .btn { padding: 6px 10px; font-size: 12.5px; }
+.ins-risk { color: var(--danger); font-weight: 800; font-size: 11.5px; }
+.ins-cur { text-align: center; color: var(--sea); font-weight: 800; padding: 6px 0; }
+.shop-tab .cnt.warn { background: var(--danger); }
+.sink-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.sink-col { background: #fff; border-radius: 14px; padding: 4px 14px 10px; font-size: 13.5px; }
+.sink-col ul { padding-left: 18px; margin: 6px 0; }
+.panel .good { color: var(--sea); }
+.panel .bad { color: var(--danger); }
+.ins-chip { margin-top: 6px; font-size: 11.5px; font-weight: 800; color: #fff; background: var(--danger); border-radius: 999px; padding: 4px 10px; text-align: center; display: none; }
+.ins-chip.show { display: block; animation: pulse 1.2s infinite alternate; }
+@media (max-width: 860px) { .ins-grid { grid-template-columns: 1fr 1fr; } }

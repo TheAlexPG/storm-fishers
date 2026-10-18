@@ -38,6 +38,8 @@ import { loadSettings, saveSettings, type Settings } from './game/settings';
 import { WindLines } from './world/windLines';
 import { FoamTrail } from './world/foamTrail';
 import { FishJump } from './world/fishJump';
+import { DeckFish } from './world/deckFish';
+import { PLANS, applySinkToUpgrades, dailyPremium, type SinkReport } from './game/insurance';
 import { Landmarks, LANDMARKS } from './world/landmarks';
 import { Avatar } from './world/avatar';
 import './styles.css';
@@ -119,6 +121,7 @@ class Game {
   private fishJump: FishJump;
   /** стрибок риби під час боротьби */
   private leapJump: FishJump;
+  private deckFish: DeckFish;
   private landmarks: Landmarks;
   private bellCd = 0;
   /** «з-за корми» за штурвалом (V); запам'ятовується */
@@ -200,7 +203,12 @@ class Game {
     this.player = new Player(this.game);
     this.stations = new Stations(this.boat, this.game, this.audio);
     this.fishing = new Fishing(this.scene, this.audio, this.boat);
-    this.player.stationText = (id) => this.fishing.stationLabel(id);
+    this.deckFish = new DeckFish(this.scene, this.boat);
+    this.deckFish.onWashed = (f) => this.hud.toast(`🌊 Хвиля змила за борт: ${this.game.speciesName(f.speciesId)}! Клади рибу в ящик одразу.`, 'bad', 4000);
+    this.player.stationText = (id) =>
+      id === 'fishbox'
+        ? this.deckFish.carried ? `Покласти в ящик: ${this.game.speciesName(this.deckFish.carried.fish.speciesId).toLowerCase()} (${this.game.hold.length}/${this.game.holdCap})` : `Рибний ящик (${this.game.hold.length}/${this.game.holdCap})`
+        : this.fishing.stationLabel(id);
 
     this.coop = new Coop(this.scene, {
       onAction: (nick, act) => this.onCoopAction(nick, act),
@@ -495,13 +503,12 @@ class Game {
         this.audio.thunder(Number(v) || 0.7);
         break;
       case 'sunk': {
-        const g = this.game;
-        g.money = Math.max(0, g.money - 150);
-        g.loseHoldFraction(0.3);
+        // гість: човен капітана — його модулі; гине лише свій улов (за своїм полісом)
+        const r = this.applySink(false);
         this.fishing.reelIn();
         this.player.resetToBoat();
         this.player.localZ = -1.2;
-        this.hud.toast('Затоплення! Рятувальний катер забрав екіпаж. Штраф 150 ₴, втрачено 30% улову.', 'bad', 6000);
+        this.hud.toast(`Затоплення! Втрачено риби: ${r.lostFish}${r.payout ? `, страхова виплата +${r.payout} ₴` : ' — не застраховано'}.`, 'bad', 7000);
         break;
       }
       case 'sleep':
@@ -567,17 +574,38 @@ class Game {
   }
 
   private handleSunk() {
-    const penalty = 300;
-    this.game.money = Math.max(0, this.game.money - penalty);
-    const hadStorm = this.game.hold.some((f) => f.storm);
-    this.game.loseHoldFraction(0.3);
+    const g = this.game;
+    const r = this.applySink(true);
     this.boat.reset(MOOR.x, MOOR.z, MOOR_HEADING);
     this.player.resetToBoat();
     this.fishing.reelIn();
-    this.game.hull = Math.max(20, this.game.maxHull * 0.5);
-    this.hud.toast(`Затоплення! Рятувальний катер забрав тебе. Штраф ${penalty} ₴, втрачено 30% улову.`, 'bad', 6000);
+    // новий човен від страхової — цілий; без страховки — латаний корпус
+    g.hull = r.plan.tier > 0 ? g.maxHull : Math.max(20, g.maxHull * 0.5);
+    g.fuel = Math.max(g.fuel, 15);
+    this.syncUpgrades();
+    if (r.plan.claimH > 0) this.time.hours += r.plan.claimH;
     this.coop.sendEvent('sunk');
-    if (hadStorm) this.game.objectives.stormReturn = true;
+    this.saveGame();
+    this.phase = 'dialog';
+    this.dialogs.sinkReport(r, () => {
+      this.phase = 'play';
+      this.requestLock();
+    });
+  }
+
+  /** затоплення: улов на борту (трюм + палуба + руки) і модулі за полісом */
+  private applySink(withModules: boolean): SinkReport {
+    const g = this.game;
+    const plan = PLANS[g.insurance] ?? PLANS[0];
+    const lost = [...g.hold, ...this.deckFish.clear()];
+    const cargoValue = lost.reduce((a, f) => a + g.sellPrice(f), 0);
+    g.hold.length = 0;
+    const payout = Math.round(cargoValue * plan.cargo);
+    const lostModules = withModules ? applySinkToUpgrades(g.upgrades, plan.tier) : [];
+    const tow = plan.tow;
+    g.money = Math.max(0, g.money + payout - tow);
+    if (lost.some((f) => f.storm)) g.objectives.stormReturn = true;
+    return { plan, lostFish: lost.length, cargoValue, payout, lostModules, tow };
   }
 
   private openPause() {
@@ -750,6 +778,17 @@ class Game {
       this.lastDay = this.time.dayCount;
       g.rollPrices();
       g.rollReports();
+      // страховий внесок за добу
+      if (g.insurance > 0) {
+        const fee = dailyPremium(g.insurance, g.upgrades);
+        if (g.money >= fee) {
+          g.money -= fee;
+          this.hud.toast(`🛡 Страховка «${PLANS[g.insurance].name}»: −${fee} ₴`, 'warn', 3500);
+        } else {
+          g.insurance = 0;
+          this.hud.toast('🛡 Не вистачило грошей на внесок — страховка згоріла!', 'bad', 6000);
+        }
+      }
       this.hud.toast(`Новий день. ${g.priceTrendText}.`, 'warn');
       if (g.lastMarketEvent) this.hud.toast(`📈 Біржа: ${g.lastMarketEvent.text}`, g.lastMarketEvent.mult > 1 ? 'good' : 'warn', 6000);
     }
@@ -891,16 +930,17 @@ class Game {
       this.audio.splash(0.6);
       const name = g.speciesName(catched.speciesId);
       const isNew = !g.discovered.includes(catched.speciesId);
-      if (g.addFish(catched)) {
+      g.recordCatch(catched);
+      if (this.player.mode === 'boat') {
+        // риба падає на палубу й б'ється — її треба віднести в ящик на баку
+        this.deckFish.drop(catched, me, 1.05);
+        this.hud.catchCard(name, catched.kg, catched.speciesId, isNew, catched.storm ? 'штормова · на палубі' : 'на палубі — неси в ящик');
+      } else if (g.storeFish(catched)) {
         this.hud.catchCard(name, catched.kg, catched.speciesId, isNew, catched.storm ? 'штормова' : '');
-        const rw = this.boat.localToWorld(0, BOAT.deckY + 1, 3.9, this._v);
-        this.particles.sparkle(rw.x, rw.y, rw.z);
-      } else {
-        // трюм повний — продаємо одразу
-        const v = g.sellOne(catched.uid) || 0;
-        this.hud.catchCard(name, catched.kg, catched.speciesId, isNew, `трюм повний — продано за ${v} ₴`);
       }
     }
+    // риба на палубі: б'ється, псується, хвиля може змити
+    this.deckFish.update(dt, t, this.time.gameHourDelta(dt), this.boat.deckWater, g.hold);
 
     // свіжість
     g.decayFreshness(this.time.gameHourDelta(dt));
@@ -1077,8 +1117,33 @@ class Game {
       return;
     }
 
+    // риба на палубі: підняти (руки вільні від риби) — пріоритет над станціями поруч
+    if (p.mode === 'boat' && !this.deckFish.carried && this.deckFish.nearest(p.localX, p.localZ, 1.2)) {
+      const f = this.deckFish.pick(p.localX, p.localZ);
+      if (f) {
+        this.audio.splash(0.15);
+        return;
+      }
+    }
+
     const id = p.interact(this.boat, this.port, this.audio);
     if (!id) return; // climb — оброблено
+
+    if (id === 'st:fishbox') {
+      const f = this.deckFish.takeCarried();
+      if (!f) {
+        this.hud.toast(`Рибний ящик: ${g.hold.length}/${g.holdCap}. Неси сюди рибу з палуби.`, 'warn', 2500);
+        return;
+      }
+      if (g.storeFish(f)) {
+        this.audio.thump(0.3);
+        this.hud.toast(`🐟 ${g.speciesName(f.speciesId)} у ящику (${g.hold.length}/${g.holdCap})`, 'good', 1800);
+      } else {
+        this.deckFish.dropCarried(p.localX, p.localZ);
+        this.hud.toast('Ящик повний! Продай улов або прокачай трюм.', 'warn', 3000);
+      }
+      return;
+    }
 
     if (id === 'st:wheel') {
       if (!p.wheeling && this.coop.active) {
@@ -1279,6 +1344,18 @@ class Game {
       }
     }
     this.fishing.syncVisuals(this.clockDelta, t, this.ocean);
+    // риба в руках
+    if (this.deckFish.carried) {
+      this.deckFish.carryGroup.visible = true;
+      if (!chase) {
+        this.deckFish.carryGroup.position.copy(this.camera.position);
+        this.deckFish.carryGroup.quaternion.copy(this.camera.quaternion);
+      } else {
+        const av = this.selfAvatar?.worldPos ?? this.player.head;
+        this.deckFish.carryGroup.position.copy(av).setY(av.y + 1.45);
+        this.deckFish.carryGroup.quaternion.setFromEuler(this._eHand.set(0, this.player.yaw, 0, 'YXZ'));
+      }
+    }
 
     // підводне затемнення
     const inWater = !chase && this.player.mode === 'water' && head.y < this.ocean.heightAt(head.x, head.z, t) + 0.15;
@@ -1319,6 +1396,11 @@ class Game {
     }
     this.hud.setCast(this.fishing.state === 'charge' ? this.fishing.castPower : null, this.fishing.status);
     this.hud.setRoster(this.coop.active ? this.coop.roster() : []);
+    {
+      const atSea = Math.hypot(this.boat.pos.x - MOOR.x, this.boat.pos.z - MOOR.z) > 80;
+      const risk = g.insurance < 2 && (g.hold.length > 0 || this.deckFish.count > 0 || Object.values(g.upgrades).some((v) => v > g.insurance));
+      this.hud.setInsWarn(atSea && risk ? (g.insurance ? '⚠ Слабка страховка' : '⚠ Без страховки — ризик') : null);
+    }
     this.hud.setNight(time.daylight < 0.3);
     this.hud.update(
       g,
@@ -1493,6 +1575,12 @@ class Game {
     if (this.fishing.state === 'bite') return { text: 'Клює! Клікни ЛКМ!', bite: true };
     // станція-дія активна
     if (this.stations.active) return { text: this.stations.active.label, bite: false };
+    // риба на палубі / в руках
+    if (this.player.mode === 'boat') {
+      const near = !this.deckFish.carried && this.deckFish.nearest(this.player.localX, this.player.localZ, 1.2);
+      if (near) return { text: `Підняти: ${this.game.speciesName(near.speciesId).toLowerCase()} ${near.kg.toFixed(near.kg < 1 ? 2 : 1).replace('.', ',')} кг`, bite: false };
+      if (this.deckFish.carried && this.player.nearest?.id !== 'st:fishbox') return { text: 'Риба в руках — неси до ящика на баку', bite: false };
+    }
     // найближча ціль
     if (this.player.nearest) {
       const n = this.player.nearest;

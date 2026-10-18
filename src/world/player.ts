@@ -421,6 +421,7 @@ export class Player {
       case 'wheel': return this.wheeling ? 'Вийти зі штурвала' : 'Стати за штурвал (газ W/S, кермо A/D)';
       case 'sails': return boat.sails.mode === 0 ? 'Фал на щоглі — підняти паруси' : boat.sails.mode === 2 ? 'Риф-шкентель — взяти риф' : 'Фал — спустити паруси';
       case 'rod': return this.stationText?.('rod') ?? 'Стійка з вудками';
+      case 'fishbox': return this.stationText?.('fishbox') ?? 'Рибний ящик';
       case 'holder0': case 'holder1': case 'holder2': return this.stationText?.(id) ?? 'Стійка для вудки';
       case 'engine': return boat.engineOn ? 'Ремонт двигуна' : 'Запустити двигун!';
       case 'pump': return boat.deckWater > 5 ? 'Осушити палубу' : 'Помпа (палуба суха)';

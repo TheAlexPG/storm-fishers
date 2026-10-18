@@ -95,6 +95,8 @@ export interface SaveData {
   priceMult: Record<string, number>;
   /** біржа риби (насичення, історія, події); старі сейви — без поля */
   market?: import('../game/market').MarketSave;
+  /** рівень страховки човна (0 — без) */
+  insurance?: number;
   stats: PlayerStats;
   boatX: number;
   boatZ: number;

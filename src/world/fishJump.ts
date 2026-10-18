@@ -20,6 +20,32 @@ const COLORS: Record<string, [number, number]> = {
   akula: [0x6d7b86, 0xe8ecee],
 };
 
+/** окрема модель риби (палуба, ящик, руки): основа — центр тіла, довжина len, ніс у +Z */
+export function fishMesh(speciesId: string, len: number): THREE.Group {
+  const [top, belly] = COLORS[speciesId] ?? COLORS.balyk;
+  const tm = new THREE.MeshStandardMaterial({ color: top, roughness: 0.35, metalness: 0.2, flatShading: true });
+  const bm = new THREE.MeshStandardMaterial({ color: belly, roughness: 0.35, metalness: 0.2, flatShading: true });
+  const g = new THREE.Group();
+  const bodyT = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2), tm);
+  const bodyB = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 4, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), bm);
+  for (const b of [bodyT, bodyB]) {
+    b.scale.set(0.14, 0.21, 0.5);
+    b.castShadow = true;
+    g.add(b);
+  }
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.21, 0.28, 3).rotateX(Math.PI / 2).scale(0.25, 1, 1), tm);
+  tail.position.z = -0.55;
+  tail.name = 'tail';
+  g.add(tail);
+  const eye = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 4), new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.3 }));
+  eye.position.set(0.1, 0.05, 0.36);
+  const eye2 = eye.clone();
+  eye2.position.x = -0.1;
+  g.add(eye, eye2);
+  g.scale.setScalar(len);
+  return g;
+}
+
 export class FishJump {
   private fish = new THREE.Group();
   private body: THREE.Mesh;

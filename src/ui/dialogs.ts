@@ -3,6 +3,7 @@ import { fishSellPrice, FISH, FISH_BY_ID, ZONE_NAMES } from '../game/fish';
 import { demandAt, glutUnits } from '../game/market';
 import { UPGRADES, UPGRADE_BY_ID, MAX_LEVEL, upgradeCost } from '../game/upgrades';
 import { PartPreview } from './partPreview';
+import { PLANS, boatValue, dailyPremium, type SinkReport } from '../game/insurance';
 import type { UpgradeId } from '../core/types';
 import type { GameState } from '../game/state';
 import type { Weather } from '../core/weather';
@@ -303,7 +304,7 @@ export class Dialogs {
   // Продаж риби й сервіс — окремими вкладками.
 
   private preview = new PartPreview();
-  private shopTab: 'vitrine' | 'fish' | 'service' = 'vitrine';
+  private shopTab: 'vitrine' | 'fish' | 'service' | 'insurance' = 'vitrine';
   private shopSel: { id: UpgradeId; lvl: number } | null = null;
   private shopNote = '';
 
@@ -379,6 +380,7 @@ export class Dialogs {
         <button class="shop-tab ${tab === 'vitrine' ? 'on' : ''}" data-tab="vitrine">🛠 Вітрина</button>
         <button class="shop-tab ${tab === 'fish' ? 'on' : ''}" data-tab="fish">🐟 Риба <span class="cnt">${game.hold.length}</span></button>
         <button class="shop-tab ${tab === 'service' ? 'on' : ''}" data-tab="service">⛽ Сервіс</button>
+        <button class="shop-tab ${tab === 'insurance' ? 'on' : ''}" data-tab="insurance">🛡 Страховка${game.insurance ? '' : ' <span class="cnt warn">!</span>'}</button>
       </div>`;
 
     let body = '';
@@ -386,6 +388,8 @@ export class Dialogs {
       body = `<div class="vitrine"><div class="shelves">${shelves}</div>${showcase}</div>`;
     } else if (tab === 'fish') {
       body = this.fishTab(game, total);
+    } else if (tab === 'insurance') {
+      body = this.insuranceTab(game);
     } else {
       body = `<div class="fish-row">
           <span class="fname">Паливо <span class="fmeta">(${Math.round(game.fuel)}/${game.maxFuel} л · ${fuelPrice} ₴/л)</span></span>
@@ -493,6 +497,17 @@ export class Dialogs {
             this.onBoatPurchase?.({ fuel: liters });
           }
         }
+        this.audio.click();
+        refresh();
+      });
+    });
+    this.panel.querySelectorAll('[data-plan]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const tier = Number((b as HTMLElement).dataset.plan);
+        const fee = dailyPremium(tier, game.upgrades);
+        if (tier > 0 && game.money < fee) return;
+        game.money -= fee; // перший день — одразу
+        game.insurance = tier;
         this.audio.click();
         refresh();
       });
@@ -636,6 +651,59 @@ export class Dialogs {
         </div>
         ${board}
       </div>`;
+  }
+
+  // ── СТРАХОВКА ──
+  private insuranceTab(game: GameState): string {
+    const value = boatValue(game.upgrades);
+    const cargo = game.hold.reduce((a, f) => a + game.sellPrice(f), 0);
+    const cards = PLANS.map((p) => {
+      const fee = dailyPremium(p.tier, game.upgrades);
+      const cur = game.insurance === p.tier;
+      const keepTxt = p.keep >= 5 ? 'усі модулі' : p.keep === 0 ? 'нічого' : `модулі до ${p.keep}-го рівня`;
+      const loseUp = UPGRADES.reduce((a, u) => a + Math.max(0, game.upgrades[u.id] - p.keep), 0);
+      return `<div class="ins-card ${cur ? 'on' : ''} tier${p.tier}">
+          <div class="ins-name">${p.name}</div>
+          <div class="ins-fee">${p.tier ? `${formatMoney(fee)} <small>/ добу</small>` : '0 ₴'}</div>
+          <ul>
+            <li>🛠 ${keepTxt}</li>
+            <li>🐟 улов: ${p.cargo ? Math.round(p.cargo * 100) + '% вартості' : 'втрачається'}</li>
+            <li>⏱ новий човен: ${p.claimH ? p.claimH + ' год' : 'одразу'}</li>
+            ${p.tow ? `<li>⚓ буксир: ${formatMoney(p.tow)}</li>` : ''}
+          </ul>
+          <p>${p.blurb}</p>
+          ${loseUp > 0 && game.upgrades && p.tier < 3 ? `<div class="ins-risk">Зараз під ризиком: ${loseUp} рів. модулів</div>` : ''}
+          ${cur ? '<div class="ins-cur">✓ Діє</div>' : `<button class="btn ${p.tier ? 'primary' : ''}" data-plan="${p.tier}" ${p.tier && game.money < fee ? 'disabled' : ''}>${p.tier ? 'Оформити' : 'Скасувати поліс'}</button>`}
+        </div>`;
+    }).join('');
+    return `<p class="sub">Вартість човна: <b>${formatMoney(value)}</b> · улов у трюмі: <b>${formatMoney(cargo)}</b>. Внесок списується щодня на світанку; не вистачить грошей — поліс згорить.</p>
+      <div class="ins-grid">${cards}</div>`;
+  }
+
+  /** звіт після затоплення */
+  sinkReport(r: SinkReport, onClose: () => void) {
+    this.escAllowed = true;
+    const mods = r.lostModules.length
+      ? r.lostModules.map(([n, a, b]) => `<li>${esc(n)}: рів. ${a} → <b>${b}</b></li>`).join('')
+      : '<li>Модулі вціліли ✓</li>';
+    this.show(`
+      <h1>🌊 ЧОВЕН ЗАТОНУВ</h1>
+      <p class="sub">Поліс: <b>${r.plan.name}</b>${r.plan.claimH ? ` · новий човен через ${r.plan.claimH} год` : ' · новий човен одразу'}</p>
+      <div class="sink-grid">
+        <div class="sink-col"><h2>🐟 Улов</h2>
+          <p>Втрачено риби: <b>${r.lostFish}</b> (на ${formatMoney(r.cargoValue)})</p>
+          <p>${r.payout ? `Страхова виплата: <b class="good">+${formatMoney(r.payout)}</b>` : '<span class="bad">Не застраховано — нічого не повернуть</span>'}</p>
+        </div>
+        <div class="sink-col"><h2>🛠 Модулі</h2><ul>${mods}</ul></div>
+      </div>
+      ${r.tow ? `<p class="sub bad">Рятувальники взяли за буксир ${formatMoney(r.tow)}.</p>` : ''}
+      ${r.plan.tier < 2 ? '<p class="sub">Порада: оформи страховку в крамниці (вкладка «🛡 Страховка»), перш ніж іти в шторм.</p>' : ''}
+      <div class="btn-row"><button class="btn primary" data-close>Далі</button></div>
+    `, true);
+    this.panel.querySelector('[data-close]')!.addEventListener('click', () => {
+      this.close();
+      onClose();
+    });
   }
 
   // ── РАДІО ──

@@ -20,6 +20,8 @@ export class GameState {
   hull = 100;
   energy = 100;
   hold: FishItem[] = [];
+  /** страховка човна: 0 — немає, 1..4 — рівні (insurance.ts) */
+  insurance = 0;
   upgrades = defaultUpgrades();
   discovered: string[] = [];
   /** відкриті місця (пам'ятки в морі) */
@@ -98,9 +100,21 @@ export class GameState {
   addFish(item: FishItem): boolean {
     if (this.hold.length >= this.holdCap) return false;
     this.hold.push(item);
+    this.recordCatch(item);
+    return true;
+  }
+
+  /** риба піймана (відкриття виду, статистика) — ще не в трюмі */
+  recordCatch(item: FishItem) {
     if (!this.discovered.includes(item.speciesId)) this.discovered.push(item.speciesId);
     this.stats.totalCaught++;
     this.checkObjectives();
+  }
+
+  /** покласти рибу в ящик (уже піймана — без статистики) */
+  storeFish(item: FishItem): boolean {
+    if (this.hold.length >= this.holdCap) return false;
+    this.hold.push(item);
     return true;
   }
 
@@ -258,6 +272,7 @@ export class GameState {
       hull: this.hull,
       energy: this.energy,
       hold: this.hold,
+      insurance: this.insurance,
       upgrades: this.upgrades,
       discovered: this.discovered,
       places: this.places,
@@ -313,6 +328,7 @@ export class GameState {
     if (typeof data.hull === 'number') this.hull = data.hull;
     if (typeof data.energy === 'number') this.energy = data.energy;
     if (Array.isArray(data.hold)) this.hold = data.hold;
+    if (typeof data.insurance === 'number') this.insurance = data.insurance;
     if (data.upgrades) this.upgrades = { ...defaultUpgrades(), ...data.upgrades };
     if (Array.isArray(data.discovered)) this.discovered = data.discovered;
     if (Array.isArray(data.places)) this.places = data.places;

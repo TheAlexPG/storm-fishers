@@ -108,6 +108,7 @@ export class Hud {
       </div>
       <div class="hud-tr">
         <div class="hold-chip hud-card">🐟 Трюм <b class="h">0/8</b></div>
+        <div class="ins-chip">⚠ Без страховки</div>
         <div class="roster hud-card"></div>
       </div>
       <div class="chat">
@@ -231,6 +232,15 @@ export class Hud {
   private hintEl2: HTMLElement | null = null;
 
   /** HUD у нічних тонах (темні картки, світлий текст) */
+  /** попередження: в морі без страховки (з ризиком) */
+  setInsWarn(text: string | null) {
+    const el = (this.insChip ??= document.querySelector<HTMLElement>('.ins-chip'));
+    if (!el) return;
+    el.classList.toggle('show', !!text);
+    if (text) el.textContent = text;
+  }
+  private insChip: HTMLElement | null = null;
+
   setNight(v: boolean) {
     if (v === this.night) return;
     this.night = v;
