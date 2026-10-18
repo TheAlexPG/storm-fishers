@@ -8,6 +8,7 @@ import { clamp, rand } from './core/math';
 import { GameState } from './game/state';
 import { Boat, BOAT, MOOR, MOOR_HEADING, STATION_POS } from './world/boat';
 import { Port } from './world/port';
+import { terrainHeight } from './world/portTerrain';
 import { Player } from './world/player';
 import { Sky } from './world/sky';
 import { SkyEnvironment } from './world/graphics';
@@ -178,6 +179,8 @@ class Game {
     this.ocean = new Ocean(this.scene);
     this.sky = new Sky(this.scene);
     this.port = new Port(this.scene);
+    // прибій уздовж берега бухти
+    this.ocean.setShore(terrainHeight, -520, -780, 1040, 860, 2);
     this.particles = new ParticlePool(this.scene, 1100);
     this.windLines = new WindLines(this.scene);
     this.foamTrail = new FoamTrail(this.scene);

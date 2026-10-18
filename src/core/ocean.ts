@@ -151,6 +151,9 @@ uniform float uSunStrength;
 uniform float uFlash;
 uniform mat4  uHullInv;
 uniform float uBoatSpeed;
+// глибина біля берега (мапа висот суші): x/z → uv, значення = висота дна/суші
+uniform sampler2D uShore;
+uniform vec4 uShoreRect; // x0, z0, 1/w, 1/h
 varying vec3 vWorldPos;
 varying vec3 vNormalW;
 
@@ -281,6 +284,23 @@ void main() {
     col = mix(col, foamCol, f * 0.8);
   }
 
+  // Прибій: смуги піни біля берега, що набігають і тануть
+  {
+    vec2 suv = (vWorldPos.xz - uShoreRect.xy) * uShoreRect.zw;
+    if (suv.x > 0.0 && suv.x < 1.0 && suv.y > 0.0 && suv.y < 1.0) {
+      float bed = texture2D(uShore, suv).r * 20.0 - 10.0; // висота дна, м
+      float shallow = smoothstep(-4.5, -0.4, bed);        // 0 глибоко … 1 біля самої кромки
+      // мілина — світліша, бірюзова
+      col = mix(col, uShallowColor * (0.5 + 0.6 * uSunStrength) + vec3(0.05, 0.08, 0.06), shallow * 0.35);
+      float wave = sin(bed * 2.6 + uTime * 1.3) * 0.5 + 0.5;
+      float n = fbm(vWorldPos.xz * 1.1 + uTime * 0.2);
+      float surf = smoothstep(0.55, 0.95, wave * shallow + n * 0.35) * shallow;
+      surf = max(surf, smoothstep(-0.9, -0.15, bed) * smoothstep(0.25, 0.6, n)); // кромка
+      vec3 foamCol = vec3(0.95, 0.97, 0.98) * clamp(0.15 + 0.85 * uSunStrength, 0.0, 1.0) + uSkyColor * 0.1;
+      col = mix(col, foamCol, clamp(surf, 0.0, 1.0) * 0.7);
+    }
+  }
+
   // Блискавка підсвічує воду
   col += vec3(0.7, 0.8, 1.0) * uFlash * (0.25 + 0.5 * fres);
 
@@ -338,12 +358,37 @@ export class Ocean {
         uFlash: { value: 0 },
         uHullInv: { value: new THREE.Matrix4() },
         uBoatSpeed: { value: 0 },
+        uShore: { value: null },
+        uShoreRect: { value: new THREE.Vector4(0, 0, 0, 0) },
       },
     });
 
     this.mesh = new THREE.Mesh(geo, this.material);
     this.mesh.frustumCulled = false;
     scene.add(this.mesh);
+  }
+
+  /**
+   * Мапа висот біля берега для прибою: height(x,z) — висота суші/дна (м).
+   * Прямокутник x0..x0+w, z0..z0+h, роздільність res м на піксель.
+   */
+  setShore(height: (x: number, z: number) => number, x0: number, z0: number, w: number, h: number, res = 2) {
+    const nx = Math.ceil(w / res), nz = Math.ceil(h / res);
+    const data = new Uint8Array(nx * nz * 4);
+    for (let j = 0; j < nz; j++) {
+      for (let i = 0; i < nx; i++) {
+        const v = Math.round(THREE.MathUtils.clamp((height(x0 + (i + 0.5) * res, z0 + (j + 0.5) * res) + 10) / 20, 0, 1) * 255);
+        const o = (j * nx + i) * 4;
+        data[o] = data[o + 1] = data[o + 2] = v;
+        data[o + 3] = 255;
+      }
+    }
+    const tex = new THREE.DataTexture(data, nx, nz, THREE.RGBAFormat);
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearFilter;
+    tex.needsUpdate = true;
+    this.material.uniforms.uShore.value = tex;
+    (this.material.uniforms.uShoreRect.value as THREE.Vector4).set(x0, z0, 1 / (nx * res), 1 / (nz * res));
   }
 
   /** матриця корпусу човна (світ → локаль), щоб не малювати воду всередині */
