@@ -178,6 +178,7 @@ class Game {
     this.particles = new ParticlePool(this.scene, 1100);
     this.windLines = new WindLines(this.scene);
     this.foamTrail = new FoamTrail(this.scene);
+    this.scene.add(this.moorMark);
     this.landmarks = new Landmarks(this.scene, this.port.rocks);
     this.boat = new Boat(this.scene);
     this.player = new Player(this.game);
@@ -851,6 +852,24 @@ class Game {
     // свіжість
     g.decayFreshness(this.time.gameHourDelta(dt));
 
+    // орієнтир шварту: світний обрис місця біля причалу, коли повертаєшся
+    {
+      const dm = Math.hypot(this.boat.pos.x - MOOR.x, this.boat.pos.z - MOOR.z);
+      const want = dm < 220 && dm > 4 && !this.boat.mooredNow ? 1 : 0;
+      const m = this.moorMark;
+      const mat = m.material as THREE.MeshBasicMaterial;
+      mat.opacity += (want * (0.5 + 0.25 * Math.sin(t * 3)) - mat.opacity) * (1 - Math.exp(-3 * dt));
+      m.visible = mat.opacity > 0.01;
+      m.position.y = this.ocean.renderedHeightAt(MOOR.x, MOOR.z, t) + 0.08;
+      if (this.boat.mooredNow && !this.wasMoored && this.leftHarbour) {
+        this.hud.toast('⚓ Пришвартовано', 'good', 2500);
+        this.audio.click();
+        this.leftHarbour = false;
+      }
+      if (dm > 40) this.leftHarbour = true;
+      this.wasMoored = this.boat.mooredNow;
+    }
+
     // кранці — лише біля причалу
     this.boat.setFenders(Math.hypot(this.boat.pos.x - MOOR.x, this.boat.pos.z - MOOR.z) < 30);
 
@@ -911,6 +930,18 @@ class Game {
   }
 
   private lastDay = 1;
+  private wasMoored = true;
+  private leftHarbour = false;
+  private moorMark: THREE.Mesh = (() => {
+    const g = new THREE.RingGeometry(0.86, 1, 64);
+    g.rotateX(-Math.PI / 2);
+    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0xfff2c8, transparent: true, opacity: 0, depthWrite: false }));
+    m.scale.set(2.6, 1, 6.2);
+    m.rotation.y = MOOR_HEADING;
+    m.position.set(MOOR.x, 0, MOOR.z);
+    m.renderOrder = 2;
+    return m;
+  })();
   private sleeping = false;
   private fade: HTMLElement = (() => {
     const el = document.createElement('div');

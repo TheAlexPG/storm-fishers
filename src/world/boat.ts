@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Ocean } from '../core/ocean';
-import { clamp, rand, compassDeg } from '../core/math';
+import { clamp, rand, compassDeg, wrapAngle } from '../core/math';
 import { eff } from '../game/upgrades';
 import type { GameState } from '../game/state';
 import type { Weather } from '../core/weather';
@@ -31,6 +31,8 @@ export const BOAT = {
 export const MOOR = { x: 0, z: -15.9 };
 // курс при шварті: човен паралельно причалу, нос на +X
 export const MOOR_HEADING = Math.PI / 2;
+/** радіус, у якому пружина шварту підхоплює човен (без газу) */
+export const MOOR_CAPTURE = 16;
 
 // станції (локальні координати палуби, y = deckY)
 export const STATION_POS: Record<string, { x: number; z: number; y?: number }> = {
@@ -63,6 +65,8 @@ export class Boat {
   pitch = 0;
   roll = 0;
   angVel = new THREE.Vector3();
+  /** зараз тримається на шварті (для HUD) */
+  mooredNow = false;
   throttle = 0;
   rudder = 0;
   engineOn = true;
@@ -376,13 +380,19 @@ export class Boat {
     const dMx = this.pos.x - MOOR.x;
     const dMz = this.pos.z - MOOR.z;
     const dMoor = Math.hypot(dMx, dMz);
-    if (dMoor < 10 && Math.abs(this.throttle) < 0.15) {
+    this.mooredNow = dMoor < MOOR_CAPTURE && Math.abs(this.throttle) < 0.15 && speed < 3;
+    if (this.mooredNow) {
       let fxm = -dMx * 2100 - this.vel.x * 2500;
       let fzm = -dMz * 2100 - this.vel.z * 2500;
       const fl = Math.hypot(fxm, fzm);
       if (fl > 12000) { fxm *= 12000 / fl; fzm *= 12000 / fl; }
       this._f.x += fxm;
       this._f.z += fzm;
+      // і розвертаємо бортом до причалу (нос на ±X — куди ближче)
+      const e1 = wrapAngle(this.heading - MOOR_HEADING), e2 = wrapAngle(this.heading + MOOR_HEADING);
+      const e = Math.abs(e1) < Math.abs(e2) ? e1 : e2;
+      const w = clamp(1 - dMoor / MOOR_CAPTURE, 0.2, 1);
+      this._t.y += (-e * 24000 - this.angVel.y * 46000) * w;
     }
 
     // тяга (у кормі)
