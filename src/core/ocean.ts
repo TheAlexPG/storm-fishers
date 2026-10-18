@@ -318,10 +318,12 @@ void main() {
   vec2 wd = normalize(uWindDir + 1e-4);
   mat2 rot = mat2(wd.y, -wd.x, wd.x, wd.y);
   vec2 qa = rot * vBase;
-  vec3 ra = texture2D(uRipple, qa / 7.5 + vec2(0.0, uTime * 0.045)).xyz * 2.0 - 1.0;
-  vec3 rb = texture2D(uRipple, (qa * mat2(0.8, 0.6, -0.6, 0.8)) / 2.9 + vec2(uTime * 0.03, uTime * 0.07)).xyz * 2.0 - 1.0;
-  float ripA = 0.55 + 0.9 * wind;
-  slope += (ra.xy / max(ra.z, 0.3) * 0.16 + rb.xy / max(rb.z, 0.3) * 0.1) * ripA;
+  // швидкість ~0.1–0.2 м/с: спокійне «дихання» поверхні (раніше брижі бігли
+  // втричі швидше й разом з гострим відблиском мерехтіли, як шум)
+  vec3 ra = texture2D(uRipple, qa / 9.0 + vec2(0.0, uTime * 0.012)).xyz * 2.0 - 1.0;
+  vec3 rb = texture2D(uRipple, (qa * mat2(0.8, 0.6, -0.6, 0.8)) / 4.2 + vec2(uTime * 0.008, -uTime * 0.016)).xyz * 2.0 - 1.0;
+  float ripA = 0.35 + 0.6 * wind;
+  slope += (ra.xy / max(ra.z, 0.3) * 0.14 + rb.xy / max(rb.z, 0.3) * 0.07) * ripA;
   total += 0.02 * ripA * ripA;
   kept += 0.02 * ripA * ripA * (1.0 - smoothstep(0.03, 0.4, fp));
   vec3 N = normalize(vec3(-slope.x, 1.0, -slope.y));
@@ -391,7 +393,7 @@ void main() {
   // сонце: гострий блиск (звужується, де деталі збережені) + м'який ореол
   vec3 Hs = normalize(L + V);
   float NdH = max(dot(N, Hs), 0.0);
-  float pw = mix(900.0, 70.0, rough);
+  float pw = mix(420.0, 60.0, rough);
   float spec = pow(NdH, pw) * (pw / 120.0) * uSunStrength * (0.3 + 0.7 * fres * 4.0);
   col += vec3(1.0, 0.95, 0.84) * min(spec, 6.0);
   col += vec3(1.0, 0.88, 0.68) * pow(NdH, 24.0) * 0.12 * uSunStrength;
@@ -411,7 +413,7 @@ void main() {
       vec2 wd = normalize(uWindDir + 1e-4);
       vec2 q = vec2(dot(vBase, wd), dot(vBase, vec2(-wd.y, wd.x)));
       // мереживо: дрібний шум, витягнутий за вітром, і тонкі «жилки» між комірками
-      float n = fbm(q * vec2(0.9, 2.4) - vec2(uTime * 0.7, 0.0));
+      float n = fbm(q * vec2(0.9, 2.4) - vec2(uTime * 0.35, 0.0));
       float lace = 1.0 - abs(n * 2.0 - 1.0);
       float m = cap * 0.7 + lace * 0.45 * cap + n * 0.25 * cap;
       float foam = smoothstep(0.6, 0.72, m) * 0.7 + smoothstep(0.48, 0.6, m) * 0.12; // м'який край, легкий серпанок довкола
@@ -425,7 +427,7 @@ void main() {
   // Піна біля корпусу (носова хвиля) і кільватер за кормою
   {
     float spd = clamp(uBoatSpeed / 7.0, 0.0, 1.0);
-    float n = fbm(vWorldPos.xz * 1.7 + uTime * 0.9);
+    float n = fbm(vWorldPos.xz * 1.7 + uTime * 0.45);
     float edge = 0.0;
     if (abs(hl.z) < 4.9) {
       float d = abs(hl.x) - hullHalfW(clamp(hl.z, -4.7, 4.7));

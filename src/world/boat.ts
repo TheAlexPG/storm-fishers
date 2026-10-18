@@ -691,6 +691,7 @@ export class Boat {
   // ── прапор: полотнище за вимпельним вітром ──
   private flagYaw = Math.PI; // куди «летить» прапор (у локалі човна, 0 = до носа)
   private flagWind = 0;      // згладжена сила вимпельного вітру, м/с
+  private flagPhase = 0;
 
   private updateFlag(dt: number, t: number, weather: Weather) {
     const flag = this.flag;
@@ -703,14 +704,17 @@ export class Boat {
     const lx = awx * ch - awz * sh;
     const lz = awx * sh + awz * ch;
     const aws = Math.hypot(lx, lz);
-    const k = 1 - Math.exp(-dt * 2.5);
+    const k = 1 - Math.exp(-dt * 1.2);
     if (aws > 0.2) this.flagYaw += wrapAngle(Math.atan2(lx, lz) - this.flagYaw) * k;
     this.flagWind += (aws - this.flagWind) * k;
     const w = this.flagWind;
     // слабкий вітер — полотнище обвисає вздовж древка; сильний — летить рівно й тріпоче
     const droop = (1 - clamp((w - 0.8) / 5, 0, 1)) * 1.25;
     const amp = 0.035 + 0.05 * clamp(w / 6, 0, 1) - 0.03 * clamp((w - 10) / 8, 0, 1);
-    const om = 5 + w * 0.9;
+    // фаза хвилі накопичується (зміна сили вітру не «стрибає» фазою — раніше t·om смикав полотнище)
+    const om = 3.2 + Math.min(w, 14) * 0.32;
+    this.flagPhase += om * dt;
+    const ph = this.flagPhase;
     const L = 0.62, H = 0.41;
     const dx = Math.sin(this.flagYaw), dz = Math.cos(this.flagYaw);
     const pos = (flag.geometry as THREE.BufferGeometry).attributes.position as THREE.BufferAttribute;
@@ -726,7 +730,7 @@ export class Boat {
         const cx = dx * ca, cy = -sa, cz = dz * ca;
         // «вгору» полотнища — перпендикуляр до хорди у вертикальній площині
         const ux = -dx * sa, uy = ca, uz = -dz * sa;
-        const wave = Math.sin(u * 7.5 - t * om + v * 0.6) * amp * (0.25 + u) + Math.sin(u * 13 - t * om * 1.7) * amp * 0.25 * u;
+        const wave = Math.sin(u * 6.5 - ph + v * 0.5) * amp * (0.25 + u) + Math.sin(u * 11 - ph * 1.6) * amp * 0.12 * u;
         const y = (v - 1) * H; // верхній край — біля наконечника
         pos.setXYZ(idx++,
           cx * u * L + ux * y + dz * wave,
