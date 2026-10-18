@@ -911,6 +911,13 @@ class Game {
   }
 
   private lastDay = 1;
+  private sleeping = false;
+  private fade: HTMLElement = (() => {
+    const el = document.createElement('div');
+    el.id = 'fade';
+    document.body.appendChild(el);
+    return el;
+  })();
   private prevRoll = 0;
   private prevPitch = 0;
   private lastZone: string | null = null;
@@ -1067,14 +1074,22 @@ class Game {
       this.audio.click();
       return;
     }
+    if (this.sleeping) return;
+    this.sleeping = true;
     this.coop.sendEvent('sleep');
-    const delta = this.time.sleepToDawn();
-    this.lastHours = this.time.hours;
-    this.dawnCard();
-    this.game.addEnergy(100);
-    this.game.decayFreshness(delta);
-    this.hud.toast(`Сон. Пройшло ${Math.round(delta)} год. ${inPort ? 'Безкоштовно в хаті.' : 'Виспався на койці.'}`, 'good', 3500);
     this.audio.click();
+    // затемнення → ніч минає → світанок проявляється
+    this.fade.classList.add('on');
+    setTimeout(() => {
+      const delta = this.time.sleepToDawn();
+      this.lastHours = this.time.hours;
+      this.game.addEnergy(100);
+      this.game.decayFreshness(delta);
+      this.fade.classList.remove('on');
+      this.dawnCard();
+      this.hud.toast(`Пройшло ${Math.round(delta)} год. ${inPort ? 'Виспався в хаті.' : 'Виспався на койці.'}`, 'good', 3500);
+      this.sleeping = false;
+    }, 1100);
   }
 
   private fogDensity(): number {

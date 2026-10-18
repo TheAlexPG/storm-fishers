@@ -489,3 +489,7 @@ body.intro-mode #vignette { opacity: 0.6; }
 .goal .g-step { font-size: 10.5px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: var(--accent); }
 @keyframes goalPop { from { opacity: 0; transform: translateX(-16px); } }
 .hud-tl:not(:has(.bar-row:not(.quiet))) ~ .goal { top: 92px; }
+
+/* затемнення (сон) */
+#fade { position: fixed; inset: 0; z-index: 40; pointer-events: none; background: #0b1020; opacity: 0; transition: opacity 1.6s ease; }
+#fade.on { opacity: 1; transition: opacity 0.9s ease; }
