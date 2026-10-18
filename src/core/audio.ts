@@ -277,6 +277,43 @@ export class AudioEngine {
     o.stop(t + dur + 0.05);
   }
 
+  /** крок: 0 — тик-дерево палуби, 1 — гулкі дошки причалу, 2 — бруківка/земля */
+  step(surface: number, run: boolean) {
+    const ctx = this.ensure();
+    if (!ctx || !this.master || ctx.state !== 'running') return;
+    const t = ctx.currentTime;
+    const vol = (run ? 0.09 : 0.06) * (0.8 + Math.random() * 0.4);
+    // клацання: короткий шум через смугу
+    const s = ctx.createBufferSource();
+    s.buffer = this.stepBuf ??= (() => {
+      const b = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.12), ctx.sampleRate);
+      const d = b.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3);
+      return b;
+    })();
+    s.playbackRate.value = 0.85 + Math.random() * 0.3;
+    const f = ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.value = surface === 0 ? 1400 : surface === 1 ? 700 : 2400;
+    f.Q.value = surface === 2 ? 0.6 : 1.4;
+    const g = ctx.createGain();
+    g.gain.value = vol * (surface === 2 ? 0.6 : 1);
+    s.connect(f).connect(g).connect(this.master);
+    s.start(t);
+    // дерево ще й «гуде» — низький тон дошки
+    if (surface !== 2) {
+      const o = ctx.createOscillator();
+      o.frequency.value = (surface === 1 ? 110 : 190) * (0.9 + Math.random() * 0.2);
+      const og = ctx.createGain();
+      og.gain.setValueAtTime(vol * 0.8, t);
+      og.gain.exponentialRampToValueAtTime(0.0001, t + (surface === 1 ? 0.16 : 0.08));
+      o.connect(og).connect(this.master);
+      o.start(t);
+      o.stop(t + 0.2);
+    }
+  }
+  private stepBuf: AudioBuffer | null = null;
+
   /** дзвін буя: негармонічні обертони, довге згасання */
   bell(vol: number) {
     const ctx = this.ensure();

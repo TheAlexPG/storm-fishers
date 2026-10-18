@@ -62,6 +62,16 @@ export class Player {
   shakeZ = 0;
 
   private bobPhase = 0;
+  /** крок (кожні пів фази ходи) — main грає звук; поверхня: 0 дерево палуби, 1 дошки причалу, 2 бруківка/земля */
+  onStep: ((surface: number, run: boolean) => void) | null = null;
+  private stepAcc = 0;
+  private stepTick(dt: number, rate: number, surface: number, run: boolean) {
+    this.stepAcc += dt * rate;
+    if (this.stepAcc >= Math.PI) {
+      this.stepAcc -= Math.PI;
+      this.onStep?.(surface, run);
+    }
+  }
   private headBob = 0;
   private railPush = 0;
   private inWaterT = 0;
@@ -168,7 +178,10 @@ export class Player {
       }
       // голова (остаточно — у syncHead після кроку човна, інакше камера
       // відстає на кадр від палуби й на ходу «смикається»)
-      if (moving) this.bobPhase += dt * (running ? 11 : 7.5);
+      if (moving) {
+        this.bobPhase += dt * (running ? 11 : 7.5);
+        this.stepTick(dt, running ? 11 : 7.5, 0, running);
+      }
       this.headBob = moving ? Math.sin(this.bobPhase) * 0.035 : 0;
       this.syncHead(boat);
       // у салоні? (внизу або вже на трапі нижче рівня палуби)
@@ -207,6 +220,7 @@ export class Player {
       if (moving) {
         this.bobPhase += dt * (running ? 11 : 7.5);
         this.head.y += Math.sin(this.bobPhase) * 0.03;
+        this.stepTick(dt, running ? 11 : 7.5, this.wy < 1.35 ? 1 : 2, running);
       }
     } else {
       // ── вода ──

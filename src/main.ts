@@ -36,6 +36,7 @@ import { CameraRig } from './world/cameraRig';
 import { loadSettings, saveSettings, type Settings } from './game/settings';
 import { WindLines } from './world/windLines';
 import { FoamTrail } from './world/foamTrail';
+import { FishJump } from './world/fishJump';
 import { Landmarks, LANDMARKS } from './world/landmarks';
 import { Avatar } from './world/avatar';
 import './styles.css';
@@ -101,12 +102,14 @@ class Game {
   private tiltFollow = 0.5;
   private _v = new THREE.Vector3();
   private _v2 = new THREE.Vector3();
+  private _v3 = new THREE.Vector3();
   private _fogGrey = new THREE.Color();
   private fogRaw = new THREE.Color(0xbcd8e6);
   private rig: CameraRig;
   private settings: Settings = loadSettings();
   private windLines: WindLines;
   private foamTrail: FoamTrail;
+  private fishJump: FishJump;
   private landmarks: Landmarks;
   private bellCd = 0;
   /** «з-за корми» за штурвалом (V); запам'ятовується */
@@ -178,6 +181,7 @@ class Game {
     this.particles = new ParticlePool(this.scene, 1100);
     this.windLines = new WindLines(this.scene);
     this.foamTrail = new FoamTrail(this.scene);
+    this.fishJump = new FishJump(this.scene);
     this.scene.add(this.moorMark);
     this.landmarks = new Landmarks(this.scene, this.port.rocks);
     this.boat = new Boat(this.scene);
@@ -259,6 +263,7 @@ class Game {
       this.coop.sendEvent('stall');
     };
     this.boat.onSunk = () => this.handleSunk();
+    this.player.onStep = (surf, run) => this.audio.step(surf, run);
 
     // звук стартує з першого жесту (політика автоплею) — музика грає вже в заставці
     this.applySettings(this.settings);
@@ -833,9 +838,20 @@ class Game {
     this.coop.tick(dt, this.boat, this.player, this.stations.active?.id === 'pump', this.fishing, this.ocean, t);
 
     // ловля
+    const bobW = this._v3.copy(this.fishing.bobber.position);
     this.fishing.update(dt, t, this.boat, this.ocean, input, g, this.weather, this.time);
+    this.fishJump.update(dt, t);
     const catched = this.fishing.takeCatch();
     if (catched) {
+      // риба вилітає з води в руки
+      // летить на палубу за півтора метра перед рибалкою (не в обличчя камері)
+      const me = this.player.mode === 'boat' ? this.boat.localToWorld(this.player.localX, this.player.floorY + 0.35, this.player.localZ, this._v2) : this._v2.copy(this.player.head).setY(this.player.head.y - 1.3);
+      const dx = bobW.x - me.x, dz = bobW.z - me.z, dl = Math.hypot(dx, dz) || 1;
+      me.x += (dx / dl) * 1.5;
+      me.z += (dz / dl) * 1.5;
+      this.fishJump.start(catched.speciesId, catched.kg, bobW, me);
+      this.particles.splash(bobW.x, bobW.y, bobW.z, 0.8);
+      this.audio.splash(0.6);
       const name = g.speciesName(catched.speciesId);
       const isNew = !g.discovered.includes(catched.speciesId);
       if (g.addFish(catched)) {
