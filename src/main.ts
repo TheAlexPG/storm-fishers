@@ -24,6 +24,7 @@ const ZONE_SUB: Record<string, string> = { shore: 'тихі води біля д
 import { Coop, type BoatAction } from './net/coop';
 import { CameraRig } from './world/cameraRig';
 import { WindLines } from './world/windLines';
+import { FoamTrail } from './world/foamTrail';
 import { Landmarks, LANDMARKS } from './world/landmarks';
 import { Avatar } from './world/avatar';
 import './styles.css';
@@ -93,6 +94,7 @@ class Game {
   private fogRaw = new THREE.Color(0xbcd8e6);
   private rig: CameraRig;
   private windLines: WindLines;
+  private foamTrail: FoamTrail;
   private landmarks: Landmarks;
   private bellCd = 0;
   /** «з-за корми» за штурвалом (V); запам'ятовується */
@@ -163,6 +165,7 @@ class Game {
     this.port = new Port(this.scene);
     this.particles = new ParticlePool(this.scene, 1100);
     this.windLines = new WindLines(this.scene);
+    this.foamTrail = new FoamTrail(this.scene);
     this.landmarks = new Landmarks(this.scene, this.port.rocks);
     this.boat = new Boat(this.scene);
     this.player = new Player(this.game);
@@ -812,6 +815,8 @@ class Game {
     // камера й маска води в корпусі — від пози човна саме цього кадру
     this.player.syncHead(this.boat);
     this.ocean.setHull(this.boat.group, this.boat.vel.length());
+    // слід піни за кормою
+    this.foamTrail.update(dt, t, this.boat.localToWorld(0, 0, -4.9, this._v), this.boat.heading, this.boat.vel.length(), this.ocean, this.camera.position, clamp(this.time.daylight + 0.15, 0, 1), clamp(this.weather.intensity - 0.4, 0, 1));
 
     // станції
     // відійшов від щогли — робота з фалами переривається

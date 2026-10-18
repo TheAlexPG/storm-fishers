@@ -16,6 +16,9 @@ export interface WaveDef {
 }
 
 const G = 9.81;
+const OCEAN_HALF = 1800;
+const OCEAN_SEGS = 220;
+const OCEAN_STEP = (OCEAN_HALF * 2) / OCEAN_SEGS;
 
 // Параметри 5 хвиль: [кут від вітру, базова амплітуда, довжина, крутість]
 const WAVE_TABLE: Array<[number, number, number, number]> = [
@@ -264,7 +267,8 @@ void main() {
     float s = -4.7 - hl.z; // відстань за транцем
     if (s > -0.2 && spd > 0.02) {
       float sc = max(s, 0.0);
-      float fade = exp(-sc / (6.0 + 16.0 * spd));
+      // коротко: далі слід малює FoamTrail (він іде за поворотами)
+      float fade = exp(-sc / (3.5 + 7.0 * spd));
       // турбулентна смуга від гвинта / транця
       float core = smoothstep(1.0 + sc * 0.045, 0.15, abs(hl.x));
       // «вуса» Кельвіна під ~19.5°
@@ -296,7 +300,7 @@ export class Ocean {
   private intensity = 0.5;
 
   constructor(scene: THREE.Scene) {
-    const geo = new THREE.PlaneGeometry(3600, 3600, 220, 220);
+    const geo = new THREE.PlaneGeometry(OCEAN_HALF * 2, OCEAN_HALF * 2, OCEAN_SEGS, OCEAN_SEGS);
     geo.rotateX(-Math.PI / 2);
 
     const dirs: THREE.Vector2[] = [];
@@ -394,6 +398,21 @@ export class Ocean {
   // Для фізики: поточний набір хвиль
   currentWaves(): WaveDef[] {
     return this.waves;
+  }
+
+  /**
+   * Висота так, як її МАЛЮЄ сітка (крок 16 м: короткі хвилі між вершинами не видно) —
+   * для того, що лежить на воді (слід піни), щоб не тонуло й не висіло.
+   */
+  renderedHeightAt(x: number, z: number, t: number): number {
+    const fx = (x + OCEAN_HALF) / OCEAN_STEP, fz = (z + OCEAN_HALF) / OCEAN_STEP;
+    const ix = Math.floor(fx), iz = Math.floor(fz);
+    const u = fx - ix, v = fz - iz;
+    const x0 = ix * OCEAN_STEP - OCEAN_HALF, z0 = iz * OCEAN_STEP - OCEAN_HALF;
+    const w = this.waves;
+    const h00 = waveHeight(x0, z0, t, w), h10 = waveHeight(x0 + OCEAN_STEP, z0, t, w);
+    const h01 = waveHeight(x0, z0 + OCEAN_STEP, t, w), h11 = waveHeight(x0 + OCEAN_STEP, z0 + OCEAN_STEP, t, w);
+    return (h00 * (1 - u) + h10 * u) * (1 - v) + (h01 * (1 - u) + h11 * u) * v;
   }
 
   heightAt(x: number, z: number, t: number): number {
