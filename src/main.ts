@@ -886,6 +886,9 @@ class Game {
       this.wasMoored = this.boat.mooredNow;
     }
 
+    // маршрут для лоції (лише капітан/соло — човен його)
+    if (!this.coop.isClient) g.addTrack(this.boat.pos.x, this.boat.pos.z);
+
     // кранці — лише біля причалу
     this.boat.setFenders(Math.hypot(this.boat.pos.x - MOOR.x, this.boat.pos.z - MOOR.z) < 30);
 

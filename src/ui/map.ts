@@ -58,6 +58,7 @@ export class MapView {
         <span><i class="lg lg-ring"></i>зони: берег до 400 м, середина до 900 м</span>
         <span>🐟 стая (за радіозвітом)</span>
         <span><i class="lg lg-wp"></i>твоя точка</span>
+        <span><i class="lg lg-track"></i>твій маршрут</span>
       </div>
     `;
     document.body.appendChild(this.el);
@@ -197,6 +198,28 @@ export class MapView {
         c.lineTo(px + Math.cos(a) * 4, pz + Math.sin(a) * 4);
       }
       c.stroke();
+    }
+
+    // ── пройдений маршрут: пунктир, старіші ділянки блідші ──
+    {
+      const tr = game.track;
+      const n = tr.length / 2;
+      if (n > 1) {
+        c.lineWidth = 2;
+        c.setLineDash([5, 5]);
+        c.lineCap = 'round';
+        for (let i = 1; i < n; i++) {
+          const x0 = tr[(i - 1) * 2], z0 = tr[(i - 1) * 2 + 1], x1 = tr[i * 2], z1 = tr[i * 2 + 1];
+          if (Math.hypot(x1 - x0, z1 - z0) > 80) continue; // стрибок (затоплення / новий сейв)
+          c.strokeStyle = `rgba(226,103,74,${(0.15 + 0.6 * (i / n)).toFixed(2)})`;
+          c.beginPath();
+          c.moveTo(mx(x0), my(z0));
+          c.lineTo(mx(x1), my(z1));
+          c.stroke();
+        }
+        c.setLineDash([]);
+        c.lineCap = 'butt';
+      }
     }
 
     // ── пам'ятки: відкриті — з назвою, решта — «?» ──

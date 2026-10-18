@@ -84,6 +84,8 @@ export interface SaveData {
   places?: string[];
   /** крок навчання (6 — пройдено) */
   tut?: number;
+  /** пройдений маршрут (точки x,z через кожні ~25 м; останні 400) */
+  track?: number[];
   objectives: ObjectiveState;
   timeHours: number;
   dayCount: number;

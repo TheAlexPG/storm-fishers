@@ -25,6 +25,8 @@ export class GameState {
   places: string[] = [];
   /** крок навчання «що далі» (TUTORIAL.length — пройдено) */
   tut = 0;
+  /** пройдений маршрут: плоский масив [x0,z0,x1,z1,…] */
+  track: number[] = [];
   objectives: ObjectiveState = {
     firstSale: false,
     allSpecies: false,
@@ -168,6 +170,14 @@ export class GameState {
   // ── Навігація ──
 
   /** поставити/переставити точку на карті */
+  /** додати точку маршруту, якщо відпливли достатньо далеко */
+  addTrack(x: number, z: number) {
+    const n = this.track.length;
+    if (n >= 2 && Math.hypot(x - this.track[n - 2], z - this.track[n - 1]) < 25) return;
+    this.track.push(Math.round(x), Math.round(z));
+    if (this.track.length > 800) this.track.splice(0, this.track.length - 800);
+  }
+
   setWaypoint(x: number, z: number) {
     this.waypoint = { x, z };
   }
@@ -210,6 +220,7 @@ export class GameState {
       discovered: this.discovered,
       places: this.places,
       tut: this.tut,
+      track: this.track,
       objectives: this.objectives,
       timeHours: 0, // заповнюється зовні
       dayCount: 1,
@@ -263,6 +274,7 @@ export class GameState {
     if (Array.isArray(data.discovered)) this.discovered = data.discovered;
     if (Array.isArray(data.places)) this.places = data.places;
     // старі сейви без кроку: досвідчений гравець — навчання пропускаємо
+    if (Array.isArray(data.track)) this.track = data.track.filter((v) => typeof v === 'number').slice(-800);
     if (typeof data.tut === 'number') this.tut = data.tut;
     else if (data.objectives?.firstSale) this.tut = 99;
     if (data.objectives) this.objectives = { ...this.objectives, ...data.objectives };
