@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { Boat } from './boat';
 import type { Ocean } from '../core/ocean';
+import { buildCharacter, hashStr, playerLook } from './character';
 
 // ─────────────────────────────────────────────────────────────
 // Аватар іншого гравця (кооп): рибалка в зюйдвестці + нік над головою.
@@ -35,12 +36,22 @@ export function colorForId(id: number): number {
 export class Avatar {
   readonly root = new THREE.Group();
   state: NetPlayer | null = null;
-  private body = new THREE.Group();
-  private legL = new THREE.Group();
-  private legR = new THREE.Group();
-  private armL = new THREE.Group();
-  private armR = new THREE.Group();
-  private head = new THREE.Group();
+  private body: THREE.Group;
+  private torso: THREE.Group;
+  private legL: THREE.Group;
+  private legR: THREE.Group;
+  private kneeL: THREE.Group;
+  private kneeR: THREE.Group;
+  private armL: THREE.Group;
+  private armR: THREE.Group;
+  private head: THREE.Group;
+  // жива поза: озирання, помах рукою, коли довго стоїть
+  private idleT = 0;
+  private waveT = -1;
+  private look = 0;
+  private lookTarget = 0;
+  private lookTimer = 0;
+  private walkK = 0;
   private label: THREE.Sprite;
   private labelCanvas: HTMLCanvasElement;
   private phase = Math.random() * 10;
@@ -60,46 +71,19 @@ export class Avatar {
   private bz = 0;
   private fishing = false;
 
-  constructor(scene: THREE.Scene, public nick: string, color: number) {
+  constructor(scene: THREE.Scene, public nick: string, color: number, seed?: number) {
     const std = (c: number, r = 0.8) => new THREE.MeshStandardMaterial({ color: c, roughness: r });
-    const skin = std(0xe0b48f, 0.7);
-    const jacket = std(color, 0.55);
-    const pants = std(0x2b3340);
-    const boots = std(0x2a2522, 0.6);
-    const add = (parent: THREE.Object3D, geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) => {
-      const m = new THREE.Mesh(geo, mat);
-      m.position.set(x, y, z);
-      m.castShadow = true;
-      parent.add(m);
-      return m;
-    };
-    this.root.add(this.body);
-    for (const [leg, sx] of [[this.legL, -1], [this.legR, 1]] as const) {
-      leg.position.set(sx * 0.11, 0.9, 0);
-      this.body.add(leg);
-      add(leg, new THREE.CapsuleGeometry(0.075, 0.62, 3, 8), pants, 0, -0.42, 0);
-      add(leg, new THREE.BoxGeometry(0.13, 0.1, 0.26), boots, 0, -0.85, 0.04);
-    }
-    const torso = new THREE.Group();
-    torso.position.y = 0.9;
-    this.body.add(torso);
-    add(torso, new THREE.CapsuleGeometry(0.2, 0.4, 4, 10), jacket, 0, 0.32, 0).scale.set(1, 1, 0.78);
-    // світловідбивна смуга на куртці
-    add(torso, new THREE.CylinderGeometry(0.205, 0.205, 0.05, 14, 1, true), std(0xe8e8e0, 0.3), 0, 0.12, 0).scale.set(1, 1, 0.78);
-    for (const [arm, sx] of [[this.armL, -1], [this.armR, 1]] as const) {
-      arm.position.set(sx * 0.26, 0.66, 0);
-      torso.add(arm);
-      add(arm, new THREE.CapsuleGeometry(0.062, 0.5, 3, 8), jacket, 0, -0.3, 0);
-      add(arm, new THREE.SphereGeometry(0.06, 8, 6), skin, 0, -0.62, 0);
-    }
-    this.head.position.y = 0.86;
-    torso.add(this.head);
-    add(this.head, new THREE.SphereGeometry(0.13, 12, 10), skin, 0, 0.1, 0);
-    add(this.head, new THREE.SphereGeometry(0.018, 6, 4), std(0x1a1a1a, 0.4), -0.045, 0.13, 0.12);
-    add(this.head, new THREE.SphereGeometry(0.018, 6, 4), std(0x1a1a1a, 0.4), 0.045, 0.13, 0.12);
-    // зюйдвестка кольору куртки
-    add(this.head, new THREE.SphereGeometry(0.15, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), std(color, 0.5), 0, 0.14, 0);
-    add(this.head, new THREE.CylinderGeometry(0.24, 0.26, 0.02, 14), std(color, 0.5), 0, 0.14, -0.03);
+    const rig = buildCharacter(playerLook(color, seed ?? hashStr(nick) ^ color));
+    this.body = rig.body;
+    this.torso = rig.torso;
+    this.legL = rig.legL;
+    this.legR = rig.legR;
+    this.kneeL = rig.kneeL;
+    this.kneeR = rig.kneeR;
+    this.armL = rig.armL;
+    this.armR = rig.armR;
+    this.head = rig.head;
+    this.root.add(rig.body);
 
     // вудка в правій руці (видно лише під час риболовлі)
     const rodMat = std(0x2a2a2a, 0.4);
@@ -112,7 +96,7 @@ export class Avatar {
     this.rod.add(reel);
     this.rodTip.position.y = 2.2;
     this.rod.add(this.rodTip);
-    this.rod.position.set(0, -0.6, 0);
+    this.rod.position.set(0, -0.58, 0.02);
     this.rod.rotation.x = 1.0; // від руки вперед і вгору
     this.rod.visible = false;
     this.armR.add(this.rod);
@@ -138,7 +122,7 @@ export class Avatar {
     tex.colorSpace = THREE.SRGBColorSpace;
     this.label = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true, toneMapped: false }));
     this.label.scale.set(0.9, 0.225, 1);
-    this.label.position.y = 2.15;
+    this.label.position.y = 2.3;
     this.label.renderOrder = 10;
     this.root.add(this.label);
     this.setNick(nick);
@@ -204,34 +188,72 @@ export class Avatar {
     // людина тримає вертикаль (крен корпусу гасить ногами); модель дивиться в +Z, камера при yaw=0 — у −Z
     this.root.rotation.set(0, this.syaw + Math.PI, 0);
     // у воді — по груди
-    this.body.position.y = s.m === 2 ? -1.15 : 0;
-
-    // анімація: хода / штурвал / плавання
+    const swim = s.m === 2;
+    // анімація: хода / штурвал / плавання / риболовля / спокій
     this.phase += dt * (s.mv ? 7.5 : 1.2);
-    const sw = s.mv ? Math.sin(this.phase) * 0.55 : 0;
-    this.legL.rotation.x = sw;
-    this.legR.rotation.x = -sw;
+    this.walkK += ((s.mv ? 1 : 0) - this.walkK) * (1 - Math.exp(-10 * dt));
+    const wk = this.walkK;
+    const sw = Math.sin(this.phase) * 0.55 * wk;
     const f = s.f;
     this.fishing = !!f && s.m === 0;
     this.rod.visible = this.fishing;
+    const idle = !s.mv && !s.wh && !this.fishing && !swim;
+    // дихання й перенесення ваги
+    const br = Math.sin(t * 1.7 + this.phase * 0.1);
+    this.torso.scale.set(1 + br * 0.006, 1 + br * 0.012, 1 + br * 0.01);
+    const shift = Math.sin(t * 0.45 + this.syaw) * (1 - wk);
+    this.body.position.set(shift * 0.018, (swim ? -1.15 : 0) + Math.abs(Math.cos(this.phase)) * 0.04 * wk, 0);
+    this.body.rotation.z = shift * 0.025;
+    this.torso.rotation.set(0.06 * wk + (this.fishing ? 0.08 : 0), sw * 0.18, -shift * 0.03);
+    this.legL.rotation.set(sw, 0, -shift * 0.025);
+    this.legR.rotation.set(-sw, 0, -shift * 0.025);
+    this.kneeL.rotation.x = swim ? 0.5 + Math.sin(this.phase * 1.4) * 0.3 : 0.05 + Math.max(0, sw) * 0.75 * wk + (1 - wk) * Math.max(0, shift) * 0.06;
+    this.kneeR.rotation.x = swim ? 0.5 - Math.sin(this.phase * 1.4) * 0.3 : 0.05 + Math.max(0, -sw) * 0.75 * wk + (1 - wk) * Math.max(0, -shift) * 0.06;
+
+    // озирається, коли стоїть
+    this.lookTimer -= dt;
+    if (this.lookTimer <= 0) {
+      this.lookTimer = 1.5 + Math.random() * 3.5;
+      this.lookTarget = idle ? (Math.random() - 0.5) * 1.3 : 0;
+    }
+    if (!idle) this.lookTarget = 0;
+    this.look += (this.lookTarget - this.look) * (1 - Math.exp(-3 * dt));
+    // давно стоїть — помахати рукою
+    this.idleT = idle ? this.idleT + dt : 0;
+    if (idle && this.waveT < 0 && this.idleT > 9) {
+      this.waveT = 0;
+      this.idleT = -Math.random() * 10;
+    }
+    if (!idle) this.waveT = -1;
+
     if (this.fishing) {
       // тримає вудку перед собою; у боротьбі — тягне на себе
       const pull = f![0] === 3 ? Math.sin(this.phase * 3) * 0.12 + 0.25 : 0;
       this.armR.rotation.set(-0.75 + pull, 0, -0.12);
       this.armL.rotation.set(-0.9 + pull, 0.3, 0.25);
     } else if (s.wh) {
-      // руки на колесі
-      this.armL.rotation.set(-1.15, 0, 0.18);
-      this.armR.rotation.set(-1.15, 0, -0.18);
-    } else if (s.m === 2) {
+      // руки на колесі, трохи підкермовує
+      const steer = Math.sin(t * 0.7) * 0.06;
+      this.armL.rotation.set(-0.88 + steer, 0, 0.16);
+      this.armR.rotation.set(-0.88 - steer, 0, -0.16);
+    } else if (swim) {
       const st = Math.sin(this.phase * 1.4) * 0.9;
       this.armL.rotation.set(-1.6 + st, 0, 0.4);
       this.armR.rotation.set(-1.6 - st, 0, -0.4);
     } else {
-      this.armL.rotation.set(-sw * 0.7, 0, -0.08);
-      this.armR.rotation.set(sw * 0.7, 0, 0.08);
+      this.armL.rotation.set(-sw * 0.8 - 0.08, 0, -0.12 - br * 0.02 * (1 - wk));
+      this.armR.rotation.set(sw * 0.8 - 0.08, 0, 0.12 + br * 0.02 * (1 - wk));
+      if (this.waveT >= 0) {
+        this.waveT += dt;
+        const u = this.waveT / 2.4;
+        const up = Math.sin(Math.min(1, u) * Math.PI);
+        const e = Math.min(1, up * 1.6);
+        this.armR.rotation.set(-0.25 * e, 0, 0.1 + e * 2.55 + Math.sin(this.waveT * 11) * 0.28 * e);
+        this.look = this.look * (1 - e) + 0.25 * e;
+        if (u >= 1) this.waveT = -1;
+      }
     }
-    this.head.rotation.x = -s.pitch * 0.6;
+    this.head.rotation.set(-s.pitch * 0.6 + (this.fishing ? 0.2 : 0), this.look, -shift * 0.04);
     this.updateBobber(dt, ocean, t);
   }
 

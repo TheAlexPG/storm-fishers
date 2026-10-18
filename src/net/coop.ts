@@ -161,7 +161,7 @@ export class Coop {
   private ensurePeer(p: PeerInfo): RemotePeer {
     let r = this.peers.get(p.id);
     if (!r) {
-      r = { info: p, avatar: new Avatar(this.scene, p.nick, colorForId(p.id)), state: null, helm: null, pump: false };
+      r = { info: p, avatar: new Avatar(this.scene, p.nick, colorForId(p.id), p.id), state: null, helm: null, pump: false };
       this.peers.set(p.id, r);
     }
     return r;
