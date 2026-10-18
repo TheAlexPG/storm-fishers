@@ -291,7 +291,8 @@ export class Boat {
     this.interiorLight.intensity = i;
     // кокпіт: дах завжди читається як темне дерево, вночі/штормі — тепле укриття
     this.cockpitLight.intensity = 2.5 + i * 3;
-    for (const m of this.glowMats) m.emissiveIntensity = 0.15 + i * 0.55;
+    // скло вікон світиться лише вночі/у шторм (вдень — прозоре, без «бежевих» плям)
+    for (const m of this.glowMats) m.emissiveIntensity = m.userData.nightGlow ? Math.max(0, i - 0.25) * 0.8 : 0.15 + i * 0.55;
   }
 
   /** підсвітити маркер станції (1 — активна/близька) */

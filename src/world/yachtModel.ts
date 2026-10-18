@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { eff } from '../game/upgrades';
 import type { UpgradeId } from '../core/types';
 import { PART_SPECS, buildPartOnBoat } from './upgradeParts';
@@ -298,6 +299,118 @@ function rectPath(x0: number, x1: number, z0: number, z1: number): THREE.Path {
   return p;
 }
 
+/** прямокутник із заокругленими кутами (центр у 0, площина XY) */
+function roundRectShape(w: number, d: number, r: number, cx = 0, cy = 0): THREE.Shape {
+  const hw = w / 2, hd = d / 2;
+  const rr = Math.max(0.001, Math.min(r, hw - 0.001, hd - 0.001));
+  const s = new THREE.Shape();
+  const L = cx - hw, R = cx + hw, B = cy - hd, T = cy + hd;
+  s.moveTo(L + rr, B);
+  s.lineTo(R - rr, B);
+  s.quadraticCurveTo(R, B, R, B + rr);
+  s.lineTo(R, T - rr);
+  s.quadraticCurveTo(R, T, R - rr, T);
+  s.lineTo(L + rr, T);
+  s.quadraticCurveTo(L, T, L, T - rr);
+  s.lineTo(L, B + rr);
+  s.quadraticCurveTo(L, B, L + rr, B);
+  return s;
+}
+
+const rboxCache = new Map<string, THREE.BufferGeometry>();
+/**
+ * «Обтічний» брусок w×h×d: заокруглені вертикальні ребра (радіус r у плані)
+ * і фаска b на верхніх/нижніх ребрах — замість гострих BoxGeometry.
+ */
+function roundedBoxGeo(w: number, h: number, d: number, r: number, b: number): THREE.BufferGeometry {
+  const key = [w, h, d, r, b].map((v) => v.toFixed(4)).join('|');
+  const hit = rboxCache.get(key);
+  if (hit) return hit;
+  const bb = Math.max(0.001, Math.min(b, h / 2 - 0.001, w / 2 - 0.002, d / 2 - 0.002));
+  const shape = roundRectShape(w - bb * 2, d - bb * 2, Math.max(0.002, r - bb));
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: Math.max(0.0005, h - bb * 2),
+    bevelEnabled: true,
+    bevelThickness: bb,
+    bevelSize: bb,
+    bevelSegments: 2,
+    curveSegments: 3,
+  });
+  geo.translate(0, 0, -(h - bb * 2) / 2);
+  geo.rotateX(-Math.PI / 2); // товщина — уздовж Y, «глибина» форми — уздовж Z
+  rboxCache.set(key, geo);
+  return geo;
+}
+
+/** ілюмінатори в бортах салону: овал (стадіон) уздовж z, центр на висоті y */
+const PORTHOLE = { y: 0.7, r: 0.065, hl: 0.12, zs: [1.1, 1.9, 3.0] };
+
+/** вирізати отвори ілюмінаторів у матеріалі корпусу/обшивки (discard у локальних координатах) */
+function cutPortholes(m: THREE.MeshStandardMaterial) {
+  const zs = PORTHOLE.zs.map((z) => z.toFixed(3));
+  m.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vHullPos;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvHullPos = position;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+varying vec3 vHullPos;
+float portD(float zc) {
+  vec2 q = vec2(max(abs(vHullPos.z - zc) - ${PORTHOLE.hl.toFixed(3)}, 0.0), vHullPos.y - ${PORTHOLE.y.toFixed(3)});
+  return length(q);
+}`,
+      )
+      .replace(
+        '#include <clipping_planes_fragment>',
+        `#include <clipping_planes_fragment>
+if (abs(vHullPos.x) > 0.4 && min(min(portD(${zs[0]}), portD(${zs[1]})), portD(${zs[2]})) < ${(PORTHOLE.r + 0.004).toFixed(3)}) discard;`,
+      );
+  };
+  m.customProgramCacheKey = () => 'hull-portholes';
+}
+
+/** напис на транці: кремові літери з темно-синім обведенням на прозорому тлі */
+function nameTexture(name: string): THREE.CanvasTexture {
+  const tex = canvasTex(512, 128, (ctx) => {
+    ctx.font = "800 84px Georgia, 'Times New Roman', serif";
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 10;
+    ctx.strokeStyle = '#1d2b45';
+    ctx.strokeText(name, 256, 68);
+    ctx.fillStyle = '#e9c77a';
+    ctx.fillText(name, 256, 68);
+  });
+  tex.anisotropy = 8;
+  return tex;
+}
+
+/** сонячна панель: темно-сині комірки з тонкою сіткою й світлою рамкою */
+function solarTexture(): THREE.CanvasTexture {
+  return canvasTex(128, 128, (ctx) => {
+    ctx.fillStyle = '#c9ced3';
+    ctx.fillRect(0, 0, 128, 128);
+    ctx.fillStyle = '#18294a';
+    ctx.fillRect(4, 4, 120, 120);
+    ctx.strokeStyle = 'rgba(150,175,210,0.35)';
+    ctx.lineWidth = 1;
+    for (let i = 1; i < 6; i++) {
+      const p = 4 + (120 * i) / 6;
+      ctx.beginPath();
+      ctx.moveTo(p, 4);
+      ctx.lineTo(p, 124);
+      ctx.moveTo(4, p);
+      ctx.lineTo(124, p);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    ctx.fillRect(4, 4, 120, 40);
+  });
+}
+
 // ─────────────────────────────────────────────────────────────
 
 export class YachtBuilder {
@@ -350,7 +463,59 @@ export class YachtBuilder {
     mesh.castShadow = shadow;
     mesh.receiveShadow = true;
     parent.add(mesh);
+    this.markStatic(parent, mesh);
     return mesh;
+  }
+
+  /** брусок із заокругленими ребрами (див. roundedBoxGeo) */
+  rbox(parent: THREE.Object3D, w: number, h: number, d: number, x: number, y: number, z: number, m: THREE.Material | number, r = 0.05, b = 0.015, shadow = true): THREE.Mesh {
+    const mesh = new THREE.Mesh(roundedBoxGeo(w, h, d, r, b), typeof m === 'number' ? this.mat(m) : m);
+    mesh.position.set(x, y, z);
+    mesh.castShadow = shadow;
+    mesh.receiveShadow = true;
+    parent.add(mesh);
+    this.markStatic(parent, mesh);
+    return mesh;
+  }
+
+  /** нерухомі дрібні деталі прямо на корпусі зливаються за матеріалом у кінці build() */
+  private markStatic(parent: THREE.Object3D, mesh: THREE.Mesh) {
+    if (parent === this.g) mesh.userData.merge = true;
+  }
+
+  /** злити позначені деталі за (матеріал, тінь) — сотні дрібних мешів → десятки draw calls */
+  private mergeStatic() {
+    const groups = new Map<string, THREE.Mesh[]>();
+    for (const o of [...this.g.children]) {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh || !m.userData.merge || Array.isArray(m.material)) continue;
+      const mat = m.material as THREE.Material;
+      if (mat.transparent) continue;
+      const key = `${mat.uuid}|${m.castShadow ? 1 : 0}`;
+      (groups.get(key) ?? groups.set(key, []).get(key)!).push(m);
+    }
+    for (const list of groups.values()) {
+      if (list.length < 2) continue;
+      const geos: THREE.BufferGeometry[] = [];
+      for (const m of list) {
+        m.updateMatrix();
+        let geo = m.geometry.clone().applyMatrix4(m.matrix);
+        for (const name of Object.keys(geo.attributes)) {
+          if (name !== 'position' && name !== 'normal' && name !== 'uv') geo.deleteAttribute(name);
+        }
+        if (!geo.index) geo = mergeVertices(geo);
+        geo.morphAttributes = {};
+        geos.push(geo);
+      }
+      const merged = mergeGeometries(geos, false);
+      if (!merged) continue;
+      for (const g of geos) g.dispose();
+      const mesh = new THREE.Mesh(merged, list[0].material);
+      mesh.castShadow = list[0].castShadow;
+      mesh.receiveShadow = true;
+      for (const m of list) this.g.remove(m);
+      this.g.add(mesh);
+    }
   }
 
   cyl(parent: THREE.Object3D, rt: number, rb: number, h: number, x: number, y: number, z: number, m: THREE.Material | number, seg = 10): THREE.Mesh {
@@ -359,6 +524,7 @@ export class YachtBuilder {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     parent.add(mesh);
+    this.markStatic(parent, mesh);
     return mesh;
   }
 
@@ -370,10 +536,12 @@ export class YachtBuilder {
     mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
     mesh.castShadow = true;
     parent.add(mesh);
+    this.markStatic(parent, mesh);
     return mesh;
   }
 
   build(): YachtRefs {
+    this.refs.glowMats.push(this.glassMat);
     this.buildHull();
     this.buildDeck();
     this.buildHouse();
@@ -386,6 +554,8 @@ export class YachtBuilder {
     this.buildInterior();
     this.interior = false;
     this.buildUpgradeVisuals();
+    for (const o of [...this.refs.fenders, ...this.refs.furledJib]) o.userData.merge = false;
+    this.mergeStatic();
     return this.refs;
   }
 
@@ -467,23 +637,71 @@ export class YachtBuilder {
     const rudder = this.box(this.g, 0.07, 0.95, 0.42, 0, -0.55, -3.6, ANTIFOUL);
     rudder.rotation.x = 0.12;
 
-    // ілюмінатори в борту салону (світяться зсередини вночі)
+    // ілюмінатори в борту салону: справжнє скло — корпус і обшивка в цих місцях
+    // вирізані шейдером (discard), крізь них видно море й небо; рама-обичайка
+    // з нержавійки закриває торець між корпусом і обшивкою
+    cutPortholes(hullMat);
+    cutPortholes(lining.material as THREE.MeshStandardMaterial);
+    const steel = this.mat(STEEL, 0.25, 0.9);
+    const ph = PORTHOLE;
+    const glassShape = roundRectShape((ph.hl + ph.r) * 2, ph.r * 2, ph.r);
+    const rimShape = roundRectShape((ph.hl + ph.r) * 2 + 0.05, ph.r * 2 + 0.05, ph.r + 0.025);
+    rimShape.holes.push(roundRectShape((ph.hl + ph.r) * 2 - 0.004, ph.r * 2 - 0.004, ph.r - 0.002));
+    const D = 0.12; // глибина обичайки: від зовнішньої поверхні до обшивки
     for (const s of [-1, 1]) {
-      for (const z of [1.1, 1.9, 3.0]) {
-        const y = 0.8;
-        const x = hullXAt(y, z) + 0.004;
-        const m = new THREE.MeshStandardMaterial({ color: 0x1a2430, emissive: 0xffd9a0, emissiveIntensity: 0.1, roughness: 0.15, metalness: 0.6 });
-        const port = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.24, 3, 10), m);
-        port.rotation.x = Math.PI / 2;
-        port.scale.set(1, 1, 0.25);
-        port.position.set(s * x, y, z);
-        port.rotation.z = 0;
-        port.lookAt(port.position.x * 3, y, z);
-        port.rotateX(Math.PI / 2);
-        this.g.add(port);
-        this.refs.glowMats.push(m);
+      const rimGeo = new THREE.ExtrudeGeometry(rimShape, { depth: D, bevelEnabled: true, bevelThickness: 0.006, bevelSize: 0.006, bevelSegments: 1, curveSegments: 6 });
+      rimGeo.translate(0, 0, s > 0 ? -D : 0);
+      rimGeo.rotateY(Math.PI / 2);
+      for (const z of ph.zs) {
+        const x = hullXAt(ph.y, z);
+        this.addStatic(rimGeo, steel, s * (x + 0.004), ph.y, z);
+        const glass = new THREE.Mesh(new THREE.ShapeGeometry(glassShape, 6).rotateY(Math.PI / 2), this.glassMat);
+        glass.position.set(s * (x - 0.03), ph.y, z);
+        glass.renderOrder = 2;
+        this.g.add(glass);
       }
     }
+
+    // назва на транці (над купальною платформою, на декоративній смузі)
+    {
+      const z = -HALF_LEN - 0.006;
+      const name = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.15, 0.29),
+        new THREE.MeshStandardMaterial({ map: nameTexture('ШТОРМ'), transparent: true, roughness: 0.4, metalness: 0.2, polygonOffset: true, polygonOffsetFactor: -2 }),
+      );
+      name.rotation.y = Math.PI;
+      name.position.set(0, DECK_Y - 0.15, z);
+      this.g.add(name);
+    }
+  }
+
+  /** спільне скло вікон і ілюмінаторів: прозоре, з легким тоном; вночі світиться теплим */
+  private glassMat = (() => {
+    const m = new THREE.MeshStandardMaterial({
+      color: 0x6f93a6,
+      emissive: 0xffc98a,
+      emissiveIntensity: 0,
+      roughness: 0.06,
+      metalness: 0.35,
+      transparent: true,
+      opacity: 0.28,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    m.userData.nightGlow = true;
+    return m;
+  })();
+
+  /** геометрія в позиції — одразу на злиття (без окремого мешу назавжди) */
+  private addStatic(geo: THREE.BufferGeometry, m: THREE.Material, x: number, y: number, z: number, rotY = 0): THREE.Mesh {
+    const mesh = new THREE.Mesh(geo, m);
+    mesh.position.set(x, y, z);
+    mesh.rotation.y = rotY;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    this.g.add(mesh);
+    mesh.userData.merge = true;
+    return mesh;
   }
 
   // ── тиковий настил з прорізом під рубку ──
@@ -498,6 +716,43 @@ export class YachtBuilder {
     deck.receiveShadow = true;
     deck.castShadow = true;
     this.g.add(deck);
+
+    // облямівка палуби (margin board) уздовж борту + королівська дошка на баку —
+    // суцільний тик без швів, як на справжніх палубах
+    {
+      const margin = this.mat(0xa2744a, 0.8);
+      const edge = (inset: number, za: number, zb: number) => {
+        const pts: Array<[number, number]> = [];
+        const N = 48;
+        for (let i = 0; i <= N; i++) {
+          const z = za + ((zb - za) * i) / N;
+          pts.push([Math.max(0.01, hullHalfWidth(z) - inset), z]);
+        }
+        return pts;
+      };
+      const outer = edge(0.04, -HALF_LEN + 0.03, HALF_LEN - 0.05);
+      const inner = edge(0.18, -HALF_LEN + 0.17, HALF_LEN - 0.62);
+      const shape = new THREE.Shape();
+      shape.moveTo(outer[0][0], -outer[0][1]);
+      for (const [x, z] of outer) shape.lineTo(x, -z);
+      for (let i = outer.length - 1; i >= 0; i--) shape.lineTo(-outer[i][0], -outer[i][1]);
+      shape.closePath();
+      const hole = new THREE.Path();
+      hole.moveTo(inner[0][0], -inner[0][1]);
+      for (const [x, z] of inner) hole.lineTo(x, -z);
+      for (let i = inner.length - 1; i >= 0; i--) hole.lineTo(-inner[i][0], -inner[i][1]);
+      hole.closePath();
+      shape.holes.push(hole);
+      const mg = new THREE.ExtrudeGeometry(shape, { depth: 0.012, bevelEnabled: false, curveSegments: 2 });
+      mg.rotateX(-Math.PI / 2);
+      mg.translate(0, DECK_Y - 0.004, 0);
+      const m = new THREE.Mesh(mg, margin);
+      m.receiveShadow = true;
+      this.g.add(m);
+      // королівська дошка: від рубки до носа
+      const kz0 = HOUSE.z1 + 0.05, kz1 = HALF_LEN - 0.62;
+      this.box(this.g, 0.16, 0.012, kz1 - kz0, 0, DECK_Y + 0.002, (kz0 + kz1) / 2, margin, false);
+    }
 
     // стеля салону під бічними палубами (білий headliner)
     this.interior = true;
@@ -556,7 +811,10 @@ export class YachtBuilder {
       for (const z of posts) {
         const x = s * (hullHalfWidth(z) - 0.1);
         const y0 = sheerY(z);
-        this.rod(this.g, new THREE.Vector3(x, y0, z), new THREE.Vector3(x, y0 + 0.62, z), 0.014, steel);
+        this.rod(this.g, new THREE.Vector3(x, y0, z), new THREE.Vector3(x, y0 + 0.62, z), 0.014, steel, 8);
+        // основа стійки (фланець) і ковпачок
+        this.cyl(this.g, 0.022, 0.034, 0.05, x, y0 + 0.025, z, steel, 10);
+        this.cyl(this.g, 0.02, 0.018, 0.03, x, y0 + 0.62, z, steel, 8);
         tops.push(new THREE.Vector3(x, y0 + 0.62, z));
       }
       // пульпіт на носі
@@ -595,8 +853,15 @@ export class YachtBuilder {
       this.rod(this.g, new THREE.Vector3(0.45, y, z), new THREE.Vector3(0.45, sheerY(z), z), 0.016, steel);
     }
     // купальна платформа на транці + трап
-    this.box(this.g, 2.6, 0.08, 0.55, 0, WATERLINE_Y + 0.22, -HALF_LEN - 0.22, this.mat(TEAK, 0.85));
-    for (let i = 0; i < 3; i++) this.box(this.g, 0.36, 0.025, 0.05, -0.9, WATERLINE_Y + 0.1 - i * 0.25, -HALF_LEN - 0.47, steel, false);
+    {
+      const teakDeck = new THREE.MeshStandardMaterial({ color: 0xffffff, map: this.teakTex, roughness: 0.85 });
+      this.rbox(this.g, 2.6, 0.08, 0.55, 0, WATERLINE_Y + 0.22, -HALF_LEN - 0.22, teakDeck, 0.12, 0.02);
+      // білий кронштейн-основа під платформою (не «висить» у повітрі)
+      this.rbox(this.g, 2.3, 0.1, 0.2, 0, WATERLINE_Y + 0.14, -HALF_LEN - 0.08, this.mat(GELCOAT, 0.35, 0.05), 0.05, 0.03);
+      // трап: тятиви + сходинки
+      for (const dx of [-0.17, 0.17]) this.rod(this.g, new THREE.Vector3(-0.9 + dx, WATERLINE_Y + 0.2, -HALF_LEN - 0.47), new THREE.Vector3(-0.9 + dx, WATERLINE_Y - 0.42, -HALF_LEN - 0.47), 0.012, steel, 6);
+      for (let i = 0; i < 3; i++) this.rbox(this.g, 0.34, 0.025, 0.06, -0.9, WATERLINE_Y + 0.1 - i * 0.25, -HALF_LEN - 0.47, this.mat(TEAK, 0.7), 0.012, 0.006, false);
+    }
   }
 
   // ── рубка (deckhouse) над салоном ──
@@ -606,44 +871,114 @@ export class YachtBuilder {
     const H = HOUSE.top - DECK_Y;
     const len = HOUSE.z1 - HOUSE.z0;
     const zc = (HOUSE.z0 + HOUSE.z1) / 2;
-    // бічні стінки з нахилом всередину
+    const frameMat = this.mat(0x2a2f36, 0.45, 0.4);
+    // бічні стінки з нахилом всередину; у них — справжні вікна з отворами
+    // (зсередини салону видно море), темна рама із заокругленими кутами
+    const wallH = H + 0.04;
+    const T = 0.07;
+    const winY = H * 0.08 + 0.02; // центр вікон відносно центру стінки
+    const winH = 0.26;
+    // два вікна: коротке кормове й довге носове (z відносно центру стінки)
+    const wins: Array<[number, number]> = [[-1.0, -0.28], [-0.16, 1.3]];
+    // носовий торець зрізано під нахил носової стінки (інакше кути стирчали назовні)
+    const frontZ = (yr: number) => Math.min(len / 2, HOUSE.z1 - 0.08 - zc + 0.03 - (yr - 0.02) * Math.tan(0.35));
+    const wallShape = new THREE.Shape();
+    wallShape.moveTo(len / 2, -wallH / 2);
+    wallShape.lineTo(-frontZ(-wallH / 2), -wallH / 2);
+    wallShape.lineTo(-frontZ(wallH / 2), wallH / 2);
+    wallShape.lineTo(len / 2, wallH / 2);
+    wallShape.closePath();
+    // shape X = -z (після rotateY(π/2)), Y = y
+    for (const [a, b] of wins) wallShape.holes.push(roundRectShape(b - a, winH, 0.09, -(a + b) / 2, winY));
+    const wallGeo = new THREE.ExtrudeGeometry(wallShape, { depth: T, bevelEnabled: false, curveSegments: 5 });
+    wallGeo.translate(0, 0, -T / 2);
+    wallGeo.rotateY(Math.PI / 2);
     for (const s of [-1, 1]) {
-      const wall = this.box(g, 0.07, H + 0.04, len, s * (HOUSE.x - 0.05), DECK_Y + H / 2 - 0.02, zc, white);
+      const wall = new THREE.Mesh(wallGeo, white);
+      wall.position.set(s * (HOUSE.x - 0.05), DECK_Y + H / 2 - 0.02, zc);
       wall.rotation.z = s * 0.1;
-      // довгі тоновані вікна (вночі — тепле світло салону)
-      const wm = new THREE.MeshStandardMaterial({ color: 0x141c26, emissive: 0xffd9a0, emissiveIntensity: 0.1, roughness: 0.1, metalness: 0.7 });
-      const win = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.26, len * 0.72), wm);
-      win.position.set(s * (HOUSE.x - 0.005), DECK_Y + H * 0.58, zc + 0.15);
-      win.rotation.z = s * 0.1;
-      g.add(win);
-      this.refs.glowMats.push(wm);
+      wall.castShadow = true;
+      wall.receiveShadow = true;
+      g.add(wall);
+      for (const [a, b] of wins) {
+        const w = b - a;
+        const cz = (a + b) / 2;
+        const glass = new THREE.Mesh(new THREE.ShapeGeometry(roundRectShape(w, winH, 0.09), 5).rotateY(Math.PI / 2), this.glassMat);
+        glass.position.set(0, winY, cz);
+        glass.renderOrder = 2;
+        wall.add(glass);
+        const ring = roundRectShape(w + 0.07, winH + 0.07, 0.125);
+        ring.holes.push(roundRectShape(w - 0.005, winH - 0.005, 0.088));
+        const fg = new THREE.ExtrudeGeometry(ring, { depth: 0.014, bevelEnabled: true, bevelThickness: 0.004, bevelSize: 0.004, bevelSegments: 1, curveSegments: 5 });
+        fg.rotateY(Math.PI / 2);
+        // рама зовні й зсередини (закриває торець отвору)
+        for (const side of [1, -1]) {
+          const frame = new THREE.Mesh(fg, frameMat);
+          frame.position.set(s * side > 0 ? T / 2 : -T / 2 - 0.014, winY, cz);
+          frame.castShadow = false;
+          wall.add(frame);
+        }
+      }
     }
     // носова стінка (похила)
-    const front = this.box(g, HOUSE.x * 2 - 0.1, H + 0.1, 0.07, 0, DECK_Y + H / 2, HOUSE.z1 - 0.08, white);
+    const front = this.rbox(g, HOUSE.x * 2 - 0.05, H + 0.1, 0.07, 0, DECK_Y + H / 2, HOUSE.z1 - 0.08, white, 0.03, 0.01);
     front.rotation.x = -0.35;
     // кормова стінка з прорізом компаньйона
     const sideW = HOUSE.x - STAIR.x;
     for (const s of [-1, 1]) this.box(g, sideW, H, 0.07, s * (STAIR.x + sideW / 2 - 0.04), DECK_Y + H / 2, HOUSE.z0 + 0.035, white);
-    // дах з камбером: дві смуги обабіч люка + суцільна носова частина
+    // дах: одна плита із заокругленими носовими кутами, фаскою по краю
+    // і вирізом під зсувний люк (замість трьох гострих брусків)
     const roofZ1 = HOUSE.z1 - 0.15;
     const hatchEnd = 0.45;
-    for (const s of [-1, 1]) {
-      this.box(g, sideW + 0.05, 0.06, hatchEnd - HOUSE.z0, s * (STAIR.x + sideW / 2 - 0.02), HOUSE.top, (HOUSE.z0 + hatchEnd) / 2, white);
+    {
+      const bv = 0.022;
+      const hx = HOUSE.x - 0.01 - bv;
+      const nx = STAIR.x - 0.04 + bv;
+      const y0 = -HOUSE.z0 - bv, yn = -hatchEnd + bv, y1 = -roofZ1 + bv;
+      const ra = 0.04, rn = 0.05, rf = 0.32;
+      const s = new THREE.Shape();
+      s.moveTo(-nx, y0);
+      s.lineTo(-nx, yn + rn);
+      s.quadraticCurveTo(-nx, yn, -nx + rn, yn);
+      s.lineTo(nx - rn, yn);
+      s.quadraticCurveTo(nx, yn, nx, yn + rn);
+      s.lineTo(nx, y0);
+      s.lineTo(hx - ra, y0);
+      s.quadraticCurveTo(hx, y0, hx, y0 - ra);
+      s.lineTo(hx, y1 + rf);
+      s.quadraticCurveTo(hx, y1, hx - rf, y1);
+      s.lineTo(-hx + rf, y1);
+      s.quadraticCurveTo(-hx, y1, -hx, y1 + rf);
+      s.lineTo(-hx, y0 - ra);
+      s.quadraticCurveTo(-hx, y0, -hx + ra, y0);
+      s.closePath();
+      const rg = new THREE.ExtrudeGeometry(s, { depth: 0.08 - bv * 2, bevelEnabled: true, bevelThickness: bv, bevelSize: bv, bevelSegments: 3, curveSegments: 6 });
+      rg.rotateX(-Math.PI / 2);
+      rg.translate(0, HOUSE.top - 0.03 + bv, 0);
+      const roof = new THREE.Mesh(rg, white);
+      roof.castShadow = true;
+      roof.receiveShadow = true;
+      g.add(roof);
     }
-    this.box(g, HOUSE.x * 2 - 0.02, 0.06, roofZ1 - hatchEnd, 0, HOUSE.top + 0.01, (hatchEnd + roofZ1) / 2, white);
-    // антиковзке покриття даху (світло-сіре)
-    this.box(g, HOUSE.x * 2 - 0.4, 0.008, roofZ1 - hatchEnd - 0.3, 0, HOUSE.top + 0.045, (hatchEnd + roofZ1) / 2, this.mat(0xd9d6cc, 0.95), false);
-    // зсувний люк компаньйона (відкритий, у «гаражі»)
-    this.box(g, STAIR.x * 2 + 0.12, 0.07, 0.9, 0, HOUSE.top + 0.09, hatchEnd + 0.35, this.mat(0xcfd8de, 0.15, 0.1));
-    for (const s of [-1, 1]) this.box(g, 0.05, 0.1, hatchEnd - HOUSE.z0 + 0.9, s * (STAIR.x + 0.05), HOUSE.top + 0.05, (HOUSE.z0 + hatchEnd + 0.9) / 2, this.mat(TEAK, 0.7));
-    // носовий світловий люк + поручні на даху
-    this.box(g, 0.6, 0.06, 0.6, 0, HOUSE.top + 0.06, 1.9, this.mat(0x223040, 0.1, 0.6));
+    const roofTop = HOUSE.top + 0.05;
+    // антиковзке покриття даху (світло-сіре, заокруглене)
+    this.rbox(g, HOUSE.x * 2 - 0.36, 0.008, roofZ1 - hatchEnd - 0.24, 0, roofTop + 0.003, (hatchEnd + roofZ1) / 2 - 0.02, this.mat(0xd9d6cc, 0.95), 0.12, 0.003, false);
+    // зсувний люк компаньйона (відкритий, у «гаражі»): біла кришка з димчастою вставкою
+    this.rbox(g, STAIR.x * 2 + 0.12, 0.06, 0.9, 0, roofTop + 0.06, hatchEnd + 0.35, white, 0.06, 0.02);
+    this.rbox(g, STAIR.x * 2 - 0.12, 0.012, 0.66, 0, roofTop + 0.09, hatchEnd + 0.35, this.mat(0x3b4a56, 0.15, 0.3), 0.05, 0.004, false);
+    // тикові напрямні люка
+    for (const s of [-1, 1]) this.rbox(g, 0.05, 0.07, hatchEnd - HOUSE.z0 + 0.9, s * (STAIR.x + 0.05), roofTop + 0.03, (HOUSE.z0 + hatchEnd + 0.9) / 2, this.mat(TEAK, 0.7), 0.02, 0.01);
+    // носовий світловий люк: біла рама + тоноване скло (зсунуто з-під щогли)
+    this.rbox(g, 0.58, 0.06, 0.56, 0, roofTop + 0.03, 2.03, white, 0.07, 0.015);
+    this.rbox(g, 0.48, 0.012, 0.46, 0, roofTop + 0.062, 2.03, this.mat(0x223040, 0.08, 0.6), 0.05, 0.004, false);
+    // тикові поручні на даху: брус на ніжках
     for (const s of [-1, 1]) {
-      const hr = this.box(g, 0.04, 0.06, 2.0, s * (HOUSE.x - 0.18), HOUSE.top + 0.09, 1.3, this.mat(TEAK, 0.7));
-      hr.castShadow = false;
+      const x = s * (HOUSE.x - 0.18);
+      this.rbox(g, 0.04, 0.035, 2.0, x, roofTop + 0.075, 1.3, this.mat(TEAK, 0.7), 0.017, 0.008, false);
+      for (const z of [0.36, 0.95, 1.65, 2.24]) this.rbox(g, 0.036, 0.07, 0.06, x, roofTop + 0.035, z, this.mat(TEAK, 0.7), 0.012, 0.006, false);
     }
     // ступінь компаньйона в кокпіті + накладки трапа
-    this.box(g, STAIR.x * 2, 0.04, 0.06, 0, DECK_Y + 0.02, HOUSE.z0 - 0.02, this.mat(TEAK_DARK, 0.8));
+    this.rbox(g, STAIR.x * 2, 0.04, 0.07, 0, DECK_Y + 0.02, HOUSE.z0 - 0.02, this.mat(TEAK_DARK, 0.8), 0.02, 0.008);
   }
 
   // ── кокпіт: коамінги, лави, hardtop, лобове й бічне скло ──
@@ -656,21 +991,31 @@ export class YachtBuilder {
     const zc = (COCKPIT.z0 + COCKPIT.z1) / 2;
     // коамінги
     for (const s of [-1, 1]) {
-      this.box(g, 0.08, 0.38, len, s * cx, DECK_Y + 0.19, zc, white);
-      this.box(g, 0.16, 0.04, len, s * cx, DECK_Y + 0.4, zc, this.mat(TEAK, 0.7));
-      // лави (тик) уздовж коамінгів
-      this.box(g, 0.36, 0.42, 1.65, s * (cx - 0.22), DECK_Y + 0.21, -1.6, white);
-      this.box(g, 0.38, 0.04, 1.65, s * (cx - 0.22), DECK_Y + 0.44, -1.6, teak);
+      this.rbox(g, 0.08, 0.38, len, s * cx, DECK_Y + 0.19, zc, white, 0.03, 0.01);
+      this.rbox(g, 0.16, 0.04, len + 0.04, s * cx, DECK_Y + 0.4, zc, this.mat(TEAK, 0.7), 0.06, 0.012);
+      // лави (тик) уздовж коамінгів: біла основа із заокругленими ребрами, тикове сидіння
+      this.rbox(g, 0.36, 0.42, 1.65, s * (cx - 0.22), DECK_Y + 0.21, -1.6, white, 0.06, 0.02);
+      this.rbox(g, 0.4, 0.045, 1.69, s * (cx - 0.22), DECK_Y + 0.44, -1.6, teak, 0.08, 0.015);
     }
     // hardtop: біла панель з темною стелею, кріплення — лобова рама та кормова дуга
     const roofLen = 0.45 - COCKPIT.z0 + 0.1;
     const roofZ = (COCKPIT.z0 - 0.1 + 0.45) / 2;
-    const roof = this.box(g, cx * 2 + 0.5, 0.08, roofLen, 0, COCKPIT.roofY, roofZ, white);
-    roof.castShadow = true;
-    this.box(g, cx * 2 + 0.46, 0.02, roofLen - 0.04, 0, COCKPIT.roofY - 0.05, roofZ, this.mat(0x3a3f47, 0.9), false);
-    // сонячні панелі на даху
-    for (const dz of [-0.9, 0.4]) this.box(g, 1.1, 0.03, 1.15, -0.62, COCKPIT.roofY + 0.055, roofZ + dz, this.mat(0x16233a, 0.2, 0.5), false);
-    for (const dz of [-0.9, 0.4]) this.box(g, 1.1, 0.03, 1.15, 0.62, COCKPIT.roofY + 0.055, roofZ + dz, this.mat(0x16233a, 0.2, 0.5), false);
+    // заокруглена плита з фаскою + тонка темно-синя окантовка по краю (як смуга корпусу)
+    this.rbox(g, cx * 2 + 0.5, 0.08, roofLen, 0, COCKPIT.roofY + 0.005, roofZ, white, 0.28, 0.03);
+    this.rbox(g, cx * 2 + 0.52, 0.03, roofLen + 0.02, 0, COCKPIT.roofY - 0.02, roofZ, this.mat(NAVY, 0.6), 0.29, 0.008, false);
+    this.rbox(g, cx * 2 + 0.4, 0.02, roofLen - 0.08, 0, COCKPIT.roofY - 0.04, roofZ, this.mat(0x3a3f47, 0.9), 0.24, 0.006, false);
+    // сонячні панелі на даху: комірки з сіткою, світла алюмінієва рамка
+    {
+      const solar = new THREE.MeshStandardMaterial({ map: solarTexture(), roughness: 0.25, metalness: 0.4 });
+      const pg = new THREE.BoxGeometry(1.1, 0.03, 1.15);
+      for (const dx of [-0.6, 0.6]) for (const dz of [-0.9, 0.4]) {
+        const p = new THREE.Mesh(pg, solar);
+        p.position.set(dx, COCKPIT.roofY + 0.06, roofZ + dz);
+        p.receiveShadow = true;
+        p.userData.merge = true;
+        g.add(p);
+      }
+    }
     // кормова дуга (нержавійка)
     const steel = this.mat(STEEL, 0.25, 0.9);
     for (const s of [-1, 1]) {
@@ -861,6 +1206,9 @@ export class YachtBuilder {
     // щогла (еліптичний профіль)
     const mast = this.cyl(g, 0.065, 0.085, top - base, 0, (base + top) / 2, MZ, alu, 10);
     mast.scale.set(1, 1, 1.4);
+    // п'ятка щогли: нержавіючий комір на даху рубки
+    const collar = this.cyl(g, 0.11, 0.13, 0.06, 0, base + 0.08, MZ, this.mat(STEEL, 0.25, 0.9), 16);
+    collar.scale.set(1, 1, 1.3);
     // краспиці
     for (const [h, w] of [[base + 4.2, 0.95], [base + 7.9, 0.62]] as const) {
       for (const s of [-1, 1]) this.rod(g, new THREE.Vector3(0, h, MZ), new THREE.Vector3(s * w, h + 0.12, MZ - 0.1), 0.022, alu);
@@ -909,14 +1257,33 @@ export class YachtBuilder {
     const g = this.g;
     const steel = this.mat(STEEL, 0.25, 0.9);
     // якір у носовому ролику + брашпиль
-    this.box(g, 0.14, 0.12, 0.5, 0, sheerY(4.55) - 0.02, 4.6, steel);
-    this.cyl(g, 0.12, 0.14, 0.18, 0, DECK_Y + 0.09, 4.1, this.mat(0x30343a, 0.4, 0.6), 12);
+    this.rbox(g, 0.14, 0.11, 0.5, 0, sheerY(4.55) - 0.02, 4.6, steel, 0.04, 0.02);
+    {
+      const roller = this.cyl(g, 0.045, 0.045, 0.1, 0, sheerY(4.55) + 0.02, 4.86, this.mat(0x30343a, 0.5, 0.3), 12);
+      roller.rotation.z = Math.PI / 2;
+    }
+    // брашпиль: темний корпус, нержавіючий барабан і кришка
+    this.rbox(g, 0.3, 0.05, 0.34, 0, DECK_Y + 0.025, 4.1, this.mat(0x30343a, 0.4, 0.6), 0.08, 0.015);
+    this.cyl(g, 0.11, 0.13, 0.14, 0, DECK_Y + 0.12, 4.1, this.mat(0x30343a, 0.4, 0.6), 16);
+    this.cyl(g, 0.08, 0.1, 0.05, 0, DECK_Y + 0.215, 4.1, steel, 16);
     // лебідки на коамінгах і на даху рубки
     for (const s of [-1, 1]) {
-      this.cyl(g, 0.08, 0.1, 0.18, s * COCKPIT.x, DECK_Y + 0.5, -2.2, steel, 14);
-      this.cyl(g, 0.065, 0.08, 0.14, s * (STAIR.x + 0.25), HOUSE.top + 0.1, -0.35, steel, 14);
-      // кнехти
-      for (const z of [-4.2, 4.0]) this.box(g, 0.24, 0.07, 0.07, s * (hullHalfWidth(z) - 0.25), DECK_Y + 0.04, z, steel);
+      // лебідки: фланець, барабан із поясом, кришка
+      const winch = (x: number, y: number, z: number, k: number) => {
+        this.cyl(g, 0.1 * k, 0.11 * k, 0.03, x, y + 0.015, z, steel, 18);
+        this.cyl(g, 0.075 * k, 0.09 * k, 0.12 * k, x, y + 0.03 + 0.06 * k, z, steel, 18);
+        this.cyl(g, 0.082 * k, 0.082 * k, 0.025, x, y + 0.03 + 0.12 * k, z, this.mat(0x2b2f35, 0.5, 0.3), 18);
+        this.cyl(g, 0.045 * k, 0.06 * k, 0.03, x, y + 0.045 + 0.13 * k, z, steel, 14);
+      };
+      winch(s * COCKPIT.x, DECK_Y + 0.42, -2.2, 1);
+      winch(s * (STAIR.x + 0.25), HOUSE.top + 0.05, -0.35, 0.85);
+      // кнехти: основа, дві ніжки й роги
+      for (const z of [-4.2, 4.0]) {
+        const x = s * (hullHalfWidth(z) - 0.25);
+        this.rbox(g, 0.18, 0.014, 0.06, x, DECK_Y + 0.007, z, steel, 0.025, 0.005);
+        for (const dx of [-0.05, 0.05]) this.rbox(g, 0.035, 0.06, 0.035, x + dx, DECK_Y + 0.04, z, steel, 0.015, 0.006);
+        this.rbox(g, 0.26, 0.03, 0.045, x, DECK_Y + 0.08, z, steel, 0.02, 0.01);
+      }
       // кранці на бортах (білі «сосиски»)
       for (const z of [-1.8, 0.8]) {
         const fx = s * (hullHalfWidth(z) + 0.12);
@@ -969,7 +1336,9 @@ export class YachtBuilder {
     const gz1 = 1.55;
     const gzc = (gz0 + gz1) / 2;
     this.box(g, 0.6, 0.88, gz1 - gz0, -0.85, S + 0.44, gzc, wood);
-    this.box(g, 0.64, 0.04, gz1 - gz0 + 0.02, -0.84, S + 0.9, gzc, counter);
+    this.rbox(g, 0.64, 0.04, gz1 - gz0 + 0.02, -0.84, S + 0.9, gzc, counter, 0.04, 0.012);
+    // буртик-фідл по краю стільниці (щоб посуд не з'їжджав у качку)
+    this.rbox(g, 0.025, 0.035, gz1 - gz0 - 0.04, -0.535, S + 0.935, gzc, this.mat(TEAK_DARK, 0.6), 0.012, 0.006, false);
     // плита з двома конфорками + казанок
     this.box(g, 0.42, 0.03, 0.5, -0.82, S + 0.935, 1.2, this.mat(0x2a2c30, 0.4, 0.6));
     for (const dz of [-0.12, 0.12]) this.cyl(g, 0.07, 0.07, 0.01, -0.82, S + 0.955, 1.2 + dz, this.mat(0x111111, 0.6, 0.3), 14);
@@ -977,16 +1346,17 @@ export class YachtBuilder {
     // мийка + кран
     this.box(g, 0.32, 0.02, 0.36, -0.82, S + 0.925, 0.55, this.mat(0xb8bec4, 0.2, 0.9), false);
     this.rod(g, new THREE.Vector3(-1.0, S + 0.92, 0.55), new THREE.Vector3(-0.92, S + 1.12, 0.55), 0.012, this.mat(STEEL, 0.2, 0.9));
-    // шафки над камбузом
-    this.box(g, 0.35, 0.4, 1.5, -1.0, DECK_Y - 0.4, 0.75, wood);
+    // шафки над камбузом (коротші — над плитою лишається ілюмінатор)
+    this.rbox(g, 0.35, 0.4, 0.8, -1.0, DECK_Y - 0.4, 0.38, wood, 0.03, 0.012);
     // ── штурманський стіл + радіо (правий борт) ──
     this.box(g, 0.62, 0.74, 1.1, 0.86, S + 0.37, 0.95, wood);
-    this.box(g, 0.66, 0.04, 1.14, 0.84, S + 0.76, 0.95, this.mat(0x5a3a20, 0.45));
-    // панель приладів/радіо на борту над столом
-    this.box(g, 0.06, 0.5, 0.95, 1.12, S + 1.1, 0.95, this.mat(0x2b2f35, 0.5, 0.3));
+    this.rbox(g, 0.66, 0.04, 1.14, 0.84, S + 0.76, 0.95, this.mat(0x5a3a20, 0.45), 0.04, 0.012);
+    this.rbox(g, 0.025, 0.035, 1.06, 0.525, S + 0.795, 0.95, this.mat(TEAK_DARK, 0.6), 0.012, 0.006, false);
+    // панель приладів/радіо на борту над столом (нижча — над нею ілюмінатор)
+    this.rbox(g, 0.06, 0.36, 0.95, 1.12, S + 1.03, 0.95, this.mat(0x2b2f35, 0.5, 0.3), 0.03, 0.01);
     {
-      const scr = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.22, 0.34), new THREE.MeshStandardMaterial({ color: 0x0a1a14, emissive: 0x2fae7a, emissiveIntensity: 0.8, roughness: 0.4 }));
-      scr.position.set(1.085, S + 1.15, 0.78);
+      const scr = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.18, 0.32), new THREE.MeshStandardMaterial({ color: 0x0a1a14, emissive: 0x2fae7a, emissiveIntensity: 0.8, roughness: 0.4 }));
+      scr.position.set(1.085, S + 1.03, 0.72);
       g.add(scr);
       // радіо — окремий фізичний прилад (world/radioSet.ts)
     }
@@ -998,16 +1368,18 @@ export class YachtBuilder {
     const sz1 = 2.62;
     const szc = (sz0 + sz1) / 2;
     for (const s of [-1, 1]) {
-      this.box(g, 0.62, 0.38, sz1 - sz0, s * 0.88, S + 0.19, szc, wood);
-      this.box(g, 0.6, 0.1, sz1 - sz0 - 0.04, s * 0.86, S + 0.43, szc, cushion);
-      const back = this.box(g, 0.12, 0.45, sz1 - sz0 - 0.04, s * 1.12, S + 0.72, szc, cushion);
+      this.rbox(g, 0.62, 0.38, sz1 - sz0, s * 0.88, S + 0.19, szc, wood, 0.03, 0.012);
+      // м'які подушки із заокругленими краями (дві секції сидіння)
+      for (const dz of [-0.245, 0.245]) this.rbox(g, 0.6, 0.11, (sz1 - sz0) / 2 - 0.03, s * 0.86, S + 0.435, szc + dz, cushion, 0.06, 0.04);
+      const back = this.rbox(g, 0.12, 0.45, sz1 - sz0 - 0.04, s * 1.12, S + 0.72, szc, cushion, 0.05, 0.04);
       back.rotation.z = s * 0.15;
-      // полиці над диванами
-      this.box(g, 0.3, 0.3, sz1 - sz0, s * 1.05, DECK_Y - 0.33, szc, wood);
+      // полиця за спинкою (низька — вище видно ілюмінатор) з фідлом
+      this.rbox(g, 0.26, 0.14, sz1 - sz0, s * 1.08, S + 1.02, szc, wood, 0.03, 0.01);
+      this.rbox(g, 0.02, 0.04, sz1 - sz0 - 0.06, s * 0.955, S + 1.1, szc, this.mat(TEAK_DARK, 0.6), 0.01, 0.005, false);
     }
     // відкидний стіл біля лівого дивана
     this.cyl(g, 0.035, 0.05, 0.7, -0.38, S + 0.35, szc, woodDark, 8);
-    this.box(g, 0.34, 0.04, 0.85, -0.42, S + 0.72, szc, wood);
+    this.rbox(g, 0.34, 0.04, 0.85, -0.42, S + 0.72, szc, wood, 0.08, 0.012);
     // кружка на столі
     this.cyl(g, 0.035, 0.03, 0.08, -0.4, S + 0.78, szc + 0.2, this.mat(0xd2483c, 0.6), 10);
     // ── носова переборка з дверним прорізом + V-койка ──
@@ -1064,7 +1436,8 @@ export class YachtBuilder {
         low.rotation.z = s * 0.1;
         const hi0 = winC + 0.15;
         const hi1 = HOUSE.top - 0.05;
-        const high = this.box(g, 0.03, hi1 - hi0, len, s * (HOUSE.x - 0.15), (hi0 + hi1) / 2, zc, wood, false);
+        // носовий край укорочено: похила носова стінка інакше протикалась панеллю назовні
+        const high = this.box(g, 0.03, hi1 - hi0, len - 0.24, s * (HOUSE.x - 0.15), (hi0 + hi1) / 2, zc - 0.12, wood, false);
         high.rotation.z = s * 0.1;
         // стики вікон (рамки)
         this.box(g, 0.05, 0.03, len, s * (HOUSE.x - 0.13), lo1, zc, woodDark, false);
