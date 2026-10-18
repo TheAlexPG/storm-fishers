@@ -1,5 +1,6 @@
 import { formatMoney } from '../core/math';
-import { fishSellPrice, FISH_BY_ID, ZONE_NAMES } from '../game/fish';
+import { fishSellPrice, FISH, FISH_BY_ID, ZONE_NAMES } from '../game/fish';
+import { demandAt, glutUnits } from '../game/market';
 import { UPGRADES, UPGRADE_BY_ID, MAX_LEVEL, upgradeCost } from '../game/upgrades';
 import { PartPreview } from './partPreview';
 import type { UpgradeId } from '../core/types';
@@ -319,24 +320,7 @@ export class Dialogs {
     }
     const sel = this.shopSel;
 
-    const holdRows = game.hold
-      .map((f) => {
-        const sp = FISH_BY_ID[f.speciesId];
-        const price = fishSellPrice(f, game.priceMult);
-        const tags = [
-          f.cooked ? '<span class="tag cooked">варена</span>' : '',
-          f.storm ? '<span class="tag storm">штормова +25%</span>' : '',
-        ].join(' ');
-        return `
-          <div class="fish-row">
-            <span class="fname">${sp?.name ?? f.speciesId} ${tags}</span>
-            <span class="fmeta">${f.kg.toFixed(2).replace(".", ",")} кг · свіжість ${f.cooked ? '—' : Math.round(f.freshness) + '%'}</span>
-            <span class="fprice">${formatMoney(price)}</span>
-            <button class="btn" data-sell="${f.uid}" style="padding:4px 10px;font-size:12px">Продати</button>
-          </div>`;
-      })
-      .join('');
-    const total = game.hold.reduce((a, f) => a + fishSellPrice(f, game.priceMult), 0);
+    const total = game.quote(game.hold).total;
 
     // ── полиці ──
     const shelves = UPGRADES.map((u) => {
@@ -401,10 +385,7 @@ export class Dialogs {
     if (tab === 'vitrine') {
       body = `<div class="vitrine"><div class="shelves">${shelves}</div>${showcase}</div>`;
     } else if (tab === 'fish') {
-      body = `<p class="sub">Трюм ${game.hold.length}/${game.holdCap} · ${game.priceTrendText} · тиж. ${game.priceWeek}</p>
-        ${game.hold.length === 0 ? '<p class="sub">Трюм порожній. Час ловити!</p>' : `
-        <div class="fish-list">${holdRows}</div>
-        <div class="btn-row"><button class="btn primary" data-sellall>Продати все — ${formatMoney(total)}</button></div>`}`;
+      body = this.fishTab(game, total);
     } else {
       body = `<div class="fish-row">
           <span class="fname">Паливо <span class="fmeta">(${Math.round(game.fuel)}/${game.maxFuel} л · ${fuelPrice} ₴/л)</span></span>
@@ -471,6 +452,14 @@ export class Dialogs {
       }
     });
 
+    this.panel.querySelectorAll('[data-sellgroup]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const id = (b as HTMLElement).dataset.sellgroup;
+        game.sellMany(game.hold.filter((f) => f.speciesId === id).map((f) => f.uid));
+        this.audio.click();
+        refresh();
+      });
+    });
     this.panel.querySelectorAll('[data-sell]').forEach((b) => {
       b.addEventListener('click', () => {
         game.sellOne(Number((b as HTMLElement).dataset.sell));
@@ -521,6 +510,134 @@ export class Dialogs {
     this.panel.querySelector('[data-close]')!.addEventListener('click', () => this.close());
   }
 
+  /** вкладка «Риба»: улов, згрупований за видами, + біржа */
+  private fishTab(game: GameState, total: number): string {
+    const m = game.market;
+    const pct = (v: number) => `${Math.round(v * 100)}%`;
+    const kg = (v: number) => v.toFixed(2).replace('.', ',');
+    const isHot = (id: string) => {
+      const prev = m.prev[id];
+      const trend = prev ? (game.priceMult[id] ?? 1) / prev : 1;
+      const ev = m.eventMult(id);
+      if (ev < 1 || m.demand(id) < 0.9) return false;
+      return ev > 1 || trend > 1.05 || (game.priceMult[id] ?? 1) >= 1.1;
+    };
+
+    // ── улов за видами ──
+    const groups = new Map<string, typeof game.hold>();
+    for (const f of game.sellOrder(game.hold)) {
+      const arr = groups.get(f.speciesId) ?? [];
+      arr.push(f);
+      groups.set(f.speciesId, arr);
+    }
+    const sorted = [...groups.entries()].sort((a, b) => game.quote(b[1]).total - game.quote(a[1]).total);
+    const groupHtml = sorted.map(([id, items]) => {
+      const sp = FISH_BY_ID[id];
+      const q = game.quote(items);
+      const d = m.demand(id);
+      // попит після продажу всієї групи
+      let gAfter = m.glut[id] ?? 0;
+      for (const f of items) gAfter += glutUnits(f);
+      const dAfter = demandAt(gAfter);
+      const ev = m.eventFor(id);
+      const tag = ev ? `<span class="tag ${ev.mult > 1 ? 'hot' : 'cold'}">${ev.mult > 1 ? '+' : '−'}${Math.round(Math.abs(ev.mult - 1) * 100)}%</span>`
+        : d < 0.75 ? '<span class="tag cold">насичено</span>' : isHot(id) ? '<span class="tag hot">в ціні</span>' : '';
+      // ціни по черзі: кожна наступна рибина цього виду — вже при нижчому попиті
+      const rows = game.sellOrder(items).map((f, i) => {
+        const now = game.sellPrice(f);
+        const seq = q.prices[i] ?? now;
+        const cut = now > 0 ? 1 - seq / now : 0;
+        const tags = [
+          f.cooked ? '<span class="tag cooked">варена</span>' : '',
+          f.storm ? '<span class="tag storm">шторм +25%</span>' : '',
+        ].join(' ');
+        return `<div class="fish-row">
+            <span class="fmeta">${kg(f.kg)} кг · свіжість ${f.cooked ? '—' : Math.round(f.freshness) + '%'} ${tags}</span>
+            ${cut > 0.015 ? `<span class="fcut" title="Ціна, якщо продавати всіх по черзі: попит падає">−${Math.round(cut * 100)}%</span>` : ''}
+            <span class="fprice">${formatMoney(seq)}</span>
+            <button class="btn" data-sell="${f.uid}" style="padding:3px 10px;font-size:12px">Продати</button>
+          </div>`;
+      }).join('');
+      return `<div class="fgroup">
+          <div class="fg-head">
+            <span class="fg-name">${sp?.name ?? id} <span class="fg-cnt">×${items.length}</span> ${tag}</span>
+            <span class="fg-dem" title="Попит зараз → після продажу всієї групи">
+              <span class="dbar"><i style="width:${pct(d)}"></i><b style="left:${pct(dAfter)}"></b></span>
+              ${pct(d)}${items.length > 1 && dAfter < d - 0.005 ? ` → ${pct(dAfter)}` : ''}
+            </span>
+            ${items.length > 1 ? `<button class="btn" data-sellgroup="${id}" style="padding:4px 11px;font-size:12px">Усі ${items.length} — ${formatMoney(q.total)}</button>` : ''}
+          </div>
+          ${rows}
+        </div>`;
+    }).join('');
+
+    // скільки «з'їдає» насичення ринку
+    const full = game.hold.reduce((a, f) => a + fishSellPrice(f, game.priceMult, m.eventMult(f.speciesId)), 0);
+    const loss = full - total;
+
+    // ── біржа ──
+    const spark = (vals: number[]) => {
+      if (vals.length < 2) return '<svg class="spark" viewBox="0 0 60 18"></svg>';
+      const lo = Math.min(...vals), hi = Math.max(...vals);
+      const span = hi - lo || 1;
+      const pts = vals.map((v, i) => `${((i / (vals.length - 1)) * 58 + 1).toFixed(1)},${(16 - ((v - lo) / span) * 14).toFixed(1)}`);
+      const up = vals[vals.length - 1] >= vals[0];
+      const last = pts[pts.length - 1].split(',');
+      return `<svg class="spark ${up ? 'up' : 'down'}" viewBox="0 0 60 18"><polyline points="${pts.join(' ')}"/><circle cx="${last[0]}" cy="${last[1]}" r="1.8"/></svg>`;
+    };
+    const holdCount: Record<string, number> = {};
+    for (const f of game.hold) holdCount[f.speciesId] = (holdCount[f.speciesId] ?? 0) + 1;
+    const boardRows = FISH.map((sp) => {
+      const id = sp.id;
+      const known = game.discovered.includes(id);
+      const now = m.perKg(id, game.priceMult);
+      const d = m.demand(id);
+      const prev = m.prev[id];
+      const tr = prev ? (game.priceMult[id] ?? 1) / prev - 1 : 0;
+      const arrow = !prev ? '<span class="tr flat">·</span>'
+        : tr > 0.03 ? `<span class="tr up">↑${Math.round(tr * 100)}%</span>`
+        : tr < -0.03 ? `<span class="tr down">↓${Math.round(-tr * 100)}%</span>`
+        : '<span class="tr flat">→</span>';
+      const ev = m.eventFor(id);
+      const cls = [known ? '' : 'unk', isHot(id) ? 'hot' : '', d < 0.75 || (ev && ev.mult < 1) ? 'cold' : ''].join(' ');
+      const hc = holdCount[id] ? `<span class="bd-hc" title="у трюмі">${holdCount[id]}</span>` : '';
+      return `<tr class="${cls}">
+          <td class="bd-n">${sp.name}${hc}</td>
+          <td class="bd-p">${Math.round(now)}</td>
+          <td class="bd-d"><span class="dbar${d < 0.75 ? ' low' : ''}"><i style="width:${pct(d)}"></i></span></td>
+          <td>${spark([...(m.hist[id] ?? []), Math.round(now * 10) / 10])}</td>
+          <td class="bd-t">${arrow}</td>
+        </tr>`;
+    }).join('');
+    const evHtml = m.events.length
+      ? m.events.map((e) => `<div class="bd-ev ${e.mult > 1 ? 'up' : 'down'}">${e.mult > 1 ? '📈' : '📉'} ${esc(e.text)}</div>`).join('')
+      : '<div class="bd-ev calm">Сьогодні на біржі спокійно</div>';
+    const board = `<div class="board">
+        <div class="bd-head"><b>Біржа риби</b><small>день ${game.priceWeek} · ${game.priceTrendText}</small></div>
+        ${evHtml}
+        <table class="bd">
+          <tr><th>вид</th><th>₴/кг</th><th>попит</th><th>ціна</th><th>тиждень</th></tr>
+          ${boardRows}
+        </table>
+        <p class="bd-note">Перші 2 рибини виду — за повну ціну, далі кожна дешевша. Попит відновлюється за добу, тож різний улов вигідніший.</p>
+      </div>`;
+
+    const holdHtml = game.hold.length === 0
+      ? '<p class="sub">Трюм порожній. Час ловити! Поглянь на біржу — що зараз у ціні.</p>'
+      : `<div class="fish-list">${groupHtml}</div>
+        <div class="btn-row sell-all-row">
+          <button class="btn primary" data-sellall>Продати все — ${formatMoney(total)}</button>
+          ${loss > 0 ? `<span class="sell-note">насичення ринку: −${formatMoney(loss)}</span>` : '<span class="sell-note ok">ринок бере все за повну ціну</span>'}
+        </div>`;
+    return `<div class="market">
+        <div class="mk-hold">
+          <p class="sub">Трюм ${game.hold.length}/${game.holdCap} · продаємо найдорожчі першими</p>
+          ${holdHtml}
+        </div>
+        ${board}
+      </div>`;
+  }
+
   // ── РАДІО ──
 
   radio(game: GameState, weather: Weather, time: TimeCycle) {
@@ -542,7 +659,7 @@ export class Dialogs {
       <p class="sub">Частота 161.5 · ${time.isNight ? 'нічний ефір' : 'денний ефір'}</p>
       <div class="radio-item"><b>Прогноз погоди:</b> ${forecastText}</div>
       <div class="radio-item"><b>Рибальський звіт дня:</b>${repRows || 'сигнал загубився…'}</div>
-      <div class="radio-item"><b>Ціни на ринку:</b> ${game.priceTrendText} (тиждень ${game.priceWeek})</div>
+      <div class="radio-item"><b>Ціни на ринку:</b> ${game.priceTrendText} (тиждень ${game.priceWeek})${game.market.events.map((e) => `<br>${e.mult > 1 ? '📈' : '📉'} ${esc(e.text)}`).join('')}</div>
       <div class="btn-row"><button class="btn" data-close>Вимкнути (Esc)</button></div>
     `, true);
     this.panel.querySelector('[data-close]')!.addEventListener('click', () => this.close());

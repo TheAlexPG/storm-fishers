@@ -263,6 +263,65 @@ body.intro-mode #vignette { opacity: 0.6; }
   .overlay.shop .panel { overflow-y: auto; }
 }
 
+/* крамниця: риба + біржа */
+.market { display: grid; grid-template-columns: 1fr 400px; gap: 18px; min-height: 0; flex: 1; }
+.mk-hold { display: flex; flex-direction: column; min-height: 0; }
+.mk-hold .sub { margin-bottom: 4px; }
+.overlay.shop .mk-hold .fish-list { gap: 10px; padding-right: 4px; }
+.fgroup { background: rgba(255, 255, 255, 0.55); border-radius: 14px; padding: 6px; display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
+.fg-head { display: flex; align-items: center; gap: 10px; padding: 3px 6px 3px 8px; }
+.fg-name { flex: 1; font-weight: 800; font-size: 14px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.fg-cnt { color: var(--text-soft); font-weight: 800; font-size: 12.5px; }
+.fg-dem { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; color: var(--text-soft); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fgroup .fish-row { padding: 5px 10px; font-size: 12.5px; }
+.fgroup .fish-row .fmeta { flex: 1; display: flex; align-items: center; gap: 6px; }
+.tag.hot { background: rgba(36, 135, 140, 0.14); color: var(--sea); }
+.tag.cold { background: rgba(226, 103, 74, 0.13); color: #c0503a; }
+.dbar { position: relative; display: inline-block; width: 56px; height: 6px; border-radius: 4px; background: var(--track); overflow: visible; vertical-align: middle; }
+.dbar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: var(--sea); }
+.dbar b { position: absolute; top: -2px; width: 2px; height: 10px; margin-left: -1px; border-radius: 1px; background: var(--accent); }
+.dbar.low i { background: var(--accent); }
+.fgroup .fcut { font-size: 11px; font-weight: 800; color: #c0503a; }
+.sell-all-row { align-items: center; margin-top: 12px; }
+.sell-note { font-size: 12.5px; font-weight: 700; color: #c0503a; }
+.sell-note.ok { color: var(--sea); }
+.board { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; background: #fff; border-radius: 18px; padding: 12px 14px 10px; box-shadow: 0 1px 0 rgba(34,48,59,0.06); }
+.bd-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.bd-head b { font-family: var(--font-display); font-weight: 600; font-size: 16px; }
+.bd-head small { font-size: 11.5px; font-weight: 700; color: var(--text-soft); }
+.bd-ev { font-size: 12px; font-weight: 700; border-radius: 9px; padding: 5px 9px; margin-bottom: 4px; }
+.bd-ev.up { background: rgba(36, 135, 140, 0.12); color: #1d6f73; }
+.bd-ev.down { background: rgba(226, 103, 74, 0.12); color: #b04a35; }
+.bd-ev.calm { background: rgba(34, 48, 59, 0.05); color: var(--text-soft); }
+.bd { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.bd th { white-space: nowrap; font-size: 10px; font-weight: 800; color: var(--text-soft); text-transform: uppercase; letter-spacing: 0.7px; text-align: left; padding: 2px 4px 4px; }
+.bd td { padding: 2px 4px; border-top: 1px solid var(--track); font-weight: 600; white-space: nowrap; }
+.bd td.bd-n { font-weight: 700; }
+.bd td.bd-p { font-weight: 800; color: #b8701a; text-align: right; padding-right: 10px; }
+.bd th:nth-child(2) { text-align: right; padding-right: 10px; }
+.bd td.bd-t { text-align: right; font-size: 11.5px; font-weight: 800; }
+.bd th:last-child { text-align: right; }
+.bd tr.hot td { background: rgba(36, 135, 140, 0.07); }
+.bd tr.hot td.bd-n::after { content: 'в ціні'; margin-left: 6px; font-size: 9.5px; font-weight: 800; color: var(--sea); background: rgba(36, 135, 140, 0.14); border-radius: 10px; padding: 1px 6px; vertical-align: 1px; }
+.bd tr.cold td.bd-n { color: #b04a35; }
+.bd tr.unk td { opacity: 0.45; }
+.bd-hc { display: inline-block; margin-left: 5px; min-width: 15px; padding: 0 4px; border-radius: 10px; background: var(--accent); color: #fff; font-size: 10px; line-height: 15px; text-align: center; font-weight: 800; vertical-align: 1px; }
+.tr.up { color: var(--sea); }
+.tr.down { color: #c0503a; }
+.tr.flat { color: var(--text-soft); }
+.spark { width: 60px; height: 18px; display: block; overflow: visible; }
+.spark polyline { fill: none; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+.spark.up polyline { stroke: var(--sea); }
+.spark.down polyline { stroke: var(--accent); }
+.spark.up circle { fill: var(--sea); }
+.spark.down circle { fill: var(--accent); }
+.bd-note { font-size: 11.5px; line-height: 1.45; color: var(--text-soft); margin: 8px 0 0; font-weight: 500; }
+@media (max-width: 860px) {
+  .market { grid-template-columns: 1fr; flex: none; }
+  .overlay.shop .panel { overflow-y: auto; }
+  .overlay.shop .mk-hold .fish-list, .board { overflow: visible; flex: none; }
+}
+
 /* радіо */
 .radio-item { background: #fff; border-radius: 12px; padding: 10px 14px; margin-top: 8px; font-size: 13.5px; box-shadow: 0 1px 0 rgba(34,48,59,0.06); }
 .radio-item b { color: var(--sea); }
