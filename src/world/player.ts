@@ -426,7 +426,7 @@ export class Player {
       case 'engine': return boat.engineOn ? 'Ремонт двигуна' : 'Запустити двигун!';
       case 'pump': return boat.bilge > 1 ? `Помпа — відкачати трюм (${Math.round(boat.bilge)}%)` : boat.deckWater > 5 ? 'Осушити палубу' : 'Помпа (сухо)';
       case 'kitchen': return 'Кухня — сварити рибу';
-      case 'radio': return 'Радіо — прогноз';
+      case 'radio': return this.stationText?.('radio') ?? 'Радіо';
       case 'bed': return 'Койка — спати';
       default: return id;
     }

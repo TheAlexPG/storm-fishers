@@ -988,10 +988,7 @@ export class YachtBuilder {
       const scr = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.22, 0.34), new THREE.MeshStandardMaterial({ color: 0x0a1a14, emissive: 0x2fae7a, emissiveIntensity: 0.8, roughness: 0.4 }));
       scr.position.set(1.085, S + 1.15, 0.78);
       g.add(scr);
-      const vhf = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.08, 0.28), new THREE.MeshStandardMaterial({ color: 0x111111, emissive: 0xffa040, emissiveIntensity: 0.5, roughness: 0.5 }));
-      vhf.position.set(1.08, S + 1.0, 1.18);
-      g.add(vhf);
-      this.box(g, 0.05, 0.06, 0.1, 1.07, S + 1.13, 1.33, this.mat(0x111111, 0.6), false); // мікрофон
+      // радіо — окремий фізичний прилад (world/radioSet.ts)
     }
     // карта на столі
     this.box(g, 0.4, 0.004, 0.55, 0.82, S + 0.785, 0.95, this.mat(0xe8dcbc, 0.95), false);

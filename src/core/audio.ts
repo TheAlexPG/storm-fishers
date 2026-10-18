@@ -334,6 +334,39 @@ export class AudioEngine {
     }
   }
 
+  // радіо: шипіння ефіру (настройка — гучно, станція — тихий фон) + писк «морзе»
+  private radioGain: GainNode | null = null;
+  private radioT = 0;
+  setRadio(on: boolean, tuning: number, voice: boolean, dt: number) {
+    const ctx = this.ensure();
+    if (!ctx || !this.master) return;
+    if (!this.radioGain) {
+      const buf = this.noiseBuffer();
+      if (!buf) return;
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 1800;
+      bp.Q.value = 0.7;
+      this.radioGain = ctx.createGain();
+      this.radioGain.gain.value = 0;
+      src.connect(bp).connect(this.radioGain).connect(this.master);
+      src.start();
+    }
+    const target = on ? 0.012 + tuning * 0.09 : 0;
+    this.radioGain.gain.setTargetAtTime(target, ctx.currentTime, 0.08);
+    // «голос диктора» — короткі тональні сплески (ніби мова крізь ефір)
+    if (on && voice && tuning < 0.2) {
+      this.radioT -= dt;
+      if (this.radioT <= 0) {
+        this.radioT = 0.08 + Math.random() * 0.22;
+        if (Math.random() < 0.75) this.beep(320 + Math.random() * 260, 0.07 + Math.random() * 0.08, 'triangle', 0.018);
+      }
+    }
+  }
+
   /** дзвіночок на кінчику вудки: дрібне дзеленчання (клює на стійці) */
   tinkle(vol = 1) {
     const ctx = this.ensure();

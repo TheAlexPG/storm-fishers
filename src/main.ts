@@ -39,6 +39,7 @@ import { WindLines } from './world/windLines';
 import { FoamTrail } from './world/foamTrail';
 import { FishJump } from './world/fishJump';
 import { DeckFish } from './world/deckFish';
+import { RadioSet, RADIO_CHANNELS } from './world/radioSet';
 import { PLANS, applySinkToUpgrades, dailyPremium, type SinkReport } from './game/insurance';
 import { Landmarks, LANDMARKS } from './world/landmarks';
 import { Avatar } from './world/avatar';
@@ -123,6 +124,8 @@ class Game {
   /** стрибок риби під час боротьби */
   private leapJump: FishJump;
   private deckFish: DeckFish;
+  private radio!: RadioSet;
+  private radioTextT = 0;
   private landmarks: Landmarks;
   private bellCd = 0;
   /** «з-за корми» за штурвалом (V); запам'ятовується */
@@ -205,9 +208,12 @@ class Game {
     this.stations = new Stations(this.boat, this.game, this.audio);
     this.fishing = new Fishing(this.scene, this.audio, this.boat);
     this.deckFish = new DeckFish(this.scene, this.boat);
+    this.radio = new RadioSet(this.boat.group);
     this.deckFish.onWashed = (f) => this.hud.toast(`🌊 Хвиля змила за борт: ${this.game.speciesName(f.speciesId)}! Клади рибу в ящик одразу.`, 'bad', 4000);
     this.player.stationText = (id) =>
-      id === 'fishbox'
+      id === 'radio'
+        ? `Радіо — крутити ручку (${RADIO_CHANNELS[this.radio.channel].name.toLowerCase()})`
+        : id === 'fishbox'
         ? !this.boat.hatchOpen
           ? `Відкрити люк трюму (${this.game.hold.length}/${this.game.holdCap})${this.deckFish.carried ? ' й покласти рибу' : ''}`
           : this.deckFish.carried
@@ -601,6 +607,27 @@ class Game {
     });
   }
 
+  /** що говорить станція, на яку налаштоване радіо */
+  private radioText(): string {
+    const g = this.game, w = this.weather;
+    switch (this.radio.channel) {
+      case 1: {
+        const fc = w.snapshot().forecast;
+        const bf = w.beaufort;
+        const f = fc > 0.74 ? 'УВАГА: очікується ШТОРМ, у відкритому морі — до 10–11 балів' : fc > 0.45 ? 'вітер посилюється, хвилі ростуть' : fc < 0.14 ? 'погода покращується, море спокійне' : 'погода стабільна';
+        return `зараз ${bf.b} б. (${bf.name}, ${w.windMs.toFixed(0)} м/с) · прогноз: ${f} · далі від берега завжди сильніше`;
+      }
+      case 2:
+        return g.reports.length ? g.reports.map((r) => `${ZONE_NAMES[r.zone]}: добре клює ${g.speciesName(r.speciesId).toLowerCase()} ×${r.boost.toFixed(1).replace('.', ',')}`).join(' · ') : 'сигнал загубився…';
+      case 3:
+        return `${g.priceTrendText} (тиждень ${g.priceWeek})` + g.market.events.map((e) => ` · ${e.mult > 1 ? '↑' : '↓'} ${e.text}`).join('');
+      case 4:
+        return '♪ «Ой, у морі хвилі…» · морські пісні до світанку ♪';
+      default:
+        return '';
+    }
+  }
+
   /** затоплення: улов на борту (трюм + палуба + руки) і модулі за полісом */
   private applySink(withModules: boolean): SinkReport {
     const g = this.game;
@@ -953,6 +980,15 @@ class Game {
     }
     // риба на палубі: б'ється, псується, хвиля може змити
     this.deckFish.update(dt, t, this.time.gameHourDelta(dt), this.boat.deckWater, g.hold, this.boat.hatchOpen);
+    // радіо: текст станції й звук (чути в каюті, тихіше — з палуби)
+    this.radio.update(dt);
+    this.radioTextT -= dt;
+    if (this.radioTextT <= 0) {
+      this.radioTextT = 2;
+      this.radio.setText(this.radioText());
+    }
+    this.audio.setRadio(this.radio.on && this.player.mode === 'boat' && this.player.inCabin, this.radio.tuning, this.radio.channel >= 1 && this.radio.channel <= 3, dt);
+
     // вода тече у відкритий люк — гучне попередження
     if (this.boat.hatchOpen && this.boat.deckWater > 8) {
       this.hatchWarnT -= dt;
@@ -1209,7 +1245,10 @@ class Game {
       return;
     }
     if (id === 'st:radio') {
-      this.openDialog('radio');
+      // фізичне радіо: ручка настройки — наступна станція
+      this.radio.next();
+      this.radioTextT = 0;
+      this.audio.click();
       return;
     }
     if (id === 'st:bed' || id === 'port:house') {
