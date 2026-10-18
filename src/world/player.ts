@@ -46,6 +46,8 @@ export class Player {
   wheeling = false;
   /** руки зайняті вудкою (закид / боротьба): A/D/Space — для вудки, не для ходьби */
   rodBusy = false;
+  /** підписи станцій вудок (залежать від того, що в руках) — задає main */
+  stationText: ((id: string) => string) | null = null;
   /** у салоні (внизу або на трапі): затишок + каютні станції */
   inCabin = false;
   /** рівень на яхті та висота підлоги під ногами (локальна y) */
@@ -369,6 +371,7 @@ export class Player {
       for (const [id, sp] of Object.entries(STATION_POS)) {
         // каютні станції — лише зсередини; палубні — лише на палубі
         if (this.inCabin ? !CABIN_STATIONS.has(id) : CABIN_STATIONS.has(id)) continue;
+        if (!boat.stationOn(id)) continue;
         const w = boat.localToWorld(sp.x, sp.y ?? BOAT.deckY, sp.z, this._v);
         const d = Math.hypot(p.x - w.x, p.y - w.y - 0.4, p.z - w.z);
         if (d < bestD && d < (STATION_REACH[id] ?? 3.2)) {
@@ -417,7 +420,8 @@ export class Player {
     switch (id) {
       case 'wheel': return this.wheeling ? 'Вийти зі штурвала' : 'Стати за штурвал (газ W/S, кермо A/D)';
       case 'sails': return boat.sails.mode === 0 ? 'Фал на щоглі — підняти паруси' : boat.sails.mode === 2 ? 'Риф-шкентель — взяти риф' : 'Фал — спустити паруси';
-      case 'rod': return 'Вудка — закинути / зняти';
+      case 'rod': return this.stationText?.('rod') ?? 'Стійка з вудками';
+      case 'holder0': case 'holder1': case 'holder2': return this.stationText?.(id) ?? 'Стійка для вудки';
       case 'engine': return boat.engineOn ? 'Ремонт двигуна' : 'Запустити двигун!';
       case 'pump': return boat.deckWater > 5 ? 'Осушити палубу' : 'Помпа (палуба суха)';
       case 'kitchen': return 'Кухня — сварити рибу';

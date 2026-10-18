@@ -94,9 +94,9 @@ export const UPGRADES: UpgradeDef[] = [
     parts: [
       { name: 'Котушка «Шторм»', blurb: 'Велика хромована котушка на твою вудку. Закидає далі, змотує рівно.' },
       { name: 'Плетена волосінь', blurb: 'Яскраво-помаранчева плетінка на бобіні. Видно навіть у сутінках.' },
-      { name: 'Тримач на даху', blurb: 'Стійка для вудок на краю даху кокпіту — як на справжніх рибальських яхтах.' },
-      { name: 'Друга вудка', blurb: 'Запасна вудка в тримачі. Риба відчуває, що ти серйозний.' },
-      { name: 'Трофейна вудка', blurb: 'Товста вудка з золотою котушкою для тунця й акули.' },
+      { name: 'Підсак', blurb: 'Сітка на довгій ручці біля носового релінгу — велика риба вже не зривається біля борту.' },
+      { name: 'Ехолот', blurb: 'Маленький екран на пульпіті: видно зграї під човном, риба клює швидше.' },
+      { name: 'Карбонове вудлище', blurb: 'Легке чорне вудлище з золотою котушкою — для тунця й акули.' },
     ],
     stats: [
       { label: 'Дальність закиду', value: (l) => 8 + l * 1.2, fmt: (v) => `${v.toFixed(1).replace('.', ',')} м` },
@@ -152,13 +152,44 @@ export const UPGRADES: UpgradeDef[] = [
     ],
     stats: [{ label: 'Крен у хвилю', value: (l) => -(1 - 1 / (1 + l * 0.3)) * 100, fmt: (v) => (v === 0 ? '0 %' : `${Math.round(v)} %`), lowerBetter: true }],
   },
+  {
+    id: 'holders',
+    name: 'Стійки для вудок',
+    role: 'кілька вудок одночасно',
+    desc: (l) => `${holderCount(l)} ${holderCount(l) === 1 ? 'вудка' : 'вудки'} в стійках${l >= 3 ? ', дзвіночки' : ''}`,
+    costs: [350, 700, 1300, 2600, 4600],
+    parts: [
+      { name: 'Стійка й спінінг', blurb: 'Тримач на лівому борту зі спінінгом. Закинь — і вудка сама чекає: клює — біжи підсікати.' },
+      { name: 'Друга стійка й донка', blurb: 'Тримач на правому борту з важкою донкою — тепер дві вудки в воді, окрім твоєї.' },
+      { name: 'Дзвіночки', blurb: 'Латунні дзвіночки на кінчиках: чути клювання з будь-якого кінця човна, риба тримається довше.' },
+      { name: 'Котушки з тріскачкою', blurb: 'Тріскачка на котушках стійок — клює частіше, на троллінгу ловить більшу рибу.' },
+      { name: 'Троллінгова вудка на транці', blurb: 'Третя стійка на кормі з товстою троллінговою вудкою — для великої риби на ходу.' },
+    ],
+    stats: [
+      { label: 'Вудок у стійках', value: (l) => holderCount(l), fmt: (v) => `${Math.round(v)}` },
+      { label: 'Час на підсічку', value: (l) => holderBiteWindow(l), fmt: (v) => `${v.toFixed(0)} с` },
+      { label: 'Швидкість клювання', value: (l) => (holderBiteSpeed(l) - 1) * 100, fmt: pct },
+    ],
+  },
 ];
+
+/** скільки вудок у стійках на рівні */
+export function holderCount(l: number): number {
+  return l >= 5 ? 3 : l >= 2 ? 2 : l >= 1 ? 1 : 0;
+}
+/** скільки секунд риба тримається на гачку в стійці, поки біжиш */
+export function holderBiteWindow(l: number): number {
+  return l >= 3 ? 9 : 6;
+}
+export function holderBiteSpeed(l: number): number {
+  return l >= 4 ? 1.35 : 1;
+}
 
 export const UPGRADE_BY_ID: Record<string, UpgradeDef> = Object.fromEntries(UPGRADES.map((u) => [u.id, u]));
 export const MAX_LEVEL = 5;
 
 export function defaultUpgrades(): UpgradeLevels {
-  return { engine: 0, hull: 0, hold: 0, rod: 0, fuel: 0, lights: 0, stab: 0 };
+  return { engine: 0, hull: 0, hold: 0, rod: 0, fuel: 0, lights: 0, stab: 0, holders: 0 };
 }
 
 export function upgradeCost(id: UpgradeId, currentLevel: number): number | null {

@@ -122,7 +122,7 @@ export class Hud {
       <div class="cast-ui">
         <div class="cast-label">Сила закиду</div>
         <div class="cast-bar"><div class="cast-sweet"></div><i></i></div>
-        <div class="cast-hint">відпусти <kbd>E</kbd> у зеленій зоні</div>
+        <div class="cast-hint">відпусти <kbd>ЛКМ</kbd> у зеленій зоні</div>
       </div>
       <div class="fish-status"></div>
       <div class="fight-ui">

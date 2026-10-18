@@ -340,36 +340,89 @@ function braidSpool(k: PartKit): THREE.Object3D {
   return g;
 }
 
-function rodRack(k: PartKit): THREE.Object3D {
+/** вудлище для стійок і рук: основа в (0,0,0), росте вздовж +Y; 'tip' — кінчик */
+export function rodModel(k: PartKit, kind: 'spin' | 'donka' | 'troll'): THREE.Group {
+  const spec = {
+    spin: { len: 2.3, thick: 0.85, blank: 0x2e4a3a, reelBody: 0xdfe3e8, spool: 0xff7a1f },
+    donka: { len: 1.9, thick: 1.15, blank: 0x5a3a24, reelBody: 0x3a3f45, spool: 0xe8e2c8 },
+    troll: { len: 2.1, thick: 1.6, blank: 0x14181d, reelBody: BRASS, spool: 0x2f6fb0 },
+  }[kind];
   const g = new THREE.Group();
-  const st = k.mat(STEEL, 0.25, 0.9);
-  cylX(g, st, 0.025, 1.0, 0, 0.12, 0);
-  for (const x of [-0.45, 0.45]) cyl(g, st, 0.022, 0.022, 0.12, x, 0.06, 0, 8);
-  for (const x of [-0.3, 0, 0.3]) {
-    const t = cyl(g, st, 0.032, 0.03, 0.3, x, 0.22, -0.06, 10);
-    t.rotation.x = -0.45;
+  const L = spec.len, th = spec.thick;
+  const blank = new THREE.Mesh(new THREE.CylinderGeometry(0.007 * th, 0.02 * th, L, 7).translate(0, L / 2, 0), k.mat(spec.blank, 0.35, 0.4));
+  blank.castShadow = true;
+  g.add(blank);
+  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.026 * th, 0.026 * th, 0.36, 8).translate(0, 0.14, 0), k.mat(kind === 'troll' ? 0x1c1c1c : 0x3a2a1c, 0.9));
+  g.add(grip);
+  const rl = reel(k, 0.045 * th, spec.reelBody, spec.spool);
+  rl.rotation.x = Math.PI / 2;
+  rl.position.set(0, 0.4, -0.06 * th);
+  g.add(rl);
+  const steel = k.mat(STEEL, 0.25, 0.9);
+  for (const f of [0.38, 0.6, 0.8, 0.94]) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.016 - f * 0.007, 0.003, 4, 10), steel);
+    ring.position.set(0, L * f, -0.02);
+    g.add(ring);
   }
+  if (kind === 'donka') {
+    // дзвіночок донки на кінчику
+    const bell = cyl(g, k.mat(BRASS, 0.3, 0.85), 0.006, 0.02, 0.035, 0, L * 0.9, 0.03, 10);
+    bell.castShadow = false;
+  }
+  const tip = new THREE.Object3D();
+  tip.name = 'tip';
+  tip.position.y = L;
+  g.add(tip);
   return g;
 }
 
-/** вудка в тримачі: росте з (0,0,0) під нахилом назад */
-function rackRod(k: PartKit, len: number, thick: number, reelBody: number): THREE.Object3D {
+/** тримач-трубка стійки: основа на палубі, нахил як у вудки, що в ньому */
+function holderTube(k: PartKit): THREE.Object3D {
   const g = new THREE.Group();
-  const blank = new THREE.Mesh(new THREE.CylinderGeometry(0.007 * thick, 0.02 * thick, len, 7).translate(0, len / 2, 0), k.mat(0x1d232a, 0.35, 0.4));
-  g.add(blank);
-  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.026 * thick, 0.026 * thick, 0.32, 8).translate(0, 0.16, 0), k.mat(0x3a2a1c, 0.9));
-  g.add(grip);
-  const rl = reel(k, 0.045 * thick, reelBody, 0xff7a1f);
-  rl.rotation.x = Math.PI / 2;
-  rl.position.set(0, 0.42, -0.06 * thick);
-  g.add(rl);
-  const steel = k.mat(STEEL, 0.25, 0.9);
-  for (const f of [0.4, 0.62, 0.84]) {
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.016 - f * 0.007, 0.003, 4, 10), steel);
-    ring.position.set(0, len * f, -0.02);
-    g.add(ring);
-  }
-  g.rotation.x = -0.45;
+  const st = k.mat(STEEL, 0.22, 0.95);
+  cyl(g, st, 0.05, 0.06, 0.03, 0, 0.015, 0, 12);
+  const post = cyl(g, st, 0.018, 0.018, 0.34, 0, 0.17, 0, 8);
+  post.castShadow = true;
+  const tube = cyl(g, st, 0.034, 0.03, 0.32, 0, 0.36, 0, 12);
+  tube.castShadow = true;
+  return g;
+}
+
+function landingNet(k: PartKit): THREE.Object3D {
+  const g = new THREE.Group();
+  const pole = cyl(g, k.mat(0xc9a227, 0.4, 0.6), 0.014, 0.014, 1.5, 0, 0.75, 0, 8);
+  pole.castShadow = true;
+  const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.012, 6, 24), k.mat(STEEL, 0.25, 0.9));
+  hoop.position.y = 1.62;
+  g.add(hoop);
+  const bag = new THREE.Mesh(new THREE.ConeGeometry(0.23, 0.38, 14, 1, true), new THREE.MeshBasicMaterial({ color: 0x2b3a36, wireframe: true }));
+  bag.rotation.x = Math.PI;
+  bag.position.y = 1.62 - 0.19;
+  g.add(bag);
+  g.rotation.z = 0.25;
+  return g;
+}
+
+function sonar(k: PartKit): THREE.Object3D {
+  const g = new THREE.Group();
+  const dark = k.mat(0x1f2328, 0.5, 0.4);
+  cyl(g, dark, 0.012, 0.012, 0.22, 0, 0.11, 0, 6);
+  box(g, dark, 0.2, 0.15, 0.04, 0, 0.29, 0);
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.11), new THREE.MeshStandardMaterial({ color: 0x0a2a3a, emissive: 0x2fb7c8, emissiveIntensity: 0.6, roughness: 0.2 }));
+  scr.position.set(0, 0.29, 0.021);
+  g.add(scr);
+  return g;
+}
+
+function carbonSleeve(k: PartKit): THREE.Object3D {
+  const g = new THREE.Group();
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.024, 2.3, 8).translate(0, 1.15 + 0.05, 0), k.mat(0x14181d, 0.25, 0.6));
+  m.castShadow = true;
+  g.add(m);
+  const gold = reel(k, 0.065, BRASS, 0x14181d);
+  gold.rotation.x = Math.PI / 2;
+  gold.position.set(0, 0.36, -0.09);
+  g.add(gold);
   return g;
 }
 
@@ -516,7 +569,21 @@ const finY = WATERLINE_Y + 0.03;
 const finZ = 0.4;
 const finX = (y: number) => hullXAt(y, finZ);
 const canZ = [-3.9, -3.58, -3.26, -2.94];
-const RACK: [number, number, number] = [0, ROOF + 0.02, COCKPIT.z0 + 0.12];
+
+// ── вудки: носова стійка (зберігання) і рибальські стійки (апгрейд) ──
+/** гнізда носової стійки (локаль яхти): основа вудки + нахил */
+export const RACK_SLOTS: Array<{ p: [number, number, number]; r: [number, number, number] }> = [
+  { p: [0.42, DECK_Y + 0.32, 3.75], r: [0.82, 0, -0.18] },
+  { p: [-0.42, DECK_Y + 0.32, 3.75], r: [0.82, 0, 0.18] },
+  { p: [0.2, DECK_Y + 0.32, 3.62], r: [0.7, 0, -0.08] },
+  { p: [-0.2, DECK_Y + 0.32, 3.62], r: [0.7, 0, 0.08] },
+];
+/** рибальські стійки: лівий борт, правий борт, транець; основа вудки в трубці */
+export const HOLDER_MOUNTS: Array<{ base: [number, number, number]; rod: [number, number, number]; r: [number, number, number]; stand: [number, number] }> = [
+  { base: [1.55, DECK_Y, -1.4], rod: [1.55, DECK_Y + 0.26, -1.4], r: [0, 0, -0.95], stand: [1.2, -1.4] },
+  { base: [-1.55, DECK_Y, -1.4], rod: [-1.55, DECK_Y + 0.26, -1.4], r: [0, 0, 0.95], stand: [-1.2, -1.4] },
+  { base: [0, DECK_Y, -4.62], rod: [0, DECK_Y + 0.26, -4.62], r: [-0.95, 0, 0], stand: [0, -4.2] },
+];
 
 export const PART_SPECS: Record<UpgradeId, PartSpec[]> = {
   engine: [
@@ -573,11 +640,40 @@ export const PART_SPECS: Record<UpgradeId, PartSpec[]> = {
     { model: netBag, mounts: [{ p: [-0.45, DECK_Y, 3.25], r: [0, 0.25, 0] }] },
   ],
   rod: [
-    { model: (k) => reel(k, 0.06, 0xdfe3e8, 0x22282e), parent: 'rod', mounts: [{ p: [0, 0.36, -0.08], r: [Math.PI / 2, 0, 0] }] },
+    { model: (k) => reel(k, 0.06, 0xdfe3e8, 0x22282e), parent: 'rod', until: 5, mounts: [{ p: [0, 0.36, -0.08], r: [Math.PI / 2, 0, 0] }] },
     { model: braidSpool, mounts: [{ p: [0.15, DECK_Y, 3.45], r: [0, 0.4, 0] }] },
-    { model: rodRack, mounts: [{ p: RACK }] },
-    { model: (k) => rackRod(k, 1.9, 1, 0xdfe3e8), mounts: [{ p: [RACK[0] - 0.3, RACK[1] + 0.1, RACK[2] - 0.06] }] },
-    { model: (k) => rackRod(k, 2.0, 1.45, BRASS), mounts: [{ p: [RACK[0] + 0.3, RACK[1] + 0.1, RACK[2] - 0.06] }] },
+    { model: landingNet, mounts: [{ p: [-0.62, DECK_Y, 3.3], r: [0, 0.5, 0] }] },
+    { model: sonar, mounts: [{ p: [0, sheerY(4.3) + 0.55, 4.25], r: [0, Math.PI, 0] }] },
+    { model: carbonSleeve, parent: 'rod', mounts: [{ p: [0, 0, 0] }] },
+  ],
+  holders: [
+    { model: holderTube, mounts: [{ p: HOLDER_MOUNTS[0].base, r: HOLDER_MOUNTS[0].r }] },
+    { model: holderTube, mounts: [{ p: HOLDER_MOUNTS[1].base, r: HOLDER_MOUNTS[1].r }] },
+    {
+      // дзвіночки на тримачах
+      model: (k) => {
+        const g = new THREE.Group();
+        cyl(g, k.mat(BRASS, 0.3, 0.85), 0.012, 0.035, 0.05, 0, 0.025, 0, 12);
+        return g;
+      },
+      mounts: [
+        { p: [HOLDER_MOUNTS[0].base[0], DECK_Y + 0.55, HOLDER_MOUNTS[0].base[2] + 0.06] },
+        { p: [HOLDER_MOUNTS[1].base[0], DECK_Y + 0.55, HOLDER_MOUNTS[1].base[2] + 0.06] },
+      ],
+    },
+    {
+      // тріскачки — червоні важелі на тримачах
+      model: (k) => {
+        const g = new THREE.Group();
+        box(g, k.mat(0xc8431c, 0.5, 0.2), 0.04, 0.08, 0.03, 0, 0.04, 0);
+        return g;
+      },
+      mounts: [
+        { p: [HOLDER_MOUNTS[0].base[0] - 0.05, DECK_Y + 0.42, HOLDER_MOUNTS[0].base[2]] },
+        { p: [HOLDER_MOUNTS[1].base[0] + 0.05, DECK_Y + 0.42, HOLDER_MOUNTS[1].base[2]] },
+      ],
+    },
+    { model: holderTube, mounts: [{ p: HOLDER_MOUNTS[2].base, r: HOLDER_MOUNTS[2].r }] },
   ],
   fuel: [
     { model: jerrycan, mounts: [{ p: [1.35, DECK_Y, canZ[0]] }, { p: [-1.35, DECK_Y, canZ[0]], mirror: true }] },

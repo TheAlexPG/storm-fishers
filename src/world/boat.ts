@@ -13,6 +13,8 @@ import { SailRig } from './sails';
 import type { HelmDisplay } from './helmDisplay';
 import { ZONE_NAMES, zoneFromDist } from '../game/fish';
 import { DECK_Y, SOLE_Y, RIG, HOUSE } from './yachtLayout';
+import { HOLDER_MOUNTS } from './upgradeParts';
+import { holderCount } from '../game/upgrades';
 
 // ─────────────────────────────────────────────────────────────
 // Вітрильна яхта «Шторм» (меш — yachtModel.ts, компонування — yachtLayout.ts):
@@ -47,6 +49,10 @@ export const STATION_POS: Record<string, { x: number; z: number; y?: number }> =
   kitchen: { x: -0.4, z: 1.15, y: SOLE_Y },
   radio: { x: 0.4, z: 0.95, y: SOLE_Y },
   bed: { x: 0, z: 2.45, y: SOLE_Y },
+  // рибальські стійки (апгрейд «Стійки для вудок») — біля тримачів
+  holder0: { x: HOLDER_MOUNTS[0].stand[0], z: HOLDER_MOUNTS[0].stand[1] },
+  holder1: { x: HOLDER_MOUNTS[1].stand[0], z: HOLDER_MOUNTS[1].stand[1] },
+  holder2: { x: HOLDER_MOUNTS[2].stand[0], z: HOLDER_MOUNTS[2].stand[1] },
 };
 
 export interface RockObstacle {
@@ -143,6 +149,15 @@ export class Boat {
     return this.rodGroup.localToWorld(out.set(0, this.rodLen, 0));
   }
   /** вигин вудки 0..1 (натяг волосіні) */
+  /** основна вудка як окремий об'єкт (нею керує Fishing: стійка/руки) — знімаємо з човна */
+  takeMainRod(): { group: THREE.Group; len: number } {
+    const g = this.rodGroup;
+    g.parent?.remove(g);
+    g.position.set(0, 0, 0);
+    g.rotation.set(0, 0, 0);
+    return { group: g, len: this.rodLen };
+  }
+
   setRodBend(f: number) {
     this.rodGroup.rotation.x = this.rodBaseRot + clamp(f, 0, 1) * 0.55;
   }
@@ -223,7 +238,17 @@ export class Boat {
   }
 
   /** застосувати рівні апгрейдів до mesh */
+  /** скільки стійок для вудок встановлено */
+  holderSlots = 0;
+  /** станція доступна (стійки — лише куплені) */
+  stationOn(id: string): boolean {
+    if (id.startsWith('holder')) return Number(id.slice(6)) < this.holderSlots;
+    return true;
+  }
+
   applyUpgrades(levels: Record<string, number>, timeDaylight: number) {
+    this.holderSlots = holderCount(levels.holders ?? 0);
+    for (const m of this.stationMarkers.children) m.visible = this.stationOn(m.userData.station as string);
     for (const [id, arr] of Object.entries(this.upg)) {
       const lvl = levels[id] ?? 0;
       for (const o of arr) {

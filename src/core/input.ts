@@ -35,6 +35,16 @@ export class Input {
     if (!this.pointerLocked) return;
     this.wheel += Math.sign(e.deltaY);
   };
+  // кнопки миші як «клавіші» Mouse0 (ЛКМ) / Mouse2 (ПКМ) — лише при захопленій миші
+  private mdownHandler = (e: MouseEvent) => {
+    if (!this.pointerLocked) return;
+    const c = 'Mouse' + e.button;
+    this.keys.add(c);
+    this.tapped.add(c);
+  };
+  private mupHandler = (e: MouseEvent) => {
+    this.keys.delete('Mouse' + e.button);
+  };
   private lockHandler = () => {
     this.pointerLocked = document.pointerLockElement != null;
   };
@@ -44,6 +54,8 @@ export class Input {
     window.addEventListener('keyup', this.upHandler);
     window.addEventListener('mousemove', this.moveHandler);
     window.addEventListener('wheel', this.wheelHandler, { passive: true });
+    window.addEventListener('mousedown', this.mdownHandler);
+    window.addEventListener('mouseup', this.mupHandler);
     document.addEventListener('pointerlockchange', this.lockHandler);
     void el;
   }
@@ -53,6 +65,8 @@ export class Input {
     window.removeEventListener('keyup', this.upHandler);
     window.removeEventListener('mousemove', this.moveHandler);
     window.removeEventListener('wheel', this.wheelHandler);
+    window.removeEventListener('mousedown', this.mdownHandler);
+    window.removeEventListener('mouseup', this.mupHandler);
     document.removeEventListener('pointerlockchange', this.lockHandler);
   }
 

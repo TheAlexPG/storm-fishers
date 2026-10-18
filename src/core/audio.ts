@@ -334,6 +334,28 @@ export class AudioEngine {
     }
   }
 
+  /** дзвіночок на кінчику вудки: дрібне дзеленчання (клює на стійці) */
+  tinkle(vol = 1) {
+    const ctx = this.ensure();
+    if (!ctx || !this.master) return;
+    const t0 = ctx.currentTime;
+    for (let k = 0; k < 5; k++) {
+      const t = t0 + k * 0.09 + Math.random() * 0.03;
+      for (const [m, a] of [[1, 1], [2.4, 0.4], [4.1, 0.2]] as const) {
+        const o = ctx.createOscillator();
+        o.type = 'sine';
+        o.frequency.value = 2350 * m * (1 + (Math.random() - 0.5) * 0.02);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.05 * a * vol, t + 0.004);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+        o.connect(g).connect(this.master);
+        o.start(t);
+        o.stop(t + 0.4);
+      }
+    }
+  }
+
   /** відкрито нове місце: тепле арпеджіо */
   discover() {
     const notes = [587, 740, 880, 1175];

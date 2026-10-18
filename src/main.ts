@@ -105,6 +105,8 @@ class Game {
   private _v2 = new THREE.Vector3();
   private _v3 = new THREE.Vector3();
   private _v4 = new THREE.Vector3();
+  private _qHand = new THREE.Quaternion();
+  private _eHand = new THREE.Euler();
   private reflHorizon = new THREE.Color();
   private reflZenith = new THREE.Color();
   private _reflGrey = new THREE.Color();
@@ -197,7 +199,8 @@ class Game {
     this.boat = new Boat(this.scene);
     this.player = new Player(this.game);
     this.stations = new Stations(this.boat, this.game, this.audio);
-    this.fishing = new Fishing(this.scene, this.audio);
+    this.fishing = new Fishing(this.scene, this.audio, this.boat);
+    this.player.stationText = (id) => this.fishing.stationLabel(id);
 
     this.coop = new Coop(this.scene, {
       onAction: (nick, act) => this.onCoopAction(nick, act),
@@ -560,6 +563,7 @@ class Game {
 
   private syncUpgrades() {
     this.boat.applyUpgrades(this.game.upgrades, this.time.daylight);
+    this.fishing.setOwned(this.game.upgrades.holders ?? 0);
   }
 
   private handleSunk() {
@@ -863,8 +867,13 @@ class Game {
     this.coop.tick(dt, this.boat, this.player, this.stations.active?.id === 'pump', this.fishing, this.ocean, t);
 
     // ловля
-    const bobW = this._v3.copy(this.fishing.bobber.position);
     this.fishing.update(dt, t, this.boat, this.ocean, input, g, this.weather, this.time);
+    // вудка в руках: ЛКМ — закид / підсічка, R — змотати
+    if (locked && this.phase === 'play' && !this.dialogs.isOpen && !this.photo && this.player.mode === 'boat' && !this.player.wheeling) {
+      if (input.pressed('Mouse0')) this.fishing.click(this.boat, g, this.weather, this.time);
+      if (input.pressed('KeyR')) this.fishing.reelHand();
+    }
+    const bobW = this._v3.copy(this.fishing.lastBobber);
     this.player.rodBusy = this.fishing.state === 'fight' || this.fishing.state === 'charge';
     this.fishJump.update(dt, t);
     this.leapJump.update(dt, t);
@@ -1010,7 +1019,7 @@ class Game {
       () => this.player.wheeling,
       () => Math.hypot(this.boat.pos.x - MOOR.x, this.boat.pos.z - MOOR.z) > 60,
       () => this.boat.sails.mode > 0,
-      () => this.fishing.state !== 'idle',
+      () => this.fishing.anyCast,
       () => g.stats.totalCaught > 0,
       () => g.objectives.firstSale,
     ][g.tut];
@@ -1060,16 +1069,10 @@ class Game {
     const g = this.game;
     const p = this.player;
 
-    // спочатку: клювання
+    // клює на вудці в руках — E теж підсікає
     if (this.fishing.state === 'bite') {
-      const rodW = this.boat.localToWorld(0, BOAT.deckY, 3.9, this._v);
-      if (p.mode === 'boat') {
-        const px = this.boat.localToWorld(p.localX, BOAT.deckY, p.localZ, this._v2);
-        if (px.distanceTo(rodW) < 3.5) {
-          this.fishing.hook(g, this.weather, this.time, this.boat);
-          return;
-        }
-      }
+      this.fishing.hook(g, this.weather, this.time);
+      return;
     }
 
     const id = p.interact(this.boat, this.port, this.audio);
@@ -1088,19 +1091,10 @@ class Game {
       if (p.wheeling) this.hud.toast(this.chasePref ? 'Штурвал: W/S — газ, A/D — кермо, V — вид від першої особи (прибори на тумбі), E — вийти' : 'Штурвал: W/S — газ, A/D — кермо, V — вид з-за корми, E — вийти. Прибори — на тумбі перед колесом', 'warn', 4000);
       return;
     }
-    if (id === 'st:rod') {
-      if (this.fishing.state === 'idle') {
-        if (p.mode !== 'boat') return;
-        // тримай E — шкала сили, відпусти — закид
-        const ok = this.fishing.startCharge(this.boat, g);
-        if (!ok) {
-          if (Math.hypot(this.boat.pos.x, this.boat.pos.z) < 60) this.hud.toast('Занадто близько до причалу — відійди в море.', 'warn');
-          else this.hud.toast('Не вистачає енергії.', 'warn');
-        }
-      } else if (this.fishing.state === 'waiting') {
-        // поплавок щойно смикнувся — це лише «пробування»: підсічка зарано
-        if (!this.fishing.strikeIfNibbling()) this.fishing.reelIn();
-      }
+    if (id === 'st:rod' || id.startsWith('st:holder')) {
+      if (p.mode !== 'boat') return;
+      const msg = id === 'st:rod' ? this.fishing.rackAction() : this.fishing.holderAction(Number(id.slice(9)), g, this.weather, this.time);
+      if (msg) this.hud.toast(msg, 'warn', 3000);
       return;
     }
     if (id === 'st:sails') {
@@ -1270,6 +1264,18 @@ class Game {
     }
     // свій рибалка за штурвалом — видно лише збоку
     this.updateSelfAvatar(chase, this.photo);
+    // вудка в руках: від першої особи — за камерою, збоку — біля плеча аватара
+    if (this.fishing.holding) {
+      const fp = !chase;
+      if (fp) this.fishing.setHandPose(this.camera.position, this.camera.quaternion, true);
+      else {
+        const av = this.selfAvatar?.worldPos ?? this.player.head;
+        this._v4.copy(av).setY(av.y + (this.selfAvatar ? 1.5 : 0));
+        this._qHand.setFromEuler(this._eHand.set(0.15, this.player.yaw, 0, 'YXZ'));
+        this.fishing.setHandPose(this._v4, this._qHand, false);
+      }
+    }
+    this.fishing.syncVisuals(this.clockDelta, t, this.ocean);
 
     // підводне затемнення
     const inWater = !chase && this.player.mode === 'water' && head.y < this.ocean.heightAt(head.x, head.z, t) + 0.15;
@@ -1481,17 +1487,16 @@ class Game {
   private currentPrompt(): { text: string | null; bite: boolean } {
     // боротьба — перш за все
     if (this.fishing.state === 'fight' || this.fishing.state === 'charge') return { text: null, bite: false };
-    if (this.fishing.state === 'bite') return { text: 'Клює! Тисни E!', bite: true };
+    if (this.fishing.state === 'bite') return { text: 'Клює! Клікни ЛКМ!', bite: true };
     // станція-дія активна
     if (this.stations.active) return { text: this.stations.active.label, bite: false };
     // найближча ціль
     if (this.player.nearest) {
       const n = this.player.nearest;
-      if (n.id === 'st:rod' && this.fishing.state === 'waiting') {
-        return { text: 'Чекай, поки поплавок піде під воду (E — зняти)', bite: false };
-      }
       return { text: n.label, bite: false };
     }
+    const fp = this.fishing.prompt();
+    if (fp) return { text: fp, bite: false };
     return { text: null, bite: false };
   }
 }

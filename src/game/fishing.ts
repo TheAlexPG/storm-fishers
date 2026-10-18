@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { clamp, rand } from '../core/math';
 import { Boat } from '../world/boat';
 import { FISH, FISH_BY_ID, makeFish, zoneFromDist } from './fish';
-import { eff } from './upgrades';
+import { eff, holderBiteSpeed, holderBiteWindow } from './upgrades';
+import { rodModel, RACK_SLOTS, HOLDER_MOUNTS, type PartKit } from '../world/upgradeParts';
 import type { GameState } from './state';
 import type { Weather } from '../core/weather';
 import type { TimeCycle } from '../core/time';
@@ -11,161 +12,239 @@ import type { AudioEngine } from '../core/audio';
 import type { Input } from '../core/input';
 
 // ─────────────────────────────────────────────────────────────
-// Ловля як мінігра:
-//  1. закид — тримай E, шкала сили ходить туди-сюди; відпусти в зеленій зоні;
-//  2. клювання — спершу риба «пробує» (поплавок смикається; підсічка зарано
-//     лякає рибу), потім справжнє клювання топить поплавок — тисни E швидко;
-//  3. боротьба — риба рветься вбік: нахиляй вудку навпаки (A/D), тягни Space,
-//     тримаючи натяг у зеленій зоні; стрибок — відпусти; виснаж рибу й підтягни.
+// Ловля як мінігра — вудки фізичні:
+//  • вудки стоять у носовій стійці; E — взяти в руки / поставити назад;
+//  • з вудкою в руках: тримай ЛКМ — шкала сили, відпусти — закид туди, куди
+//    дивишся; поплавок летить дугою; R — змотати;
+//  • риба спершу «пробує» (підсічка зарано лякає), справжнє клювання топить
+//    поплавок — клікни ЛКМ швидко;
+//  • стійки на бортах (апгрейд): закинуту вудку можна поставити в стійку й
+//    узяти іншу; клює в стійці — дзвіночок, біжи й хапай (E) за кілька секунд;
+//  • боротьба: риба рветься вбік — нахиляй вудку навпаки (A/D), тягни Space,
+//    тримай натяг у зеленій зоні, на стрибку відпусти.
 // ─────────────────────────────────────────────────────────────
 
 export type FishingState = 'idle' | 'charge' | 'waiting' | 'bite' | 'fight';
+export type RodKind = 'main' | 'spin' | 'donka' | 'troll';
+type RodState = 'idle' | 'waiting' | 'bite';
+
+const ROD_INFO: Record<RodKind, { name: string; cast: number; bite: number; trophy: number; color: number }> = {
+  main: { name: 'Твоя вудка', cast: 1, bite: 1, trophy: 0, color: 0xe8432f },
+  spin: { name: 'Спінінг', cast: 1.2, bite: 1.1, trophy: 0.1, color: 0xf2c12e },
+  donka: { name: 'Донка', cast: 0.85, bite: 1.3, trophy: 0.25, color: 0x3fae5a },
+  troll: { name: 'Троллінгова вудка', cast: 1.35, bite: 1, trophy: 0.6, color: 0x2f7fd0 },
+};
+const HOLDER_NAMES = ['лівий борт', 'правий борт', 'корма'];
 
 /** зелена зона натягу (в межах 0..100) */
 const SWEET_LO = 42;
 const SWEET_HI = 74;
+/** понад цю швидкість (м/с) волосінь не втримати — вудки змотуються */
+const MAX_TROLL_SPEED = 5;
+
+class Rod {
+  state: RodState = 'idle';
+  where: 'none' | 'rack' | 'hand' | 'holder' = 'none';
+  slot = 0;
+  readonly pivot = new THREE.Group();
+  readonly inner = new THREE.Group();
+  tip!: THREE.Object3D;
+  bobber: THREE.Mesh;
+  line: THREE.Line;
+  bobberPos = new THREE.Vector3();
+  castDist = 10;
+  biteAt = 0;
+  biteWindow = 0;
+  biteAge = 0;
+  nibble = 0;
+  nibbleT = 0;
+  perfect = false;
+  /** політ поплавка після закиду: 0..1 (1 — на воді) */
+  fly = 1;
+  flyFrom = new THREE.Vector3();
+  shake = 0;
+  constructor(readonly kind: RodKind, mesh: THREE.Object3D, tipY: number) {
+    this.pivot.add(this.inner);
+    this.inner.add(mesh);
+    const tip = mesh.getObjectByName('tip');
+    if (tip) this.tip = tip;
+    else {
+      this.tip = new THREE.Object3D();
+      this.tip.position.y = tipY;
+      mesh.add(this.tip);
+    }
+    // поплавок кольору вудки: верх кольоровий, низ білий
+    const col = ROD_INFO[kind].color;
+    this.bobber = new THREE.Mesh(
+      new THREE.SphereGeometry(0.13, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+      new THREE.MeshStandardMaterial({ color: col, roughness: 0.4, emissive: col, emissiveIntensity: 0.35 }),
+    );
+    const belly = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xf4f1ea, roughness: 0.5 }));
+    this.bobber.add(belly);
+    const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.22, 5), new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.35 }));
+    stick.position.y = 0.2;
+    this.bobber.add(stick);
+    this.bobber.visible = false;
+    const lg = new THREE.BufferGeometry();
+    lg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(13 * 3), 3));
+    this.line = new THREE.Line(lg, new THREE.LineBasicMaterial({ color: 0xdde8ee, transparent: true, opacity: 0.65 }));
+    this.line.frustumCulled = false;
+    this.line.visible = false;
+  }
+  get name() {
+    return ROD_INFO[this.kind].name;
+  }
+}
 
 export class Fishing {
-  state: FishingState = 'idle';
-  /** класичний поплавок: червоний верх, білий низ, ледь світиться — видно з 15 м */
-  bobber = new THREE.Mesh(
-    new THREE.SphereGeometry(0.14, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2),
-    new THREE.MeshStandardMaterial({ color: 0xe8432f, roughness: 0.4, emissive: 0xe8432f, emissiveIntensity: 0.35 }),
-  );
-  /** кола на воді довкола поплавка */
-  private ripples: Array<{ m: THREE.Mesh; age: number }> = [];
-  private rippleT = 0;
-  private line: THREE.Line;
-  private lineGeo: THREE.BufferGeometry;
-  private bobberPos = new THREE.Vector3();
-  private rodTipWorld = new THREE.Vector3();
+  /** «поточний» поплавок (боротьба / вудка в руках) — для ефектів у main */
+  get bobber(): THREE.Mesh {
+    return (this.fightRod ?? this.hand ?? this.rods[0]).bobber;
+  }
+  private ripples: Array<{ m: THREE.Mesh; age: number; x: number; z: number; power: number }> = [];
 
-  private biteAt = 0;
-  private biteWindow = 0;
+  private rods: Rod[] = [];
+  /** вудка в руках */
+  hand: Rod | null = null;
+  /** що стоїть у кожній бортовій стійці */
+  private holders: Array<Rod | null> = [null, null, null];
+  /** група «руки»: її ставить main за камерою/тілом */
+  readonly handGroup = new THREE.Group();
+  private handLocal = new THREE.Group();
+  private charging = false;
+  castPower = 0;
+  private castPhase = 0;
+
+  // боротьба (завжди з вудкою в руках)
+  private fightRod: Rod | null = null;
   private fightTension = 0;
   private fightDist = 0;
   private fightMaxDist = 1;
   private fishKg = 1;
   private fishSpeciesId = 'hamsa';
-  private fishRun = 0;
-  private runTimer = 0;
   private overTension = 0;
   private lineBreakAt = 90;
-  private castDist = 10;
-  private _d = new THREE.Vector3();
-  // ── мінігра ──
-  /** сила закиду 0..1 (шкала), фаза коливання */
-  castPower = 0;
-  private castPhase = 0;
-  /** ідеальний закид — клює швидше */
-  private perfectCast = false;
-  /** «пробування» поплавка: таймер наступного смикання, глибина смикання */
-  private nibbleT = 0;
-  private nibble = 0;
-  /** час від справжнього клювання (реакція) */
-  private biteAge = 0;
-  // боротьба
   private stamina = 100;
   private staminaMax = 100;
   /** куди рветься риба: −1 ліворуч, +1 праворуч, 0 — тягне в глибину */
   pull = 0;
   /** нахил вудки гравцем −1..1 (згладжений) */
   lean = 0;
-  /** бічний зсув риби від лінії закиду, м */
   private side = 0;
   private jumpT = 0;
   private nextJump = 5;
   private slackT = 0;
   private pullT = 0;
-  /** коротке повідомлення в HUD боротьби */
+  private rippleT = 0;
+  private fightDir = new THREE.Vector3();
+  /** коротке повідомлення в HUD */
   status = '';
   private statusT = 0;
-  /** колбеки для ефектів (сплеск, стрибок риби) */
+  private tipW = new THREE.Vector3();
+  private _d = new THREE.Vector3();
+  private _q = new THREE.Quaternion();
+
+  onEvent: ((msg: string, kind: 'warn' | 'bad' | 'good') => void) | null = null;
   onSplash: ((pos: THREE.Vector3, power: number) => void) | null = null;
   onLeap: ((speciesId: string, kg: number, pos: THREE.Vector3) => void) | null = null;
-  /** повідомлення для HUD */
-  onEvent: ((msg: string, kind: 'warn' | 'bad' | 'good') => void) | null = null;
 
-  constructor(private scene: THREE.Scene, private audio: AudioEngine) {
-    this.lineGeo = new THREE.BufferGeometry();
-    this.lineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
-    this.line = new THREE.Line(this.lineGeo, new THREE.LineBasicMaterial({ color: 0xdde8ee, transparent: true, opacity: 0.6 }));
-    this.line.visible = false;
-    this.bobber.visible = false;
-    const belly = new THREE.Mesh(
-      new THREE.SphereGeometry(0.14, 12, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2),
-      new THREE.MeshStandardMaterial({ color: 0xf4f1ea, roughness: 0.5 }),
-    );
-    this.bobber.add(belly);
-    const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.22, 5), new THREE.MeshStandardMaterial({ color: 0xe8432f, emissive: 0xe8432f, emissiveIntensity: 0.35 }));
-    stick.position.y = 0.2;
-    this.bobber.add(stick);
+  constructor(scene: THREE.Scene, private audio: AudioEngine, private boat: Boat) {
     const ringGeo = new THREE.RingGeometry(0.85, 1, 32);
     ringGeo.rotateX(-Math.PI / 2);
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 10; i++) {
       const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }));
       m.visible = false;
-      this.scene.add(m);
-      this.ripples.push({ m, age: 9 });
+      scene.add(m);
+      this.ripples.push({ m, age: 9, x: 0, z: 0, power: 0.5 });
     }
-    this.scene.add(this.bobber);
-    this.scene.add(this.line);
+    // вудки: основна — та, що стояла на носі; решта — з апгрейду стійок
+    const mats = new Map<string, THREE.MeshStandardMaterial>();
+    const kit: PartKit = {
+      mat: (c, r = 0.8, m = 0.05) => {
+        const k = `${c}|${r}|${m}`;
+        let mat = mats.get(k);
+        if (!mat) mats.set(k, (mat = new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m })));
+        return mat;
+      },
+    };
+    const main = boat.takeMainRod();
+    this.rods.push(new Rod('main', main.group, main.len));
+    for (const k of ['spin', 'donka', 'troll'] as const) this.rods.push(new Rod(k, rodModel(kit, k), 2));
+    for (const r of this.rods) {
+      r.pivot.traverse((o) => {
+        if ((o as THREE.Mesh).isMesh) o.castShadow = true;
+      });
+      r.pivot.visible = false;
+      scene.add(r.bobber, r.line);
+    }
+    // вудка в руці: від правої руки вперед і вгору
+    this.handLocal.rotation.set(-0.95, 0, -0.12, 'YXZ');
+    this.handGroup.add(this.handLocal);
+    scene.add(this.handGroup);
+    this.setOwned(0);
   }
 
-  /** почати закид: тримай E — шкала сили, відпусти — закид */
-  startCharge(boat: Boat, game: GameState): boolean {
-    if (this.state !== 'idle') return false;
-    if (Math.hypot(boat.pos.x, boat.pos.z) < 60) return false;
-    if (game.energy < 2) return false;
-    this.state = 'charge';
-    this.castPower = 0;
-    this.castPhase = 0;
-    return true;
+  /** які вудки є (рівень апгрейду стійок): 1 — спінінг, 2 — донка, 5 — троллінгова */
+  setOwned(holdersLvl: number) {
+    const own: Record<RodKind, boolean> = { main: true, spin: holdersLvl >= 1, donka: holdersLvl >= 2, troll: holdersLvl >= 5 };
+    this.rods.forEach((r, i) => {
+      if (own[r.kind] && r.where === 'none') this.toRack(r, i);
+    });
   }
 
-  /** закинути вудку (power 0..1 — із шкали; без шкали — 0.85) */
-  cast(boat: Boat, game: GameState, weather: Weather, time: TimeCycle, power = 0.85): boolean {
-    if (this.state !== 'idle' && this.state !== 'charge') return false;
-    this.state = 'idle';
-    const zone = zoneFromDist(Math.hypot(boat.pos.x, boat.pos.z));
-    if (zone === 'shore' && Math.hypot(boat.pos.x, boat.pos.z) < 60) {
-      return false; // занадто близько до причалу — не куди закидати
-    }
-    if (!game.spendEnergy(2)) return false;
-    const rodLvl = game.upgrades.rod;
-    // ідеальна зона шкали 0.78–0.95: найдалі й найточніше; перетягнув — недоліт
-    this.perfectCast = power >= 0.78 && power <= 0.95;
-    const k = power > 0.95 ? 0.75 : 0.45 + 0.6 * power;
-    const dist = eff.castDist(rodLvl) * k * (this.perfectCast ? 1.1 : rand(0.9, 1.05));
-    this.castDist = dist;
-    // поплавок вперед і помітно на правий борт: прямо по курсу його ховає згорнутий стаксель на штазі
-    const h = boat.heading - 0.42;
-    const fwd = new THREE.Vector3(Math.sin(h), 0, Math.cos(h));
-    const base = boat.rodTipWorld(new THREE.Vector3());
-    this.bobberPos.copy(base).addScaledVector(fwd, dist);
-    this.state = 'waiting';
-    this.rippleT = 0;
-    // базовий час: 5–30 с, зона, погода, вудка, радіо
-    let t = rand(5, 30);
-    t *= zone === 'shore' ? 0.7 : zone === 'mid' ? 1.0 : 1.45;
-    t /= eff.biteSpeed(rodLvl);
-    if (weather.intensity > 0.6) t *= 0.7; // у шторм клює частіше
-    // радіо-звіт скорочує час для тих видів, що в зоні
-    for (const r of game.reports) {
-      if (r.zone === zone) {
-        t /= 1.3;
-        break;
-      }
-    }
-    if (this.perfectCast) t *= 0.55;
-    this.biteAt = Math.max(2, t);
-    this.nibbleT = Math.min(this.biteAt * 0.5, rand(1.5, 4));
-    this.nibble = 0;
-    this.bobber.visible = true;
-    this.line.visible = true;
-    this.audio.splash(0.5);
-    this.say(this.perfectCast ? 'Ідеальний закид!' : power > 0.95 ? 'Перетягнув — недоліт' : '', 2);
-    return true;
+  private toRack(r: Rod, slot: number) {
+    r.where = 'rack';
+    r.slot = slot;
+    const s = RACK_SLOTS[slot];
+    this.boat.group.add(r.pivot);
+    r.pivot.position.set(...s.p);
+    r.pivot.rotation.set(...s.r);
+  }
+
+  private toHolder(r: Rod, h: number) {
+    r.where = 'holder';
+    r.slot = h;
+    this.holders[h] = r;
+    const m = HOLDER_MOUNTS[h];
+    this.boat.group.add(r.pivot);
+    r.pivot.position.set(...m.base);
+    r.pivot.rotation.set(...m.r);
+    // основа вудки — у трубці тримача (0.22 м уздовж нахиленої осі)
+    r.pivot.translateY(0.22);
+  }
+
+  private toHand(r: Rod) {
+    if (r.where === 'holder') this.holders[r.slot] = null;
+    r.where = 'hand';
+    this.hand = r;
+    this.handLocal.add(r.pivot);
+    r.pivot.position.set(0, 0, 0);
+    r.pivot.rotation.set(0, 0, 0);
+  }
+
+  /** поставити руку: fp — за камерою; інакше — біля правого плеча аватара */
+  setHandPose(pos: THREE.Vector3, quat: THREE.Quaternion, fp: boolean) {
+    this.handGroup.position.copy(pos);
+    this.handGroup.quaternion.copy(quat);
+    if (fp) this.handLocal.position.set(0.3, -0.42, -0.32);
+    else this.handLocal.position.set(0.32, -0.1, -0.25);
+    this.handGroup.updateMatrixWorld(true);
+  }
+
+  // ───────────── стан для інших систем ─────────────
+
+  /** стан вудки в руках (сумісність із HUD/коопом) */
+  get state(): FishingState {
+    if (this.fightRod) return 'fight';
+    if (this.charging) return 'charge';
+    return this.hand ? this.hand.state : 'idle';
+  }
+  /** хоч одна вудка у воді */
+  get anyCast(): boolean {
+    return !!this.fightRod || this.rods.some((r) => r.state !== 'idle');
+  }
+  get holding(): boolean {
+    return !!this.hand;
   }
 
   private say(msg: string, sec = 1.6) {
@@ -173,75 +252,179 @@ export class Fishing {
     this.statusT = msg ? sec : 0;
   }
 
-  /** E під час очікування: якщо поплавок саме смикається — підсічка зарано */
-  strikeIfNibbling(): boolean {
-    if (this.state !== 'waiting' || this.nibble < 0.05) return false;
-    return this.strikeEarly();
+  // ───────────── дії гравця ─────────────
+
+  /** носова стійка: взяти вудку / поставити назад */
+  rackAction(): string | null {
+    if (this.fightRod || this.charging) return null;
+    if (this.hand) {
+      if (this.hand.state !== 'idle') return 'Спершу змотай вудку (R) або постав її в стійку на борту.';
+      const r = this.hand;
+      this.hand = null;
+      this.toRack(r, this.rods.indexOf(r));
+      this.audio.click();
+      return null;
+    }
+    const r = this.rods.find((x) => x.where === 'rack');
+    if (!r) return 'Усі вудки вже в роботі.';
+    this.toHand(r);
+    this.audio.click();
+    this.say(`${r.name} в руках — тримай ЛКМ, щоб закинути`, 2.2);
+    return null;
   }
 
-  /** підсічка не вчасно (під час «пробування») — риба лякається */
-  strikeEarly(): boolean {
-    if (this.state !== 'waiting') return false;
-    this.biteAt += rand(4, 8);
-    this.nibbleT = rand(2, 4);
-    this.nibble = 0;
+  /** бортова стійка h: поставити вудку з рук / взяти (клює — одразу підсічка) */
+  holderAction(h: number, game: GameState, weather: Weather, time: TimeCycle): string | null {
+    if (this.fightRod || this.charging) return null;
+    const there = this.holders[h];
+    if (there) {
+      if (this.hand) return 'Руки зайняті — спершу постав свою вудку (в іншу стійку чи на ніс).';
+      const biting = there.state === 'bite';
+      this.toHand(there);
+      this.audio.click();
+      if (biting) this.hook(game, weather, time);
+      return null;
+    }
+    if (!this.hand) return 'Стійка порожня — візьми вудку з носової стійки.';
+    const r = this.hand;
+    this.hand = null;
+    this.toHolder(r, h);
+    this.audio.click();
+    if (r.state !== 'idle') this.say(`${r.name} чекає в стійці — бери наступну`, 2);
+    return null;
+  }
+
+  /** ЛКМ натиснуто */
+  click(boat: Boat, game: GameState, weather: Weather, time: TimeCycle) {
+    const r = this.hand;
+    if (!r || this.fightRod || this.charging) return;
+    if (r.state === 'idle') {
+      if (Math.hypot(boat.pos.x, boat.pos.z) < 60) {
+        this.onEvent?.('Занадто близько до причалу — відійди в море.', 'warn');
+        return;
+      }
+      if (game.energy < 2) {
+        this.onEvent?.('Не вистачає енергії.', 'warn');
+        return;
+      }
+      this.charging = true;
+      this.castPower = 0;
+      this.castPhase = 0;
+    } else if (r.state === 'bite') {
+      this.hook(game, weather, time);
+    } else if (r.nibble > 0.05) {
+      this.strikeEarly(r);
+    }
+  }
+
+  /** R — змотати вудку в руках */
+  reelHand() {
+    if (this.hand && !this.fightRod) {
+      this.reel(this.hand);
+      this.charging = false;
+    }
+  }
+
+  /** змотати все (сон, телепорт, затоплення) */
+  reelIn() {
+    if (this.fightRod) return;
+    this.charging = false;
+    for (const r of this.rods) this.reel(r);
+  }
+
+  private reel(r: Rod) {
+    r.state = 'idle';
+    r.bobber.visible = false;
+    r.line.visible = false;
+    r.nibble = 0;
+  }
+
+  private strikeEarly(r: Rod) {
+    r.biteAt += rand(4, 8);
+    r.nibbleT = rand(2, 4);
+    r.nibble = 0;
     this.audio.splash(0.25);
     this.onEvent?.('Зарано! Риба злякалась — чекай, поки поплавок піде під воду.', 'warn');
-    return true;
   }
 
-  /** зняти вудку (без улову) */
-  reelIn() {
-    if (this.state === 'fight') return;
-    this.say('');
-    this.state = 'idle';
-    this.bobber.visible = false;
-    this.line.visible = false;
-  }
-
-  /** зачепити рибу (у вікні клювання) */
-  hook(game: GameState, weather: Weather, time: TimeCycle, boat: Boat) {
-    if (this.state !== 'bite') return;
-    // вибір виду: зона, доба, рідкісність, радіо, шторм
+  private cast(r: Rod, boat: Boat, game: GameState, weather: Weather, power: number) {
+    this.charging = false;
+    if (!game.spendEnergy(2)) return;
+    const info = ROD_INFO[r.kind];
     const zone = zoneFromDist(Math.hypot(boat.pos.x, boat.pos.z));
+    r.perfect = power >= 0.78 && power <= 0.95;
+    const k = power > 0.95 ? 0.75 : 0.45 + 0.6 * power;
+    r.castDist = eff.castDist(game.upgrades.rod) * info.cast * k * (r.perfect ? 1.1 : rand(0.9, 1.05));
+    // туди, куди дивишся (по горизонталі)
+    r.tip.getWorldPosition(this.tipW);
+    this.handGroup.getWorldQuaternion(this._q);
+    const dir = this._d.set(0, 0, -1).applyQuaternion(this._q).setY(0);
+    if (dir.lengthSq() < 1e-4) dir.set(Math.sin(boat.heading), 0, Math.cos(boat.heading));
+    dir.normalize();
+    r.bobberPos.copy(this.tipW).addScaledVector(dir, r.castDist);
+    // поплавок має впасти за бортом
+    const bx = r.bobberPos.x - boat.pos.x, bz = r.bobberPos.z - boat.pos.z;
+    const bd = Math.hypot(bx, bz) || 1;
+    if (bd < 6.5) r.bobberPos.set(boat.pos.x + (bx / bd) * 6.5, 0, boat.pos.z + (bz / bd) * 6.5);
+    r.bobberPos.y = 0;
+    r.flyFrom.copy(this.tipW);
+    r.fly = 0;
+    r.state = 'waiting';
+    let t = rand(6, 28);
+    t *= zone === 'shore' ? 0.7 : zone === 'mid' ? 1.0 : 1.45;
+    t /= eff.biteSpeed(game.upgrades.rod) * info.bite;
+    if (weather.intensity > 0.6) t *= 0.7;
+    if (game.reports.some((rep) => rep.zone === zone)) t /= 1.3;
+    if (r.perfect) t *= 0.55;
+    r.biteAt = Math.max(2.5, t);
+    r.nibbleT = Math.min(r.biteAt * 0.5, rand(1.5, 4));
+    r.nibble = 0;
+    r.bobber.visible = true;
+    r.line.visible = true;
+    this.audio.splash(0.2);
+    this.say(r.perfect ? 'Ідеальний закид!' : power > 0.95 ? 'Перетягнув — недоліт' : '', 2);
+  }
+
+  /** зачепити рибу на вудці в руках (вона клює) */
+  hook(game: GameState, weather: Weather, time: TimeCycle) {
+    const r = this.hand;
+    if (!r || r.state !== 'bite') return;
+    const info = ROD_INFO[r.kind];
+    const zone = zoneFromDist(Math.hypot(this.boat.pos.x, this.boat.pos.z));
     const day = !time.isNight;
     const pool = FISH.filter((f) => f.zones.includes(zone) && (day ? f.day : f.night));
-    if (pool.length === 0) {
-      // ніч у зоні, де ніщо не ловиться — беремо будь-що з зони
-      const anyPool = FISH.filter((f) => f.zones.includes(zone));
-      pool.push(...anyPool);
-    }
-    // ваги
+    if (pool.length === 0) pool.push(...FISH.filter((f) => f.zones.includes(zone)));
+    // ваги: рідкісність, радіо, шторм; «трофейні» вудки тягнуть рідкісну велику рибу
     const weights = pool.map((f) => {
       let w = 1 / f.rarity;
       const rep = game.reportBoost(f.id, zone);
       if (rep > 1) w *= rep;
-      if (weather.intensity > 0.6 && f.zones.includes('open')) w *= 1.6; // рідкісна риба в шторм
+      if (weather.intensity > 0.6 && f.zones.includes('open')) w *= 1.6;
+      w *= 1 + info.trophy * (f.rarity - 1) * 1.5;
       return w;
     });
-    let sum = weights.reduce((a, b) => a + b, 0);
-    let r = Math.random() * sum;
+    const sum = weights.reduce((a, b) => a + b, 0);
+    let x = Math.random() * sum;
     let sp = pool[0];
     for (let i = 0; i < pool.length; i++) {
-      r -= weights[i];
-      if (r <= 0) {
+      x -= weights[i];
+      if (x <= 0) {
         sp = pool[i];
         break;
       }
     }
     this.fishSpeciesId = sp.id;
-    this.fishKg = rand(sp.minKg, sp.maxKg) * rand(0.85, 1.3);
-    this.fightMaxDist = rand(10, 16) + this.fishKg * 0.4;
+    this.fishKg = rand(sp.minKg, sp.maxKg) * rand(0.85, 1.3) * (1 + info.trophy * 0.25);
+    r.tip.getWorldPosition(this.tipW);
+    this.fightDir.set(r.bobberPos.x - this.tipW.x, 0, r.bobberPos.z - this.tipW.z);
+    this.fightMaxDist = Math.max(6, this.fightDir.length() - 2);
     this.fightDist = this.fightMaxDist;
     this.fightTension = 35;
-    this.fishRun = 0;
-    this.runTimer = rand(1, 3);
     this.overTension = 0;
-    this.lineBreakAt = 86 + eff.lineStrength(game.upgrades.rod) * 14 - 14; // 86..92
-    // витривалість: вага й рідкість; швидка підсічка «вибиває» чверть
+    this.lineBreakAt = 86 + eff.lineStrength(game.upgrades.rod) * 14 - 14;
     const rel = clamp(this.fishKg / sp.maxKg, 0, 1.3);
     this.staminaMax = 60 + rel * 50 + sp.rarity * 25;
-    const perfect = this.biteAge < 0.4;
+    const perfect = r.biteAge < 0.4;
     this.stamina = this.staminaMax * (perfect ? 0.72 : 1);
     this.pull = 0;
     this.lean = 0;
@@ -251,13 +434,20 @@ export class Fishing {
     this.slackT = 0;
     this.pullT = rand(0.8, 1.6);
     this.say(perfect ? 'Ідеальна підсічка!' : 'Є! Риба на гачку', 1.8);
-    this.state = 'fight';
+    this.fightRod = r;
+    r.state = 'idle';
+    r.bobber.visible = true;
+    r.line.visible = true;
   }
 
-  private spawnRipple(power: number) {
+  // ───────────── кадр ─────────────
+
+  private spawnRipple(x: number, z: number, power: number) {
     const r = this.ripples.reduce((a, b) => (a.age > b.age ? a : b));
     r.age = 0;
-    r.m.userData.power = power;
+    r.x = x;
+    r.z = z;
+    r.power = power;
     r.m.visible = true;
   }
 
@@ -266,168 +456,182 @@ export class Fishing {
       if (!r.m.visible) continue;
       r.age += dt;
       const life = 1.6;
-      if (r.age > life || this.state === 'idle') {
+      if (r.age > life) {
         r.m.visible = false;
         continue;
       }
       const u = r.age / life;
-      const p = (r.m.userData.power as number) ?? 0.5;
-      const sc = 0.15 + u * (0.6 + p * 0.5);
-      r.m.scale.setScalar(sc);
-      r.m.position.set(this.bobberPos.x, ocean.heightAt(this.bobberPos.x, this.bobberPos.z, t) + 0.03, this.bobberPos.z);
-      (r.m.material as THREE.MeshBasicMaterial).opacity = (1 - u) * 0.5 * (0.5 + p * 0.5);
+      r.m.scale.setScalar(0.15 + u * (0.6 + r.power * 0.5));
+      r.m.position.set(r.x, ocean.heightAt(r.x, r.z, t) + 0.03, r.z);
+      (r.m.material as THREE.MeshBasicMaterial).opacity = (1 - u) * 0.5 * (0.5 + r.power * 0.5);
     }
   }
 
-  /** чи тримає гравець лінію */
   isPulling(input: Input): boolean {
     return input.down('Space');
   }
 
-  update(dt: number, t: number, boat: Boat, ocean: Ocean, input: Input, game: GameState, weather: Weather, time: TimeCycle) {
+  update(dt: number, t: number, boat: Boat, ocean: Ocean, input: Input, game: GameState, weather: Weather, _time: TimeCycle) {
     this.updateRipples(dt, t, ocean);
+    const speed = Math.hypot(boat.vel.x, boat.vel.z);
     if (this.statusT > 0) {
       this.statusT -= dt;
       if (this.statusT <= 0) this.status = '';
     }
-    if (this.state === 'charge') {
-      // шкала сили ходить туди-сюди (~1.4 с цикл); відпустив E — закид
+    if (this.charging) {
+      const r = this.hand;
       this.castPhase += dt / 0.7;
       const ph = this.castPhase % 2;
       this.castPower = ph < 1 ? ph : 2 - ph;
-      boat.setRodBend(0.1 + this.castPower * 0.35);
-      if (!input.down('KeyE')) this.cast(boat, game, weather, time, this.castPower);
-      return;
+      if (!r) this.charging = false;
+      else if (!input.down('Mouse0')) this.cast(r, boat, game, weather, this.castPower);
     }
-    if (this.state === 'idle') {
-      this.bobber.visible = false;
-      this.line.visible = false;
-      boat.setRodBend(0);
-      return;
+    const holderLvl = game.upgrades.holders ?? 0;
+    // надто швидко — волосіні не втримати
+    if (speed > MAX_TROLL_SPEED && !this.fightRod && this.rods.some((r) => r.state !== 'idle')) {
+      for (const r of this.rods) this.reel(r);
+      this.onEvent?.('Човен іде надто швидко — вудки змотано. Троллінг — лише на малому ходу.', 'warn');
     }
-    // нові кола: спокійно — рідко, клювання — часто
-    this.rippleT -= dt;
-    if (this.rippleT <= 0 && this.state !== 'fight') {
-      this.rippleT = this.state === 'bite' ? 0.22 : 1.8 + Math.random();
-      this.spawnRipple(this.state === 'bite' ? 1 : 0.5);
+    const trolling = speed > 1 && speed <= MAX_TROLL_SPEED;
+    for (const r of this.rods) {
+      if (r.state === 'idle' || r === this.fightRod) continue;
+      this.updateWaiting(r, dt, ocean, t, holderLvl, trolling);
     }
-
-    // вигин вудлища: натяг волосіні
-    boat.setRodBend(
-      this.state === 'fight' ? 0.15 + this.fightTension / 115
-        : this.state === 'bite' ? 0.25 + 0.15 * Math.sin(t * 22)
-        : 0.05 + this.nibble * 0.12,
-    );
-    // кінчик вудки у світі
-    boat.rodTipWorld(this.rodTipWorld);
-
-    if (this.state === 'waiting' || this.state === 'bite') {
-      // човен відійшов — волосінь натягнулась, вудку змотано
-      const dx = this.bobberPos.x - this.rodTipWorld.x;
-      const dz = this.bobberPos.z - this.rodTipWorld.z;
-      if (Math.hypot(dx, dz) > this.castDist * 1.6 + 8) {
-        this.reelIn();
-        this.onEvent?.('Човен відійшов — волосінь натягнулась, вудку змотано. Для риболовлі стань на місці.', 'warn');
-        return;
-      }
-    }
-
-    if (this.state === 'waiting') {
-      // «пробування»: риба смикає поплавок кілька разів перед справжнім клюванням
-      this.nibbleT -= dt;
-      if (this.nibbleT <= 0 && this.biteAt > 1.2) {
-        this.nibble = 1;
-        this.nibbleT = rand(1.2, 3.5);
-        this.spawnRipple(0.7);
-        this.audio.splash(0.12);
-      }
-      this.nibble = Math.max(0, this.nibble - dt * 3.5);
-      const h = ocean.heightAt(this.bobberPos.x, this.bobberPos.z, t);
-      this.bobber.position.set(this.bobberPos.x, h + 0.06 - this.nibble * 0.09 * (0.6 + 0.4 * Math.sin(t * 40)), this.bobberPos.z);
-      this.biteAt -= dt;
-      if (this.biteAt <= 0) {
-        this.state = 'bite';
-        this.biteWindow = 1.1;
-        this.biteAge = 0;
-        this.audio.bite();
-        this.spawnRipple(1);
-        this.onSplash?.(this.bobber.position, 0.35);
-      }
-    } else if (this.state === 'bite') {
-      // поплавок пішов під воду
-      const h = ocean.heightAt(this.bobberPos.x, this.bobberPos.z, t);
-      this.bobber.position.set(this.bobberPos.x, h - 0.16 + Math.sin(t * 22) * 0.05, this.bobberPos.z);
-      this.biteAge += dt;
-      this.biteWindow -= dt;
-      if (this.biteWindow <= 0) {
-        this.reelIn();
-        this.onEvent?.('Проґавив клювання — риба зірвалась з гачка.', 'warn');
-      }
-    } else if (this.state === 'fight') {
-      if (this.fightStep(dt, t, boat, ocean, input, game, weather)) return;
-    }
-
-    // лінія від вудки до поплавка
-    const attr = this.line.geometry.getAttribute('position') as THREE.BufferAttribute;
-    const midX = (this.rodTipWorld.x + this.bobber.position.x) / 2;
-    const midY = Math.min(this.rodTipWorld.y, this.bobber.position.y) - 0.6;
-    const midZ = (this.rodTipWorld.z + this.bobber.position.z) / 2;
-    attr.setXYZ(0, this.rodTipWorld.x, this.rodTipWorld.y, this.rodTipWorld.z);
-    attr.setXYZ(1, midX, midY, midZ);
-    attr.setXYZ(2, this.bobber.position.x, this.bobber.position.y, this.bobber.position.z);
-    attr.needsUpdate = true;
+    if (this.fightRod) this.fightStep(dt, t, boat, ocean, input, game, weather);
   }
 
-  /** крок боротьби; true — боротьба скінчилась (улов/обрив/зрив) */
-  private fightStep(dt: number, t: number, boat: Boat, ocean: Ocean, input: Input, game: GameState, weather: Weather): boolean {
+  private updateWaiting(r: Rod, dt: number, ocean: Ocean, t: number, holderLvl: number, trolling: boolean) {
+    r.tip.getWorldPosition(this.tipW);
+    // волосінь тягне поплавок за човном (троллінг), якщо той відійшов
+    const dx = r.bobberPos.x - this.tipW.x, dz = r.bobberPos.z - this.tipW.z;
+    const d = Math.hypot(dx, dz);
+    const maxD = r.castDist + 1.5;
+    if (d > maxD && r.fly >= 1) {
+      r.bobberPos.x = this.tipW.x + (dx / d) * maxD;
+      r.bobberPos.z = this.tipW.z + (dz / d) * maxD;
+    }
+    const inHolder = r.where === 'holder';
+    let rate = 1;
+    if (inHolder) rate *= holderBiteSpeed(holderLvl);
+    if (trolling) rate *= r.kind === 'troll' ? 1.6 : 1.15;
+    if (r.state === 'waiting') {
+      r.nibbleT -= dt;
+      if (r.nibbleT <= 0 && r.biteAt > 1.2 && r.fly >= 1) {
+        r.nibble = 1;
+        r.nibbleT = rand(1.2, 3.5);
+        this.spawnRipple(r.bobberPos.x, r.bobberPos.z, 0.7);
+        if (r.where === 'hand') this.audio.splash(0.12);
+      }
+      r.nibble = Math.max(0, r.nibble - dt * 3.5);
+      if (r.fly >= 1) r.biteAt -= dt * rate;
+      if (r.biteAt <= 0) {
+        r.state = 'bite';
+        r.biteAge = 0;
+        r.biteWindow = inHolder ? holderBiteWindow(holderLvl) : 1.1;
+        this.spawnRipple(r.bobberPos.x, r.bobberPos.z, 1);
+        this._d.set(r.bobberPos.x, ocean.heightAt(r.bobberPos.x, r.bobberPos.z, t), r.bobberPos.z);
+        this.onSplash?.(this._d, 0.35);
+        if (inHolder) {
+          this.audio.tinkle(holderLvl >= 3 ? 1.4 : 0.7);
+          this.onEvent?.(`🔔 Клює: ${r.name.toLowerCase()} (${HOLDER_NAMES[r.slot]}) — біжи й хапай (E)!`, 'good');
+        } else this.audio.bite();
+      }
+    } else if (r.state === 'bite') {
+      r.biteAge += dt;
+      r.biteWindow -= dt;
+      if (inHolder && Math.floor(r.biteAge * 2.2) !== Math.floor((r.biteAge - dt) * 2.2)) this.audio.tinkle(holderLvl >= 3 ? 0.9 : 0.4);
+      if (r.biteWindow <= 0) {
+        this.reel(r);
+        this.onEvent?.(inHolder ? `${r.name}: риба з'їла наживку й пішла. Закинь знову.` : 'Проґавив клювання — риба зірвалась з гачка.', 'warn');
+      }
+    }
+  }
+
+  /** після камери: вудки, поплавки, волосіні (одна поза на кадр — без відставання) */
+  syncVisuals(dt: number, t: number, ocean: Ocean) {
+    for (const r of this.rods) {
+      r.pivot.visible = r.where !== 'none';
+      // вигин: клювання смикає, боротьба гне за натягом, замах — назад
+      let bend = 0.02;
+      if (r === this.fightRod) bend = 0.12 + this.fightTension / 120 + this.lean * 0.0;
+      else if (r.state === 'bite') bend = 0.25 + 0.15 * Math.sin(t * 22);
+      else if (r.state === 'waiting') bend = 0.05 + r.nibble * 0.12;
+      else if (r === this.hand && this.charging) bend = -0.3 * this.castPower;
+      r.shake += (bend - r.shake) * (1 - Math.exp(-dt * 14));
+      r.inner.rotation.x = r.shake * 0.6;
+      r.inner.rotation.z = r === this.fightRod ? -this.lean * 0.35 : 0;
+      if (r.state === 'idle' && r !== this.fightRod) continue;
+      r.pivot.updateMatrixWorld(true);
+      r.tip.getWorldPosition(this.tipW);
+      const h = ocean.heightAt(r.bobberPos.x, r.bobberPos.z, t);
+      if (r.fly < 1) {
+        // поплавок летить дугою від кінчика вудки
+        r.fly = Math.min(1, r.fly + dt / 0.65);
+        const u = r.fly;
+        r.bobber.position.lerpVectors(r.flyFrom, this._d.set(r.bobberPos.x, h, r.bobberPos.z), u);
+        r.bobber.position.y += Math.sin(u * Math.PI) * (1.5 + r.castDist * 0.12);
+        if (r.fly >= 1) {
+          this.spawnRipple(r.bobberPos.x, r.bobberPos.z, 0.8);
+          this.onSplash?.(r.bobber.position, 0.25);
+        }
+      } else if (r !== this.fightRod) {
+        const y = r.state === 'bite' ? h - 0.16 + Math.sin(t * 22) * 0.05 : h + 0.06 - r.nibble * 0.09 * (0.6 + 0.4 * Math.sin(t * 40));
+        r.bobber.position.set(r.bobberPos.x, y, r.bobberPos.z);
+      }
+      // волосінь: провисає дугою (натягнута в боротьбі)
+      const attr = r.line.geometry.getAttribute('position') as THREE.BufferAttribute;
+      const sag = r === this.fightRod ? 0.5 * (1 - Math.min(1, this.fightTension / 80)) + 0.03 : r.fly < 1 ? 0.1 : 0.7;
+      const b = r.bobber.position;
+      for (let i = 0; i <= 12; i++) {
+        const u = i / 12;
+        attr.setXYZ(i, this.tipW.x + (b.x - this.tipW.x) * u, this.tipW.y + (b.y - this.tipW.y) * u - Math.sin(u * Math.PI) * sag, this.tipW.z + (b.z - this.tipW.z) * u);
+      }
+      attr.needsUpdate = true;
+    }
+  }
+
+  /** крок боротьби */
+  private fightStep(dt: number, t: number, boat: Boat, ocean: Ocean, input: Input, game: GameState, weather: Weather) {
+    const r = this.fightRod!;
     const sp = FISH_BY_ID[this.fishSpeciesId];
     const power = 0.45 + clamp(this.fishKg / (sp ? sp.maxKg : 1), 0, 1) * 0.35 + (sp ? sp.rarity * 0.12 : 0);
     const tired = this.stamina < this.staminaMax * 0.25;
 
-    // риба міняє напрям ривка
     this.pullT -= dt;
     if (this.pullT <= 0) {
-      const r = Math.random();
-      this.pull = tired ? (r < 0.6 ? 0 : r < 0.8 ? -1 : 1) : r < 0.42 ? -1 : r < 0.84 ? 1 : 0;
+      const x = Math.random();
+      this.pull = tired ? (x < 0.6 ? 0 : x < 0.8 ? -1 : 1) : x < 0.42 ? -1 : x < 0.84 ? 1 : 0;
       this.pullT = tired ? rand(1.4, 2.6) : rand(1.1, 2.4);
     }
-    // стрибок
     this.nextJump -= dt;
     if (this.jumpT <= 0 && this.nextJump <= 0 && !tired) {
       this.jumpT = 1.15;
       this.nextJump = rand(6, 11);
-      this.onLeap?.(this.fishSpeciesId, this.fishKg, this.bobber.position);
-      this.onSplash?.(this.bobber.position, 0.7);
+      this.onLeap?.(this.fishSpeciesId, this.fishKg, r.bobber.position);
+      this.onSplash?.(r.bobber.position, 0.7);
       this.say('СТРИБОК! Відпусти Space!', 1.2);
     }
     const jumping = this.jumpT > 0;
     if (jumping) this.jumpT -= dt;
 
-    // керування: Space — тягти, A/D — нахил вудки (протидія ривку)
     const reeling = this.isPulling(input);
     const leanIn = (input.down('KeyD') ? 1 : 0) - (input.down('KeyA') ? 1 : 0);
     this.lean += (leanIn - this.lean) * (1 - Math.exp(-dt * 8));
-    // протидія: нахил проти ривка (ривок ліворуч → вудка праворуч)
     const counter = this.pull === 0 ? 1 - Math.abs(this.lean) * 0.4 : clamp(-this.pull * this.lean, -1, 1);
     const effort = this.pull === 0 ? 0.5 : 1;
 
-    // натяг
     let dT = 0;
     if (reeling) dT += (26 + power * 22) * (jumping ? 3.2 : 1);
     else dT -= 48;
     dT += this.pull !== 0 ? (1 - counter) * 30 * power * effort : 6 * power;
-    if (this.fishRun > 0) dT += 10 * power;
     this.fightTension = clamp(this.fightTension + dT * dt, 0, 100);
     const sweet = this.fightTension >= SWEET_LO && this.fightTension <= SWEET_HI;
 
-    // виснаження риби: у зеленій зоні й з правильним нахилом — найшвидше;
-    // стрибок без натягу — риба б'ється об повітря й теж втомлюється
     let drain = 1.2;
     if (sweet) drain += 3 + Math.max(0, counter) * 3.5;
     if (jumping && !reeling) drain += 9;
     this.stamina = Math.max(0, this.stamina - drain * dt);
 
-    // відстань: тягнеш — ближче (уставшу рибу — швидше), ривок — далі
     const reelSpeed = (1.0 + eff.biteSpeed(game.upgrades.rod) * 0.45) * (tired ? 1.8 : sweet ? 1.0 : 0.45);
     if (reeling && !jumping) this.fightDist -= reelSpeed * dt;
     const run = tired ? 0.25 : this.pull !== 0 ? 1.1 * (1 - Math.max(0, counter)) * power + 0.3 : 0.5 * power;
@@ -435,35 +639,29 @@ export class Fishing {
     this.fightDist = clamp(this.fightDist, 0, this.fightMaxDist * 1.4);
     if (reeling) game.spendEnergy(0.45 * dt);
 
-    // риба тягне вбік — поплавок/риба їде поперек
     const sideTarget = tired ? 0 : this.pull * Math.min(5, 1.5 + this.fightDist * 0.25) * (1 - 0.6 * Math.max(0, counter));
     this.side += (sideTarget - this.side) * (1 - Math.exp(-dt * 1.4));
 
-    // обрив: натяг під межею понад секунду
     if (this.fightTension >= this.lineBreakAt) {
       this.overTension += dt;
       if (this.overTension > 0.8) {
-        this.snap();
+        this.endFight();
+        this.audio.snap();
         this.onEvent?.('💥 Волосінь обірвалась — перетягнув!', 'bad');
-        return true;
+        return;
       }
-    } else {
-      this.overTension = Math.max(0, this.overTension - dt * 2);
-    }
-    // зрив: волосінь провисла надто довго — риба виплюнула гачок
+    } else this.overTension = Math.max(0, this.overTension - dt * 2);
     if (this.fightTension < 12) {
       this.slackT += dt;
       if (this.slackT > 2.6) {
-        this.snap();
+        this.endFight();
+        this.audio.snap();
         this.onEvent?.('Риба зірвалась — волосінь провисла. Тримай натяг у зеленій зоні.', 'warn');
-        return true;
+        return;
       }
-    } else {
-      this.slackT = Math.max(0, this.slackT - dt);
-    }
+    } else this.slackT = Math.max(0, this.slackT - dt);
 
-    // підказки
-    if (!this.statusT || this.statusT <= 0) {
+    if (this.statusT <= 0) {
       if (jumping) this.status = 'СТРИБОК! Відпусти Space!';
       else if (this.slackT > 1.2) this.status = 'Слабина! Тягни Space';
       else if (this.overTension > 0.2) this.status = 'Занадто туго! Відпусти';
@@ -473,48 +671,45 @@ export class Fishing {
       else this.status = 'Тягне в глибину — тримай натяг';
     }
 
-    // улов!
     if (this.fightDist <= 0.5) {
       this.catchFish(weather);
-      return true;
+      return;
     }
-    // поплавок (риба) — на волосіні від кінчика вудки, у бік закиду + поперечний зсув
-    const dir = this._d.set(this.bobberPos.x - this.rodTipWorld.x, 0, this.bobberPos.z - this.rodTipWorld.z);
+    // риба — на волосіні від кінчика: у бік, де клюнула, + поперечний зсув
+    r.tip.getWorldPosition(this.tipW);
+    const dir = this._d.copy(this.fightDir);
     if (dir.lengthSq() < 1e-4) dir.set(Math.sin(boat.heading), 0, Math.cos(boat.heading));
     dir.normalize();
-    // «праворуч» від напрямку на рибу (з погляду рибалки)
     const rx = -dir.z, rz = dir.x;
-    const tx = this.rodTipWorld.x + dir.x * (this.fightDist + 2) + rx * this.side;
-    const tz = this.rodTipWorld.z + dir.z * (this.fightDist + 2) + rz * this.side;
+    const tx = this.tipW.x + dir.x * (this.fightDist + 2) + rx * this.side;
+    const tz = this.tipW.z + dir.z * (this.fightDist + 2) + rz * this.side;
+    r.bobberPos.set(tx, 0, tz);
     const h = ocean.heightAt(tx, tz, t);
-    this.bobber.position.set(tx, h + 0.02 - (this.pull === 0 && !tired ? 0.12 : 0) + Math.sin(t * 14) * 0.02, tz);
-    // бурун від риби, що б'ється
+    r.bobber.position.set(tx, h + 0.02 - (this.pull === 0 && !tired ? 0.12 : 0) + Math.sin(t * 14) * 0.02, tz);
     this.rippleT -= dt;
     if (this.rippleT <= 0) {
       this.rippleT = tired ? 0.9 : 0.35;
-      this.spawnRipple(tired ? 0.4 : 0.9);
+      this.spawnRipple(tx, tz, tired ? 0.4 : 0.9);
     }
-    return false;
   }
 
-  private snap() {
-    this.audio.snap();
-    this.state = 'idle';
-    this.bobber.visible = false;
-    this.line.visible = false;
+  private endFight() {
+    const r = this.fightRod;
+    this.fightRod = null;
+    if (r) this.reel(r);
+    this.say('');
   }
 
   private catchFish(weather: Weather) {
-    this.say('');
     const item = makeFish(this.fishSpeciesId, this.fishKg, weather.stormBonus);
-    this.state = 'idle';
-    this.bobber.visible = false;
-    this.line.visible = false;
+    this.lastBobber.copy(this.fightRod!.bobber.position);
+    this.endFight();
     this.audio.catchJingle();
     this._lastCatch = item;
   }
 
-  /** улов цього разу (повертається і з'їдається) */
+  /** де була риба в момент улову (для ефекту вильоту) */
+  readonly lastBobber = new THREE.Vector3();
   private _lastCatch: ReturnType<typeof makeFish> | null = null;
   takeCatch(): ReturnType<typeof makeFish> | null {
     const c = this._lastCatch;
@@ -522,7 +717,6 @@ export class Fishing {
     return c;
   }
 
-  /** дані поточної боротьби для HUD */
   get fightInfo(): { speciesId: string; kg: number; tension: number; limit: number; dist: number; stamina: number; pull: number; lean: number; status: string; jump: boolean; lo: number; hi: number } {
     return {
       speciesId: this.fishSpeciesId,
@@ -540,22 +734,37 @@ export class Fishing {
     };
   }
 
-  /** кооп: [стан 1 чекає / 2 клює / 3 боротьба, x, z, натяг] або null */
+  /** кооп: [стан 1 чекає / 2 клює / 3 боротьба, x, z, натяг] або null (вудка в руках) */
   netState(): [number, number, number, number] | null {
-    if (this.state === 'idle' || this.state === 'charge') return null;
-    const s = this.state === 'waiting' ? 1 : this.state === 'bite' ? 2 : 3;
-    const r = (v: number) => Math.round(v * 100) / 100;
-    return [s, r(this.bobber.position.x), r(this.bobber.position.z), Math.round(this.state === 'fight' ? this.fightTension : 0)];
+    const r = this.fightRod ?? this.hand;
+    if (!r || (r.state === 'idle' && !this.fightRod)) return null;
+    const s = this.fightRod ? 3 : r.state === 'waiting' ? 1 : 2;
+    const q = (v: number) => Math.round(v * 100) / 100;
+    return [s, q(r.bobber.position.x), q(r.bobber.position.z), Math.round(this.fightRod ? this.fightTension : 0)];
   }
 
-  /** підказка для HUD */
+  /** підпис станції вудок (залежить від того, що в руках) */
+  stationLabel(id: string): string {
+    if (id === 'rod') {
+      if (this.hand) return this.hand.state === 'idle' ? `Поставити: ${this.hand.name.toLowerCase()} — на ніс` : 'Носова стійка (спершу змотай — R)';
+      const r = this.rods.find((x) => x.where === 'rack');
+      return r ? `Взяти: ${r.name.toLowerCase()}` : 'Носова стійка (порожня)';
+    }
+    const h = Number(id.slice(6));
+    const there = this.holders[h];
+    if (there) return there.state === 'bite' ? `ХАПАЙ: ${there.name.toLowerCase()} — клює!` : `Взяти зі стійки: ${there.name.toLowerCase()}`;
+    return this.hand ? `Поставити в стійку: ${this.hand.name.toLowerCase()}` : `Стійка для вудки (${HOLDER_NAMES[h]})`;
+  }
+
+  /** підказка для HUD, коли вудка в руках */
   prompt(): string | null {
-    switch (this.state) {
-      case 'charge': return 'Відпусти E у зеленій зоні — закид';
-      case 'waiting': return 'Чекай, поки поплавок піде під воду… (E — зняти)';
-      case 'bite': return 'КЛЮЄ! Тисни E!';
-      case 'fight': return 'Space — тягти · A/D — нахил вудки проти ривка';
-      default: return null;
+    if (this.fightRod || this.charging) return null;
+    const r = this.hand;
+    if (!r) return null;
+    switch (r.state) {
+      case 'idle': return `${r.name}: тримай ЛКМ — закид`;
+      case 'waiting': return 'Чекай, поки поплавок піде під воду · ЛКМ — підсікти · R — змотати';
+      case 'bite': return 'КЛЮЄ! Клікни ЛКМ!';
     }
   }
 }

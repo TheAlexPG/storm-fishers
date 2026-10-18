@@ -37,7 +37,8 @@ export type UpgradeId =
   | 'rod'
   | 'fuel'
   | 'lights'
-  | 'stab';
+  | 'stab'
+  | 'holders';
 
 export type UpgradeLevels = Record<UpgradeId, number>;
 

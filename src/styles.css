@@ -142,7 +142,7 @@ body.intro-mode #vignette { opacity: 0.6; }
 .cast-bar > i { position: absolute; top: -3px; bottom: -3px; width: 5px; margin-left: -2.5px; border-radius: 3px; background: #fff; box-shadow: 0 0 8px #fff; }
 .cast-ui.good .cast-sweet { background: rgba(79, 220, 190, 0.9); }
 .cast-hint { font-size: 11px; color: rgba(255,255,255,0.8); margin-top: 6px; font-weight: 600; }
-.fish-status { position: absolute; bottom: 210px; left: 50%; transform: translateX(-50%); font-family: var(--font-display); font-weight: 600; font-size: 18px; color: #fff; text-shadow: 0 2px 10px rgba(0,0,0,0.6); opacity: 0; transition: opacity 0.2s; pointer-events: none; }
+.fish-status { position: absolute; bottom: 250px; left: 50%; transform: translateX(-50%); font-family: var(--font-display); font-weight: 600; font-size: 18px; color: #fff; text-shadow: 0 2px 10px rgba(0,0,0,0.6); opacity: 0; transition: opacity 0.2s; pointer-events: none; }
 .fish-status.show { opacity: 1; }
 
 /* ── тости ── */
