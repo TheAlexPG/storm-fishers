@@ -27,6 +27,8 @@ void main() {
   vec3 d = normalize(vDir);
   float h = clamp(d.y, 0.0, 1.0);
   vec3 col = mix(uHorizon, uZenith, pow(h, 0.55));
+  // смуга серпанку біля обрію — далекі острови тонуть у ньому, а не світяться плямою
+  col = mix(col, uHorizon, exp(-h * 22.0));
   // сонце + ореол
   float sd = max(dot(d, normalize(uSunDir)), 0.0);
   col += vec3(1.0, 0.9, 0.7) * pow(sd, 350.0) * 2.0 * uSunStrength;

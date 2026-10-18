@@ -454,3 +454,14 @@ body.intro-mode #vignette { opacity: 0.6; }
 .cc-kg { font-size: 12.5px; font-weight: 700; color: var(--text-soft); }
 @keyframes catchIn { from { opacity: 0; transform: translateX(30px) rotate(3deg) scale(0.9); } }
 @keyframes catchOut { to { opacity: 0; transform: translateX(30px); } }
+
+/* ── фото-режим ── */
+.photo-hint {
+  position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 12; pointer-events: none;
+  font-family: var(--font); font-size: 12.5px; font-weight: 700; color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,0.5);
+  opacity: 0; transition: opacity 0.4s ease 0.2s;
+}
+.photo-hint.show { opacity: 0.85; animation: photoHint 4s ease forwards; }
+.photo-hint b { font-family: var(--font-display); font-weight: 600; letter-spacing: 1px; }
+.photo-hint kbd { font-family: inherit; background: rgba(255,255,255,0.9); color: #22303b; border-radius: 5px; padding: 0 5px; text-shadow: none; }
+@keyframes photoHint { 0%, 70% { opacity: 0.85; } 100% { opacity: 0; } }

@@ -186,6 +186,19 @@ export class Hud {
     this.root.classList.toggle('night', v);
   }
 
+  private photoEl: HTMLElement | null = null;
+
+  /** підказка фото-режиму (поза #hud, бо той схований) */
+  photoHint(on: boolean) {
+    if (!this.photoEl) {
+      this.photoEl = document.createElement('div');
+      this.photoEl.className = 'photo-hint';
+      this.photoEl.innerHTML = '<b>Фото</b> · миша — обертати · коліщатко — відстань · <kbd>P</kbd> — вийти';
+      document.body.appendChild(this.photoEl);
+    }
+    this.photoEl.classList.toggle('show', on);
+  }
+
   /** H — сховати весь HUD (фото / кіно) */
   setHidden(v: boolean) {
     this.root.classList.toggle('hidden', v);

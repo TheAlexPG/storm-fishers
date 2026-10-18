@@ -89,6 +89,7 @@ class Game {
   private _v = new THREE.Vector3();
   private _v2 = new THREE.Vector3();
   private _fogGrey = new THREE.Color();
+  private fogRaw = new THREE.Color(0xbcd8e6);
   private rig: CameraRig;
   private windLines: WindLines;
   /** «з-за корми» за штурвалом (V); запам'ятовується */
@@ -97,6 +98,10 @@ class Game {
   private selfColor = -1;
   /** скільки секунд миша не рухала камеру (для автодоводки за курсом) */
   private camIdle = 0;
+  /** фото-режим (P): вільна камера довкола яхти, без інтерфейсу */
+  private photo = false;
+  private photoYaw = 0;
+  private photoPitch = -0.2;
   private lastYaw = 0;
 
   constructor() {
@@ -679,10 +684,18 @@ class Game {
       }
       if (!this.player.wheeling) this.hud.toast(this.chasePref ? 'Вид з-за корми — коли стоїш за штурвалом' : 'Вид від першої особи', 'warn', 2200);
     }
+    // P — фото-режим
+    if (input.pressed('KeyP') && this.phase === 'play' && !this.dialogs.isOpen) this.setPhoto(!this.photo);
+    if (this.photo && this.phase !== 'play') this.setPhoto(false);
     // H — сховати / показати інтерфейс (фото, кіно)
     if (input.pressed('KeyH') && this.phase === 'play' && !this.dialogs.isOpen) this.hud.setHidden(!this.hud.hidden);
     const wheelSteps = input.consumeWheel();
     if (wheelSteps && this.rig.mode === 'chase') this.rig.zoom(wheelSteps);
+    if (this.photo) {
+      const [mdx, mdy] = input.consumeMouse();
+      this.photoYaw -= mdx * 0.0025;
+      this.photoPitch = clamp(this.photoPitch - mdy * 0.0025, -1.2, 0.3);
+    }
     this.updateCamMode(locked);
     // Space у битві — обробляється в fishing через input.down
 
@@ -745,7 +758,7 @@ class Game {
 
     // океан
     this.ocean.setConditions(this.weather.intensity, this.weather.windDir);
-    this.ocean.update(dt, t, this.camera.position, this.time.sunDir, this.time.skyHorizon, (this.scene.fog as THREE.FogExp2).color, this.fogDensity(), this.time.sunStrength, this.weather.flash);
+    this.ocean.update(dt, t, this.camera.position, this.time.sunDir, this.time.skyHorizon, this.fogRaw, this.fogDensity(), this.time.sunStrength, this.weather.flash);
 
     // паливо
     // повний газ — непропорційно дорожче: економний хід і паруси окупаються
@@ -764,7 +777,7 @@ class Game {
     if (g.fuel > 5) this.outOfFuelWarned = false;
 
     // гравець
-    if (locked && this.phase === 'play') {
+    if (locked && this.phase === 'play' && !this.photo) {
       const crewHelm = this.coop.isClient && this.player.wheeling;
       if (crewHelm) {
         // свій газ/кермо (знімок капітана ще не встиг їх побачити)
@@ -1043,8 +1056,12 @@ class Game {
     this.skyEnv.update(simDt || 0.016, time.skyZenith, time.skyHorizon, time.sunDir, time.sunStrength * (1 - this.weather.cloudiness * 0.6));
     this.hemi.color.copy(time.skyHorizon);
     // туман — у колір обрію (у шторм сіріє); раніше лишався денним і вночі
+    // fogRaw — у тих самих «сирих» числах, що їх пишуть шейдери неба й океану (без sRGB-кодування);
+    // three.js кодує fog.color у sRGB при завантаженні, тож для мешів даємо зворотне перетворення —
+    // інакше далека суша й острови завжди світліші за небо позаду
+    this.fogRaw.copy(time.skyHorizon).lerp(time.fogColor, 0.25).lerp(this._fogGrey.setRGB(0.3, 0.33, 0.38).multiplyScalar(0.35 + 0.65 * time.daylight), this.weather.cloudiness * 0.8);
     const fog = this.scene.fog as THREE.FogExp2;
-    fog.color.copy(time.fogColor).lerp(this._fogGrey.setRGB(0.3, 0.33, 0.38).multiplyScalar(0.35 + 0.65 * time.daylight), this.weather.cloudiness * 0.8);
+    fog.color.copy(this.fogRaw).convertSRGBToLinear();
     fog.density = this.fogDensity();
 
     // порт
@@ -1078,12 +1095,13 @@ class Game {
     }
     this.rig.update(this.clockDelta, {
       head,
-      yaw: this.player.yaw,
-      pitch: this.player.pitch + this.player.shakeX,
+      yaw: this.photo ? this.photoYaw : this.player.yaw,
+      pitch: this.photo ? this.photoPitch : this.player.pitch + this.player.shakeX,
       roll: this.player.shakeZ,
       fpTilt: tilt,
       shake: this.camShake,
-      boatPos: this.boat.pos,
+      boatPos: this.photo && this.player.mode !== 'boat' ? this.player.head : this.boat.pos,
+      lift: this.photo && this.player.mode !== 'boat' ? -0.4 : undefined,
       waterAt: (x, z) => this.ocean.heightAt(x, z, t),
       t,
       orbitYaw: this.introYaw(),
@@ -1094,7 +1112,7 @@ class Game {
       this.windLines.update(simDt, t, this.camera.position, this.weather.windDir, this.weather.wind, time.daylight, (x, z) => this.ocean.heightAt(x, z, t), indoor);
     }
     // свій рибалка за штурвалом — видно лише збоку
-    this.updateSelfAvatar(chase);
+    this.updateSelfAvatar(chase, this.photo);
 
     // підводне затемнення
     const inWater = !chase && this.player.mode === 'water' && head.y < this.ocean.heightAt(head.x, head.z, t) + 0.15;
@@ -1159,14 +1177,28 @@ class Game {
     return Math.atan2(ax, az);
   }
 
+  private setPhoto(on: boolean) {
+    if (on === this.photo) return;
+    this.photo = on;
+    this.hud.setHidden(on);
+    if (on) {
+      this.photoYaw = this.player.yaw + Math.PI * 0.8;
+      this.photoPitch = -0.15;
+      this.hud.photoHint(true);
+    } else {
+      this.hud.photoHint(false);
+    }
+  }
+
   /** який вигляд зараз: заставка — обліт, штурвал — з-за корми (якщо обрано) */
   private updateCamMode(locked: boolean) {
     const dt = this.clockDelta;
     let m: 'fp' | 'chase' | 'orbit' = 'fp';
     if (this.phase === 'intro') m = 'orbit';
+    else if (this.photo) m = 'chase';
     else if (this.player.mode === 'boat' && this.player.wheeling && this.chasePref) m = 'chase';
     else if (this.rig.mode === 'chase' && this.phase !== 'play') m = 'chase'; // меню поверх — не стрибаємо
-    if (m === 'chase' && this.rig.mode !== 'chase') {
+    if (m === 'chase' && this.rig.mode !== 'chase' && !this.photo) {
       // кут — з-за корми, трохи згори
       this.player.yaw = this.boat.heading + Math.PI;
       this.player.pitch = 0;
@@ -1178,7 +1210,7 @@ class Game {
     }
     this.rig.setMode(m);
     // автодоводка: миша спокійна — камера сама заходить за корму
-    if (m === 'chase' && locked && this.phase === 'play') {
+    if (m === 'chase' && !this.photo && locked && this.phase === 'play') {
       if (Math.abs(this.player.yaw - this.lastYaw) > 1e-4) this.camIdle = 0;
       else this.camIdle += dt;
       if (this.camIdle > 1.6 && this.boat.vel.length() > 0.4) {
@@ -1191,9 +1223,9 @@ class Game {
   }
 
   /** свій рибалка: видно лише з-за корми / в заставці */
-  private updateSelfAvatar(show: boolean) {
+  private updateSelfAvatar(show: boolean, anywhere = false) {
     const p = this.player;
-    if (!show || p.mode !== 'boat') {
+    if (!show || (p.mode !== 'boat' && !anywhere)) {
       this.selfAvatar?.hide();
       return;
     }
@@ -1207,6 +1239,11 @@ class Game {
     // у заставці — капітан за штурвалом
     const atWheel = p.wheeling || this.phase === 'intro';
     const w = STATION_POS.wheel;
+    if (p.mode !== 'boat') {
+      this.selfAvatar.state = { m: p.mode === 'port' ? 1 : 2, x: p.wx, y: p.wy, z: p.wz, yaw: p.yaw, pitch: 0, wh: 0, mv: 0 };
+      this.selfAvatar.update(this.clockDelta, this.boat, this.ocean, this.simTime);
+      return;
+    }
     this.selfAvatar.state = {
       m: 0,
       x: atWheel ? w.x : p.localX,

@@ -21,6 +21,8 @@ export interface CamInput {
   /** висота води під точкою (камера не пірнає) */
   waterAt: (x: number, z: number) => number;
   t: number;
+  /** висота точки огляду над boatPos (за замовчуванням 2.8 — щогла/рубка) */
+  lift?: number;
   /** заставка: кут, звідки видно відкрите море (не крізь причал) */
   orbitYaw?: number;
 }
@@ -81,7 +83,7 @@ export class CameraRig {
         yaw = c.yaw;
         elev = clamp(0.2 - c.pitch * 0.9, 0.03, 1.2);
         dist = this.dist;
-        lift = 2.8;
+        lift = c.lift ?? 2.8;
       }
       const tgt = this._target.copy(c.boatPos);
       tgt.y += lift;

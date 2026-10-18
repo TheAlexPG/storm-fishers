@@ -17,6 +17,8 @@ export class Input {
     const t = e.target as HTMLElement | null;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
     this.keys.add(e.code);
+    // швидкий «тап» (натиснули й відпустили між кадрами) теж має спрацювати
+    this.tapped.add(e.code);
   };
   private upHandler = (e: KeyboardEvent) => {
     this.keys.delete(e.code);
@@ -54,10 +56,13 @@ export class Input {
   /** натиснуто в цьому кадрі (з'їдається) */
   private justPressed = new Set<string>();
   private prevKeys = new Set<string>();
+  private tapped = new Set<string>();
 
   beginFrame() {
     this.justPressed.clear();
     for (const k of this.keys) if (!this.prevKeys.has(k)) this.justPressed.add(k);
+    for (const k of this.tapped) this.justPressed.add(k);
+    this.tapped.clear();
     this.prevKeys.clear();
     for (const k of this.keys) this.prevKeys.add(k);
     // мишу НЕ нулюємо тут: дельти накопичуються між кадрами і з'їдаються
