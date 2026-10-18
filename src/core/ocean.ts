@@ -29,7 +29,7 @@ function gridStep(r: number): number {
 const SHORE_DEEP = 8;
 const SHORE_MIN = 0.15;
 /** горизонтальне зміщення Герстнера (загострює гребені): Hx = q·CHOP·A */
-const CHOP = 5;
+const CHOP = 4;
 /** вага хвилі довжини len там, де крок сітки step: < 3 вершин на хвилю — не малюється */
 function waveLod(len: number, step: number): number {
   const n = len / step;
@@ -37,26 +37,32 @@ function waveLod(len: number, step: number): number {
 }
 
 // Параметри 5 хвиль: [кут від вітру, базова амплітуда, довжина, крутість]
+// 9 хвиль: довгий брижовий вал + дедалі коротші під різними кутами — профіль
+// не «лоуполі», а з дрібнішими горбами на великих
 const WAVE_TABLE: Array<[number, number, number, number]> = [
-  [0.0, 1.15, 52, 0.1],
-  [0.55, 0.75, 30, 0.11],
-  [-0.75, 0.45, 15, 0.13],
-  [2.4, 0.22, 6.5, 0.15],
-  [-2.1, 0.11, 2.6, 0.17],
+  [0.0, 1.0, 58, 0.09],
+  [0.45, 0.62, 33, 0.1],
+  [-0.6, 0.42, 21, 0.11],
+  [1.1, 0.26, 13, 0.12],
+  [-1.35, 0.2, 9.5, 0.13],
+  [0.2, 0.14, 6.2, 0.14],
+  [2.4, 0.09, 4.1, 0.15],
+  [-2.1, 0.06, 2.6, 0.16],
+  [0.9, 0.04, 1.7, 0.17],
 ];
+export const WAVE_COUNT = WAVE_TABLE.length;
 
 /** Оновлює набір хвиль на місці (без alloc). */
 export function updateWaveSet(defs: WaveDef[], intensity: number, windDir: number): void {
   const s = intensity;
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < WAVE_COUNT; i++) {
     const w = defs[i];
     const [off, baseAmp, len, q] = WAVE_TABLE[i];
     const a = windDir + off;
     w.dir[0] = Math.sin(a);
     w.dir[1] = -Math.cos(a);
-    // підлог 0.09: у тиші хвилі справді дрібні (~0.15 м), а шторм
-    // зберігає амплітуди завдяки множнику 1.15·s
-    w.amp = baseAmp * (0.09 + 1.15 * s);
+    // підлог 0.15: навіть у тиші море дихає легким брижовим валом
+    w.amp = baseAmp * (0.15 + 1.12 * s);
     w.len = len;
     w.q = q;
   }
@@ -65,13 +71,7 @@ export function updateWaveSet(defs: WaveDef[], intensity: number, windDir: numbe
 export function waveSet(intensity: number, windDir = 0): WaveDef[] {
   // intensity ~0 (тиша) .. 1+ (шторм).
   // Конвенція: напрямок кута a → (sin a, −cos a); a=0 — хвиля іде на −Z («північ»).
-  const defs: WaveDef[] = [
-    { dir: norm2(0, 0), amp: 0, len: 1, q: 0 },
-    { dir: norm2(0, 0), amp: 0, len: 1, q: 0 },
-    { dir: norm2(0, 0), amp: 0, len: 1, q: 0 },
-    { dir: norm2(0, 0), amp: 0, len: 1, q: 0 },
-    { dir: norm2(0, 0), amp: 0, len: 1, q: 0 },
-  ];
+  const defs: WaveDef[] = Array.from({ length: WAVE_COUNT }, () => ({ dir: norm2(0, 0), amp: 0, len: 1, q: 0 }));
   updateWaveSet(defs, intensity, windDir);
   return defs;
 }
@@ -135,12 +135,12 @@ export function waveNormal(x: number, z: number, t: number, waves: WaveDef[], ou
 
 const VERT = /* glsl */ `
 uniform float uTime;
-uniform vec2  uWaveDir[5];
-uniform float uWaveAmp[5];
-uniform float uWaveK[5];
-uniform float uWaveOmega[5];
-uniform float uWaveQ[5];
-uniform float uWaveLen[5];
+uniform vec2  uWaveDir[NW];
+uniform float uWaveAmp[NW];
+uniform float uWaveK[NW];
+uniform float uWaveOmega[NW];
+uniform float uWaveQ[NW];
+uniform float uWaveLen[NW];
 uniform sampler2D uShore;
 uniform vec4 uShoreRect;
 varying vec3 vWorldPos;
@@ -161,7 +161,7 @@ void main() {
     float bed = texture2D(uShore, suv).r * 20.0 - 10.0;
     damp = ${SHORE_MIN.toFixed(2)} + ${(1 - SHORE_MIN).toFixed(2)} * (1.0 - smoothstep(-${SHORE_DEEP.toFixed(1)}, -0.6, bed));
   }
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < NW; i++) {
     // хвиля, коротша за 3 кроки сітки, не малюється геометрією (лише нормалями)
     float lod = clamp((uWaveLen[i] / step - 3.0) / 3.0, 0.0, 1.0);
     vec2 D = uWaveDir[i];
@@ -192,12 +192,12 @@ uniform vec3  uSkyColor;
 uniform vec3  uZenithColor;
 uniform float uIntensity;
 uniform vec2  uWindDir;
-uniform vec2  uWaveDir[5];
-uniform float uWaveAmp[5];
-uniform float uWaveK[5];
-uniform float uWaveOmega[5];
-uniform float uWaveQ[5];
-uniform float uWaveLen[5];
+uniform vec2  uWaveDir[NW];
+uniform float uWaveAmp[NW];
+uniform float uWaveK[NW];
+uniform float uWaveOmega[NW];
+uniform float uWaveQ[NW];
+uniform float uWaveLen[NW];
 uniform vec3  uFogColor;
 uniform float uFogDensity;
 uniform float uTime;
@@ -208,9 +208,23 @@ uniform float uBoatSpeed;
 // глибина біля берега (мапа висот суші): x/z → uv, значення = висота дна/суші
 uniform sampler2D uShore;
 uniform vec4 uShoreRect; // x0, z0, 1/w, 1/h
+// брижі: тайлова карта нормалей (мипмапи самі гасять дрібне вдалині)
+uniform sampler2D uRipple;
+// переломлення: підводна частина сцени (колір + глибина) з окремого проходу
+uniform sampler2D uRefr;
+uniform sampler2D uRefrDepth;
+uniform vec2  uScreen;
+uniform float uNear;
+uniform float uFar;
+uniform float uRefrOn;
 varying vec3 vWorldPos;
 varying vec2 vBase;
 varying float vCrest;
+
+float viewDist(float d) {
+  float z = d * 2.0 - 1.0;
+  return 2.0 * uNear * uFar / (uFar + uNear - z * (uFar - uNear));
+}
 
 // обрис корпусу яхти (дзеркало hullHalfWidth у yachtLayout.ts)
 float hullHalfW(float z) {
@@ -277,7 +291,7 @@ void main() {
   // ── нормаль у кожному пікселі: великі хвилі (Герстнер) + брижі ──
   vec2 slope = vec2(0.0);
   float kept = 0.0, total = 0.0;
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < NW; i++) {
     float w = clamp(uWaveLen[i] / (fp * 8.0) - 1.0, 0.0, 1.0);
     vec2 D = uWaveDir[i];
     float ph = uWaveK[i] * dot(D, vBase) - uWaveOmega[i] * uTime;
@@ -287,24 +301,17 @@ void main() {
     total += sl * sl;
   }
   float wind = clamp(uIntensity, 0.0, 1.2);
-  // брижі: градієнт шуму у двох октавах, що біжать за вітром (синуси давали
-  // помітні згори рівні смуги); дрібне гаситься за розміром пікселя
-  float ripA = 0.07 + 0.09 * wind;
+  // брижі: дві шкали тайлової карти нормалей, повернуті за вітром і зсунуті
+  // в різні боки — живий дрібний візерунок без помітних повторів
   vec2 wd = normalize(uWindDir + 1e-4);
-  for (int j = 0; j < 2; j++) {
-    float sc = j == 0 ? 0.85 : 2.1;               // ~1.2 м і ~0.5 м
-    float len = 1.0 / sc;
-    float w = clamp(len / (fp * 6.0) - 1.0, 0.0, 1.0);
-    if (w > 0.0) {
-      vec2 q = vBase * sc - wd * uTime * (0.55 + 0.25 * float(j)) + float(j) * 17.3;
-      float e = 0.2;
-      vec2 g = vec2(noise(q + vec2(e, 0.0)) - noise(q - vec2(e, 0.0)), noise(q + vec2(0.0, e)) - noise(q - vec2(0.0, e))) / (2.0 * e);
-      slope += g * ripA * (j == 0 ? 1.0 : 0.6) * w;
-    }
-    float a2 = ripA * (j == 0 ? 1.0 : 0.6) * 0.6;
-    kept += a2 * a2 * w;
-    total += a2 * a2;
-  }
+  mat2 rot = mat2(wd.y, -wd.x, wd.x, wd.y);
+  vec2 qa = rot * vBase;
+  vec3 ra = texture2D(uRipple, qa / 7.5 + vec2(0.0, uTime * 0.045)).xyz * 2.0 - 1.0;
+  vec3 rb = texture2D(uRipple, (qa * mat2(0.8, 0.6, -0.6, 0.8)) / 2.9 + vec2(uTime * 0.03, uTime * 0.07)).xyz * 2.0 - 1.0;
+  float ripA = 0.55 + 0.9 * wind;
+  slope += (ra.xy / max(ra.z, 0.3) * 0.16 + rb.xy / max(rb.z, 0.3) * 0.1) * ripA;
+  total += 0.02 * ripA * ripA;
+  kept += 0.02 * ripA * ripA * (1.0 - smoothstep(0.03, 0.4, fp));
   vec3 N = normalize(vec3(-slope.x, 1.0, -slope.y));
   // загублені (відфільтровані) нахили → шорсткість: блиск ширшає, а не мерехтить
   float rough = clamp(sqrt(max(total - kept, 0.0)) * 3.0, 0.0, 1.0);
@@ -329,7 +336,41 @@ void main() {
   body += uShallowColor * thin * back * 0.55 * uSunStrength;
   body += uShallowColor * 0.18 * (1.0 - NdV) * sunI;                // збоку вода світліша
   body = mix(body, uSkyColor * 0.55, 0.2); // вода завжди трохи бере колір неба (захід, ніч)
-  vec3 col = mix(body, refl, fres);
+
+  // ── прозорість: що під водою (дно, корпус, скелі, палі), зі зсувом від хвиль ──
+  vec3 under = body;
+  float thick = 1e4;
+  if (uRefrOn > 0.5) {
+    vec2 uv = gl_FragCoord.xy / uScreen;
+    float wD = viewDist(gl_FragCoord.z);
+    float sD = viewDist(texture2D(uRefrDepth, uv).r);
+    thick = max(sD - wD, 0.0);
+    vec2 off = N.xz * min(0.05, 0.9 / max(wD, 1.0)) * smoothstep(0.0, 1.5, thick);
+    vec2 uv2 = clamp(uv + off, vec2(0.001), vec2(0.999));
+    float sD2 = viewDist(texture2D(uRefrDepth, uv2).r);
+    // зсув «зачепив» щось над водою — беремо без зсуву
+    if (sD2 < wD) { uv2 = uv; sD2 = sD; }
+    thick = max(sD2 - wD, 0.0);
+    vec3 refr = texture2D(uRefr, uv2).rgb;
+    #ifdef TONE_MAPPING
+      refr = toneMapping(refr);
+    #endif
+    refr = linearToOutputTexel(vec4(refr, 1.0)).rgb;
+    // каламутність росте з хвилюванням (шторм збурює воду)
+    float murk = 1.0 + 1.6 * wind;
+    float vis = exp(-thick * 0.17 * murk);
+    vec3 tint = exp(-thick * vec3(0.38, 0.1, 0.07) * murk);   // червоне гасне першим → бірюза
+    under = mix(body, refr * tint * (0.75 + 0.25 * sunI), vis);
+  }
+  vec3 col = mix(under, refl, fres);
+
+  // піна на дотику з предметами (скелі, палі, буї) — тонкий живий обідок
+  if (thick < 0.4) {
+    float en = fbm(vBase * 2.6 + uTime * 0.4);
+    float edgeF = (1.0 - smoothstep(0.0, 0.4, thick)) * smoothstep(0.4, 0.75, en + 0.3 * (1.0 - thick / 0.4));
+    vec3 ec = vec3(0.93, 0.96, 0.98) * clamp(0.15 + 0.85 * uSunStrength, 0.0, 1.0) + uSkyColor * 0.1;
+    col = mix(col, ec, edgeF * 0.65);
+  }
 
   // сонце: гострий блиск (звужується, де деталі збережені) + м'який ореол
   vec3 Hs = normalize(L + V);
@@ -399,14 +440,15 @@ void main() {
     if (suv.x > 0.0 && suv.x < 1.0 && suv.y > 0.0 && suv.y < 1.0) {
       float bed = texture2D(uShore, suv).r * 20.0 - 10.0; // висота дна, м
       float shallow = smoothstep(-4.5, -0.4, bed);        // 0 глибоко … 1 біля самої кромки
-      // мілина — світліша, бірюзова
-      col = mix(col, uShallowColor * (0.6 + 0.7 * uSunStrength) + vec3(0.06, 0.1, 0.07), shallow * 0.5);
+      // мілину тепер дає справжня прозорість (дно крізь воду); фарбуємо лише без неї
+      if (uRefrOn < 0.5) col = mix(col, uShallowColor * (0.6 + 0.7 * uSunStrength) + vec3(0.06, 0.1, 0.07), shallow * 0.5);
       float wave = sin(bed * 2.6 + uTime * 1.3) * 0.5 + 0.5;
       float n = fbm(vWorldPos.xz * 1.1 + uTime * 0.2);
-      float surf = smoothstep(0.55, 0.95, wave * shallow + n * 0.35) * shallow;
-      surf = max(surf, smoothstep(-1.4, -0.2, bed) * smoothstep(0.2, 0.55, n)); // кромка
+      float near = smoothstep(-2.2, -0.3, bed);          // смуга прибою — лише біля самої кромки
+      float surf = smoothstep(0.7, 0.95, wave * near + n * 0.3) * near * 0.8;
+      surf = max(surf, smoothstep(-0.5, -0.05, bed) * smoothstep(0.35, 0.65, n)); // кромка
       vec3 foamCol = vec3(0.95, 0.97, 0.98) * clamp(0.15 + 0.85 * uSunStrength, 0.0, 1.0) + uSkyColor * 0.1;
-      col = mix(col, foamCol, clamp(surf, 0.0, 1.0) * 0.85);
+      col = mix(col, foamCol, clamp(surf, 0.0, 1.0) * 0.72);
     }
   }
 
@@ -449,6 +491,53 @@ function radialGrid(): THREE.BufferGeometry {
   return geo;
 }
 
+/** шар об'єктів, що можуть бути під водою (корпус, дно, скелі, палі) — для переломлення */
+export const UNDERWATER_LAYER = 3;
+
+/**
+ * Тайлова карта нормалей бриж: сума ~48 синусів з цілими частотами (шов не видно),
+ * спектр ~1/k (більше дрібних хвиль), переважно поперек «вітру» (вісь y).
+ */
+function rippleTexture(size = 256): THREE.DataTexture {
+  let seed = 1337;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const waves: Array<[number, number, number, number]> = [];
+  for (let i = 0; i < 48; i++) {
+    const f = 2 + Math.floor(Math.pow(rnd(), 1.6) * 22);
+    const ang = (rnd() - 0.5) * Math.PI * 1.1; // ±~100° навколо вітру
+    const m = Math.round(Math.sin(ang) * f), n = Math.round(Math.cos(ang) * f) || 1;
+    waves.push([m, n, 1 / Math.pow(Math.hypot(m, n), 1.15), rnd() * Math.PI * 2]);
+  }
+  const data = new Uint8Array(size * size * 4);
+  const TAU = Math.PI * 2;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      let dx = 0, dy = 0;
+      for (const [m, n, a, ph] of waves) {
+        const c = Math.cos(TAU * (m * x + n * y) / size + ph) * a * TAU;
+        dx += c * m;
+        dy += c * n;
+      }
+      // нахили → нормаль (масштаб підібрано так, щоб типовий нахил ~0.3)
+      const sx = dx * 0.012, sy = dy * 0.012;
+      const l = Math.hypot(sx, sy, 1);
+      const o = (y * size + x) * 4;
+      data[o] = Math.round((-sx / l * 0.5 + 0.5) * 255);
+      data[o + 1] = Math.round((-sy / l * 0.5 + 0.5) * 255);
+      data[o + 2] = Math.round((1 / l * 0.5 + 0.5) * 255);
+      data[o + 3] = 255;
+    }
+  }
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.generateMipmaps = true;
+  tex.anisotropy = 4;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 export class Ocean {
   mesh: THREE.Mesh;
   material: THREE.ShaderMaterial;
@@ -465,7 +554,7 @@ export class Ocean {
     const qs: number[] = [];
     const lens: number[] = [];
     const init = waveSet(0.3);
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < WAVE_COUNT; i++) {
       dirs.push(new THREE.Vector2(init[i].dir[0], init[i].dir[1]));
       amps.push(init[i].amp);
       const k = (Math.PI * 2) / init[i].len;
@@ -477,7 +566,15 @@ export class Ocean {
     this.material = new THREE.ShaderMaterial({
       vertexShader: VERT,
       fragmentShader: FRAG,
+      defines: { NW: WAVE_COUNT },
       uniforms: {
+        uRipple: { value: rippleTexture() },
+        uRefr: { value: null },
+        uRefrDepth: { value: null },
+        uScreen: { value: new THREE.Vector2(1, 1) },
+        uNear: { value: 0.1 },
+        uFar: { value: 1000 },
+        uRefrOn: { value: 0 },
         uTime: { value: 0 },
         uWaveDir: { value: dirs },
         uWaveAmp: { value: amps },
@@ -568,6 +665,52 @@ export class Ocean {
     return SHORE_MIN + (1 - SHORE_MIN) * (1 - k * k * (3 - 2 * k));
   }
 
+  // ── переломлення: підводна частина сцени в половинній роздільності ──
+  private refrRT: THREE.WebGLRenderTarget | null = null;
+  private _size = new THREE.Vector2();
+  private _clear = new THREE.Color();
+
+  /**
+   * Перед головним рендером: малює лише шар UNDERWATER_LAYER (без води й неба)
+   * у текстуру кольору + глибини, яку вода показує крізь себе зі зсувом від хвиль.
+   */
+  renderRefraction(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
+    renderer.getDrawingBufferSize(this._size);
+    const w = Math.max(1, Math.floor(this._size.x * 0.5)), h = Math.max(1, Math.floor(this._size.y * 0.5));
+    if (!this.refrRT) {
+      const depth = new THREE.DepthTexture(w, h);
+      depth.type = THREE.UnsignedIntType;
+      this.refrRT = new THREE.WebGLRenderTarget(w, h, { depthTexture: depth, type: THREE.HalfFloatType });
+      this.refrRT.texture.minFilter = this.refrRT.texture.magFilter = THREE.LinearFilter;
+    } else if (this.refrRT.width !== w || this.refrRT.height !== h) {
+      this.refrRT.setSize(w, h);
+    }
+    const mask = camera.layers.mask;
+    const autoShadow = renderer.shadowMap.autoUpdate;
+    const prevRT = renderer.getRenderTarget();
+    renderer.getClearColor(this._clear);
+    const alpha = renderer.getClearAlpha();
+    camera.layers.set(UNDERWATER_LAYER);
+    renderer.shadowMap.autoUpdate = false; // тіні — з головного проходу
+    this.mesh.visible = false;
+    renderer.setRenderTarget(this.refrRT);
+    renderer.setClearColor(0x000000, 1);
+    renderer.clear();
+    renderer.render(scene, camera);
+    renderer.setRenderTarget(prevRT);
+    renderer.setClearColor(this._clear, alpha);
+    this.mesh.visible = true;
+    renderer.shadowMap.autoUpdate = autoShadow;
+    camera.layers.mask = mask;
+    const u = this.material.uniforms;
+    u.uRefr.value = this.refrRT.texture;
+    u.uRefrDepth.value = this.refrRT.depthTexture;
+    (u.uScreen.value as THREE.Vector2).copy(this._size);
+    u.uNear.value = camera.near;
+    u.uFar.value = camera.far;
+    u.uRefrOn.value = 1;
+  }
+
   /** центр сітки (камера) — для «як намальовано» */
   private center = new THREE.Vector2();
 
@@ -599,7 +742,7 @@ export class Ocean {
     const omegas = u.uWaveOmega.value as number[];
     const qs = u.uWaveQ.value as number[];
     const lens = u.uWaveLen.value as number[];
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < WAVE_COUNT; i++) {
       const w = this.waves[i];
       dirs[i].set(w.dir[0], w.dir[1]);
       amps[i] = w.amp;

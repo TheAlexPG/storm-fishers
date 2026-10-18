@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Input } from './core/input';
 import { TimeCycle } from './core/time';
 import { Weather } from './core/weather';
-import { Ocean } from './core/ocean';
+import { Ocean, UNDERWATER_LAYER } from './core/ocean';
 import { AudioEngine } from './core/audio';
 import { clamp, rand } from './core/math';
 import { GameState } from './game/state';
@@ -1302,7 +1302,50 @@ class Game {
       },
     );
 
+    // прозора вода: спершу підводна частина сцени (корпус, дно, скелі) у текстуру
+    if (!this.underwaterMarked) this.markUnderwater();
+    this.ocean.renderRefraction(this.renderer, this.scene, this.camera);
     this.renderer.render(this.scene, this.camera);
+  }
+
+  private underwaterMarked = false;
+  /** шар UNDERWATER_LAYER: усе, що сягає нижче ~0.8 м (дно, скелі, палі, буї) + низ яхти + світло */
+  private markUnderwater() {
+    this.underwaterMarked = true;
+    const box = new THREE.Box3();
+    this.scene.updateMatrixWorld(true);
+    const lowest = (m: THREE.Mesh) => {
+      if ((m as THREE.InstancedMesh).isInstancedMesh) {
+        const im = m as THREE.InstancedMesh;
+        im.computeBoundingBox();
+        box.copy(im.boundingBox!).applyMatrix4(im.matrixWorld);
+      } else {
+        if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+        box.copy(m.geometry.boundingBox!).applyMatrix4(m.matrixWorld);
+      }
+      return box.min.y;
+    };
+    this.scene.traverse((o) => {
+      if ((o as THREE.Light).isLight) {
+        o.layers.enable(UNDERWATER_LAYER);
+        return;
+      }
+      const m = o as THREE.Mesh;
+      if (!m.isMesh || o === this.ocean.mesh) return;
+      const mat = m.material as THREE.Material;
+      if (!mat || (mat as THREE.Material).transparent || (m.geometry.attributes.position?.count ?? 0) === 0) return;
+      if (lowest(m) < 0.8) m.layers.enable(UNDERWATER_LAYER);
+    });
+    // яхта хитається й кренится: беремо все, що нижче палуби (корпус, кіль, перо, транець)
+    const inv = new THREE.Matrix4().copy(this.boat.group.matrixWorld).invert();
+    this.boat.group.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+      box.copy(m.geometry.boundingBox!).applyMatrix4(m.matrixWorld).applyMatrix4(inv);
+      const mat = m.material as THREE.Material;
+      if (box.min.y < 0.9 && !(mat && mat.transparent)) m.layers.enable(UNDERWATER_LAYER);
+    });
   }
 
   /** заставка: камера з боку моря — від причалу через яхту, трохи в бік носа */
