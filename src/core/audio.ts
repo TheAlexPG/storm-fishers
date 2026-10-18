@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import { Music, type MusicMood } from './music';
+import { SeaSounds, type SeaState } from './seaSounds';
 
 export class AudioEngine {
   private ctx: AudioContext | null = null;
@@ -11,6 +12,7 @@ export class AudioEngine {
   muted = false;
   musicOn = true;
   private music: Music | null = null;
+  private sea: SeaSounds | null = null;
 
   // вузли "живих" звуків
   private engineOsc: OscillatorNode | null = null;
@@ -97,6 +99,7 @@ export class AudioEngine {
       this.engineOsc.start();
       this.engineOsc2.start();
       this.music = new Music(ctx, this.master!);
+      this.sea = new SeaSounds(ctx, this.master!);
       this.music.setOn(this.musicOn);
     } catch {
       this.ctx = null;
@@ -129,6 +132,11 @@ export class AudioEngine {
   setMusic(on: boolean) {
     this.musicOn = on;
     this.music?.setOn(on);
+  }
+
+  /** кожен кадр: дрібні звуки яхти й моря */
+  updateSea(dt: number, st: SeaState) {
+    if (this.ctx?.state === 'running') this.sea?.update(dt, st);
   }
 
   /** кожен кадр: настрій музики */

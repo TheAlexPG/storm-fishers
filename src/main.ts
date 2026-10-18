@@ -726,6 +726,22 @@ class Game {
       (this.player.mode === 'port' ? clamp((this.player.wz + 60) / 42, 0.25, 1) : 1) *
       (this.player.sheltered ? 0.45 : 1);
     this.audio.setAmbience(this.weather.wind, this.weather.rain, clamp(this.weather.intensity, 0, 1), nearWater);
+    {
+      const sails = this.boat.sails;
+      const rock = Math.hypot(this.boat.roll - this.prevRoll, this.boat.pitch - this.prevPitch) / Math.max(dt, 1e-3);
+      this.prevRoll = this.boat.roll;
+      this.prevPitch = this.boat.pitch;
+      const portD = Math.hypot(this.boat.pos.x, this.boat.pos.z);
+      this.audio.updateSea(dt, {
+        hoist: sails.hoist,
+        luffing: sails.luffing,
+        aws: sails.aws,
+        rock: this.player.mode === 'boat' ? rock : 0,
+        speed: this.player.mode === 'boat' ? this.boat.vel.length() : 99,
+        gulls: this.time.daylight > 0.5 && this.weather.rain < 0.2 ? clamp(1 - portD / 350, 0.15, 0.9) : 0,
+        sheltered: this.player.sheltered,
+      });
+    }
 
     // океан
     this.ocean.setConditions(this.weather.intensity, this.weather.windDir);
@@ -858,6 +874,8 @@ class Game {
   }
 
   private lastDay = 1;
+  private prevRoll = 0;
+  private prevPitch = 0;
   private lastZone: string | null = null;
   private lastHours = 8;
 
