@@ -498,10 +498,38 @@ export class YachtBuilder {
 
     // стеля салону під бічними палубами (білий headliner)
     this.interior = true;
-    for (const s of [-1, 1]) {
-      this.box(this.g, 0.9, 0.03, HOUSE.z1 - HOUSE.z0 + 1.1, s * (HOUSE.x + 0.43), DECK_Y - 0.135, (HOUSE.z0 + HOUSE.z1) / 2 + 0.3, HEADLINER, false);
+    // обрис по корпусу (прямокутні плити в носі вилазили назовні білими
+    // квадратами над водою), отвір — під рубкою
+    {
+      const hy = DECK_Y - 0.15;
+      const za = HOUSE.z0 - 0.25, zb = HOUSE.z1 + 1.4;
+      const N = 24;
+      const edge = (z: number) => Math.max(0.05, hullXAt(hy, z) - 0.06);
+      const shape = new THREE.Shape();
+      for (let i = 0; i <= N; i++) {
+        const z = za + ((zb - za) * i) / N;
+        if (i === 0) shape.moveTo(edge(z), -z);
+        else shape.lineTo(edge(z), -z);
+      }
+      for (let i = N; i >= 0; i--) {
+        const z = za + ((zb - za) * i) / N;
+        shape.lineTo(-edge(z), -z);
+      }
+      const hz0 = za - 0.05, hz1 = HOUSE.z1 + 0.7;
+      const hole = new THREE.Path();
+      hole.moveTo(-0.9, -hz0);
+      hole.lineTo(-0.9, -hz1);
+      hole.lineTo(0.9, -hz1);
+      hole.lineTo(0.9, -hz0);
+      hole.lineTo(-0.9, -hz0);
+      shape.holes.push(hole);
+      const hg = new THREE.ExtrudeGeometry(shape, { depth: 0.03, bevelEnabled: false, curveSegments: 1 });
+      hg.rotateX(-Math.PI / 2);
+      hg.translate(0, hy, 0);
+      const hl = new THREE.Mesh(hg, this.mat(HEADLINER));
+      hl.receiveShadow = true;
+      this.g.add(hl);
     }
-    this.box(this.g, 2.0, 0.03, 1.4, 0, DECK_Y - 0.135, HOUSE.z1 + 0.7, HEADLINER, false);
     this.box(this.g, 2.6, 0.03, 1.0, 0, DECK_Y - 0.135, HOUSE.z0 - 0.5, HEADLINER, false);
     this.interior = false;
 
