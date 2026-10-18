@@ -40,6 +40,7 @@ import { FoamTrail } from './world/foamTrail';
 import { FishJump } from './world/fishJump';
 import { DeckFish } from './world/deckFish';
 import { RadioSet, RADIO_CHANNELS } from './world/radioSet';
+import { CabinDoor } from './world/cabinDoor';
 import { Highlighter } from './world/highlight';
 import { HOLDER_MOUNTS } from './world/upgradeParts';
 import { DECK_Y as Y_DECK, HOUSE as L_HOUSE, RIG as L_RIG, SOLE_Y as Y_SOLE } from './world/yachtLayout';
@@ -129,6 +130,8 @@ class Game {
   private leapJump: FishJump;
   private deckFish: DeckFish;
   private radio!: RadioSet;
+  private cabinDoor!: CabinDoor;
+  private doorWarnT = 0;
   private radioTextT = 0;
   private hl = new Highlighter();
   private _hv = new THREE.Vector3();
@@ -215,6 +218,7 @@ class Game {
     this.fishing = new Fishing(this.scene, this.audio, this.boat);
     this.deckFish = new DeckFish(this.scene, this.boat);
     this.radio = new RadioSet(this.boat.group);
+    this.cabinDoor = new CabinDoor(this.boat.group);
     this.deckFish.onWashed = (f) => this.hud.toast(`🌊 Хвиля змила за борт: ${this.game.speciesName(f.speciesId)}! Клади рибу в ящик одразу.`, 'bad', 4000);
     this.player.onJump = () => this.audio.step(this.player.mode === 'boat' ? 0 : 2, true);
     this.player.stationText = (id) =>
@@ -488,6 +492,9 @@ class Game {
       case 'hatch':
         this.boat.hatchOpen = act.v === 1;
         break;
+      case 'door':
+        this.boat.doorOpen = act.v === 1;
+        break;
       case 'upgrade': {
         const id = act.id as keyof typeof g.upgrades;
         if (id in g.upgrades && g.upgrades[id] < 5) {
@@ -638,6 +645,9 @@ class Game {
       } else if (id === 'st:radio') {
         key = id;
         objs = [this.radio.group];
+      } else if (id === 'st:door') {
+        key = id;
+        objs = [this.cabinDoor.group];
       } else if (id === 'st:rod') {
         key = id + this.fishing.rackObjects().length;
         objs = [...this.fishing.rackObjects(), ...near('rack', 0.42, Y_DECK + 0.2, 3.76, 0.2, 0.6)];
@@ -1042,6 +1052,7 @@ class Game {
       }
     }
     // риба на палубі: б'ється, псується, хвиля може змити
+    this.cabinDoor.update(dt, this.boat.doorOpen);
     this.deckFish.update(dt, t, this.time.gameHourDelta(dt), this.boat.deckWater, g.hold, this.boat.hatchOpen);
     // радіо: текст станції й звук (чути в каюті, тихіше — з палуби)
     this.radio.update(dt);
@@ -1058,7 +1069,16 @@ class Game {
       this.hatchWarnT -= dt;
       if (this.hatchWarnT <= 0) {
         this.hatchWarnT = 6;
-        this.hud.toast(`🌊 Вода заливає відкритий трюм (${Math.round(this.boat.bilge)}%)! Закрий люк на баку й відкачай помпою!`, 'bad', 4500);
+        this.hud.toast(`🌊 Вода заливає відкритий трюм (${Math.round(this.boat.bilge)}%)! Закрий люк (ящик із червоним ричагом на носі) й відкачай помпою!`, 'bad', 4500);
+      }
+    }
+
+    // вода ллється у відчинені двері каюти
+    if (this.boat.doorOpen && this.boat.deckWater > 15) {
+      this.doorWarnT -= dt;
+      if (this.doorWarnT <= 0) {
+        this.doorWarnT = 7;
+        this.hud.toast(`🌊 Вода ллється в каюту через відчинені двері! Зачини двері біля трапа (E — червоний засув).`, 'bad', 4500);
       }
     }
 
@@ -1248,6 +1268,13 @@ class Game {
 
     const id = p.interact(this.boat, this.port, this.audio);
     if (!id) return; // climb — оброблено
+
+    if (id === 'st:door') {
+      this.boat.doorOpen = !this.boat.doorOpen;
+      if (this.coop.isClient) this.coop.sendAction({ a: 'door', v: this.boat.doorOpen ? 1 : 0 });
+      this.audio.thump(this.boat.doorOpen ? 0.35 : 0.55);
+      return;
+    }
 
     if (id === 'st:fishbox') {
       // люк трюму: закритий — відкрити; відкритий і риба в руках — покласти; інакше — закрити
@@ -1536,6 +1563,7 @@ class Game {
       this.hud.setInsWarn(
         b.bilge > 2 ? `🌊 Вода в трюмі ${Math.round(b.bilge)}%` :
         b.hatchOpen && atSea ? '⚠ Люк трюму відкрито' :
+        b.doorOpen && atSea && this.weather.intensity > 0.5 ? '⚠ Двері каюти відчинені' :
         atSea && risk ? (g.insurance ? '⚠ Слабка страховка' : '⚠ Без страховки — ризик') : null,
       );
     }

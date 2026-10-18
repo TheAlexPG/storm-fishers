@@ -62,7 +62,8 @@ export type BoatAction =
   | { a: 'fuel'; v: number }
   | { a: 'hullFull' }
   | { a: 'upgrade'; id: string }
-  | { a: 'hatch'; v: number };
+  | { a: 'hatch'; v: number }
+  | { a: 'door'; v: number };
 
 export interface FriendMarker {
   x: number;

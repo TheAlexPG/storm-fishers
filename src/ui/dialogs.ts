@@ -97,7 +97,7 @@ export class Dialogs {
   intro(hasSave: boolean, onNew: () => void, onContinue: () => void, coop?: CoopLobby) {
     this.escAllowed = false;
     this.show(`
-      <h1 class="intro-title">Штормовий<span>Рибал</span></h1>
+      <h1 class="intro-title">Грозова<span>рибалка</span></h1>
       <div class="intro-sub">Storm Fishers · північне море</div>
       <p class="intro-lead">Своя яхта, тихий порт і відкрите море. Лови рибу, лови вітер у паруси, повертайся додому до заходу — або встигни до шторму.</p>
       <div class="intro-menu">

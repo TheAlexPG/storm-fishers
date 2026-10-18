@@ -25,7 +25,11 @@ const SWIM = 2.3;
 // станції в салоні (доступні лише внизу)
 const CABIN_STATIONS = new Set(['kitchen', 'radio', 'bed']);
 /** ближча досяжність: до щогли треба реально підійти бічною палубою */
-const STATION_REACH: Record<string, number> = { sails: 1.7 };
+const STATION_REACH: Record<string, number> = { sails: 1.7, door: 2.4 };
+/** станції, доступні і з палуби, і з каюти */
+/** колайдери палуби з зачиненими дверима каюти (проріз трапа закрито) */
+const DECK_COLLIDERS_SHUT: Box2[] = [...DECK_COLLIDERS, { x0: -STAIR.x, x1: STAIR.x, z0: STAIR.zTop - 0.07, z1: STAIR.zTop + 0.3 }];
+const BOTH_STATIONS = new Set(['door']);
 const PLAYER_R = 0.22; // радіус тіла для колізій
 
 /** рівень на яхті: палуба / трап компаньйона / салон у корпусі */
@@ -59,6 +63,8 @@ export class Player {
   sheltered = false;
   /** найближча інтерактивна ціль */
   nearest: Interactable | null = null;
+  /** двері каюти зачинені (блокують трап) */
+  private doorShut = false;
   /** позиція голови (для камери) */
   head = new THREE.Vector3();
   /** йде цього кадру (для аватара в коопі) */
@@ -123,6 +129,7 @@ export class Player {
 
   /** свіжий кадр: миша + рух + переходи */
   update(dt: number, input: Input, boat: Boat, port: Port, ocean: Ocean, t: number) {
+    this.doorShut = !boat.doorOpen;
     const [mdx, mdy] = input.consumeMouse();
     this.yaw -= mdx * 0.0021;
     this.pitch = clamp(this.pitch - mdy * 0.0021, -1.35, 1.35);
@@ -291,9 +298,9 @@ export class Player {
   private moveOnBoat(nx: number, nz: number, dt: number): boolean {
     const r = PLAYER_R;
     if (this.level === 'deck') {
-      [nx, nz] = this.resolveBoxes(nx, nz, DECK_COLLIDERS, r);
-      // увійти на трап: з кокпіту вперед у проріз компаньйона
-      if (Math.abs(nx) < STAIR.x && nz > STAIR.zTop && nz < STAIR.zTop + 0.4) this.level = 'stairs';
+      [nx, nz] = this.resolveBoxes(nx, nz, this.doorShut ? DECK_COLLIDERS_SHUT : DECK_COLLIDERS, r);
+      // увійти на трап: з кокпіту вперед у проріз компаньйона (якщо двері відчинені)
+      if (!this.doorShut && Math.abs(nx) < STAIR.x && nz > STAIR.zTop && nz < STAIR.zTop + 0.4) this.level = 'stairs';
       // за борт: через корму (купальна платформа) одразу; через леєри — якщо
       // тиснути на них ~0.6 с (перелазимо), щоб не випасти випадково
       // (носовий пульпіт суцільний — через ніс не випасти)
@@ -308,6 +315,8 @@ export class Player {
     if (this.level === 'stairs') {
       const lim = STAIR.x - r * 0.6;
       this.localX = clamp(nx, -lim, lim);
+      // зачинені двері зверху трапа — не вийти
+      if (this.doorShut) nz = Math.max(nz, STAIR.zTop + r + 0.04);
       this.localZ = nz;
       if (nz < STAIR.zTop) {
         this.level = 'deck';
@@ -389,12 +398,18 @@ export class Player {
       if (this.wheeling) return { id: 'st:wheel', label: this.stationLabel('wheel', boat) };
       for (const [id, sp] of Object.entries(STATION_POS)) {
         // каютні станції — лише зсередини; палубні — лише на палубі
-        if (this.inCabin ? !CABIN_STATIONS.has(id) : CABIN_STATIONS.has(id)) continue;
+        if (!BOTH_STATIONS.has(id) && (this.inCabin ? !CABIN_STATIONS.has(id) : CABIN_STATIONS.has(id))) continue;
         if (!boat.stationOn(id)) continue;
         const w = boat.localToWorld(sp.x, sp.y ?? BOAT.deckY, sp.z, this._v);
         const d = Math.hypot(p.x - w.x, p.y - w.y - 0.4, p.z - w.z);
-        if (d < bestD && d < (STATION_REACH[id] ?? 3.2)) {
-          bestD = d;
+        if (d >= (STATION_REACH[id] ?? 3.2)) continue;
+        // перевага тому, на що дивишся: станція збоку/позаду «далі» до 1.8×
+        const hx = w.x - p.x, hz = w.z - p.z;
+        const hl = Math.hypot(hx, hz);
+        const look = hl > 0.05 ? (-Math.sin(this.yaw) * hx - Math.cos(this.yaw) * hz) / hl : 1;
+        const score = d * (1.4 - 0.4 * look);
+        if (score < bestD) {
+          bestD = score;
           best = { id: 'st:' + id, label: this.stationLabel(id, boat) };
         }
       }
@@ -444,6 +459,7 @@ export class Player {
       case 'holder0': case 'holder1': case 'holder2': return this.stationText?.(id) ?? 'Стійка для вудки';
       case 'engine': return boat.engineOn ? 'Ремонт двигуна' : 'Запустити двигун!';
       case 'pump': return boat.bilge > 1 ? `Помпа — відкачати трюм (${Math.round(boat.bilge)}%)` : boat.deckWater > 5 ? 'Осушити палубу' : 'Помпа (сухо)';
+      case 'door': return boat.doorOpen ? 'Двері каюти — зачинити (у шторм вода ллється в салон)' : 'Двері каюти — відчинити';
       case 'kitchen': return 'Кухня — сварити рибу';
       case 'radio': return this.stationText?.('radio') ?? 'Радіо';
       case 'bed': return 'Койка — спати';

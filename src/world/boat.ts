@@ -53,6 +53,8 @@ export const STATION_POS: Record<string, { x: number; z: number; y?: number }> =
   // рибальські стійки (апгрейд «Стійки для вудок») — біля тримачів
   // рибний ящик на баку — сюди кладуть рибу з рук
   fishbox: { x: FISH_BOX.x + 0.3, z: FISH_BOX.z - 0.15 },
+  // двері каюти — у прорізі трапа; доступні і з кокпіту, і з салону
+  door: { x: 0, z: HOUSE.z0 - 0.05 },
   holder0: { x: HOLDER_MOUNTS[0].stand[0], z: HOLDER_MOUNTS[0].stand[1] },
   holder1: { x: HOLDER_MOUNTS[1].stand[0], z: HOLDER_MOUNTS[1].stand[1] },
   holder2: { x: HOLDER_MOUNTS[2].stand[0], z: HOLDER_MOUNTS[2].stand[1] },
@@ -96,6 +98,8 @@ export class Boat {
   deckWater = 0;
   /** люк трюму відкрито — вода з палуби тече всередину */
   hatchOpen = false;
+  /** двері каюти (компаньйон) відчинені — у шторм вода з палуби ллється в салон */
+  doorOpen = true;
   /** вода в трюмі 0..100 (100 — човен тоне) */
   bilge = 0;
   sinking = false;
@@ -594,6 +598,8 @@ export class Boat {
     // відкритий люк: вода з палуби тече в трюм; повний трюм — човен іде на дно
     if (this.hatchOpen && this.deckWater > 8) this.bilge = Math.min(100, this.bilge + this.deckWater * 0.05 * dt);
     if (this.hatchOpen && weather.rain > 0.4) this.bilge = Math.min(100, this.bilge + weather.rain * 0.25 * dt);
+    // відчинені двері каюти: хвиля, що заливає кокпіт, тече по трапу вниз
+    if (this.doorOpen && this.deckWater > 15) this.bilge = Math.min(100, this.bilge + this.deckWater * 0.035 * dt);
     if (this.bilge >= 100) game.damage(12 * dt);
 
     // шторм + мокра палуба → просочення корпусу
@@ -651,7 +657,7 @@ export class Boat {
       r(this.pos.x), r(this.pos.y), r(this.pos.z), r(this.heading, 1e4), r(this.pitch, 1e4), r(this.roll, 1e4),
       r(this.vel.x, 100), r(this.vel.y, 100), r(this.vel.z, 100), r(this.throttle, 100), r(this.rudder, 100),
       this.engineOn ? 1 : 0, r(this.deckWater, 10), this.sails.mode, this.sinking ? 1 : 0,
-      this.hatchOpen ? 1 : 0, r(this.bilge, 10),
+      this.hatchOpen ? 1 : 0, r(this.bilge, 10), this.doorOpen ? 1 : 0,
     ];
   }
 
@@ -672,6 +678,7 @@ export class Boat {
       this.hatchOpen = b[15] >= 0.5;
       this.bilge = b[16];
     }
+    if (b.length > 17) this.doorOpen = b[17] >= 0.5;
   }
 
   /** сили вітрил → загальні сили/моменти кадру; анімація парусів */
@@ -812,6 +819,7 @@ export class Boat {
     this.deckWater = 0;
     this.bilge = 0;
     this.hatchOpen = false;
+    this.doorOpen = true;
     this.sails.reset();
     this.syncTransform();
   }

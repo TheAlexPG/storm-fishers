@@ -1,4 +1,4 @@
-# Storm Fishers ⛵🎣
+# Грозова рибалка · Storm Fishers ⛵🎣
 
 Затишна браузерна гра про риболовлю на вітрильній яхті (Three.js + TypeScript + Vite).
 
