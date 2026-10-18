@@ -326,9 +326,10 @@ body.intro-mode #vignette { opacity: 0.6; }
   z-index: 60;
   display: none;
   flex-direction: column;
-  background: #0e3346;
+  background: #efe6d4;
+  --glass: rgba(250, 246, 238, 0.92); --glass-brd: rgba(34, 48, 59, 0.1); --text: #22303b;
 }
-#mapview.open { display: flex; }
+#mapview.open { display: flex; animation: fadeIn 0.25s ease; }
 #mapview canvas {
   flex: 1;
   display: block;
@@ -381,10 +382,11 @@ body.intro-mode #vignette { opacity: 0.6; }
   margin-right: 5px;
   vertical-align: baseline;
 }
-.map-legend .lg-water { background: #12405a; }
-.map-legend .lg-land { background: #4a5d3f; }
-.map-legend .lg-rock { background: #6a7076; }
-.map-legend .lg-wp { background: #78dcff; }
+.map-legend .lg-boat { background: #e2674a; border-radius: 50% 50% 2px 2px; }
+.map-legend .lg-rock { background: #2a3a46; border-radius: 50%; width: 7px; height: 7px; }
+.map-legend .lg-ring { border: 1.5px dashed rgba(42,58,70,0.5); border-radius: 50%; background: none; }
+.map-legend .lg-wp { background: #24878c; }
+.map-hint kbd { font-family: inherit; font-weight: 800; background: #22303b; color: #fbf6ec; border-radius: 5px; padding: 0 5px; }
 
 /* м'яка віньєтка поверх 3D (під HUD) */
 #vignette {
