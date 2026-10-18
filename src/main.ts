@@ -18,9 +18,12 @@ import { Hud } from './ui/hud';
 import { Minimap } from './ui/minimap';
 import { MapView } from './ui/map';
 import { Dialogs } from './ui/dialogs';
-import { zoneFromDist } from './game/fish';
+import { zoneFromDist, ZONE_NAMES } from './game/fish';
+
+const ZONE_SUB: Record<string, string> = { shore: 'тихі води біля дому', mid: 'тут ходить скумбрія', open: 'далеко від берега' };
 import { Coop, type BoatAction } from './net/coop';
 import { CameraRig } from './world/cameraRig';
+import { WindLines } from './world/windLines';
 import { Avatar } from './world/avatar';
 import './styles.css';
 
@@ -87,6 +90,7 @@ class Game {
   private _v2 = new THREE.Vector3();
   private _fogGrey = new THREE.Color();
   private rig: CameraRig;
+  private windLines: WindLines;
   /** «з-за корми» за штурвалом (V); запам'ятовується */
   private chasePref = true;
   private selfAvatar: Avatar | null = null;
@@ -150,6 +154,7 @@ class Game {
     this.sky = new Sky(this.scene);
     this.port = new Port(this.scene);
     this.particles = new ParticlePool(this.scene, 1100);
+    this.windLines = new WindLines(this.scene);
     this.boat = new Boat(this.scene);
     this.player = new Player(this.game);
     this.stations = new Stations(this.boat, this.game, this.audio);
@@ -791,19 +796,23 @@ class Game {
     const catched = this.fishing.takeCatch();
     if (catched) {
       const name = g.speciesName(catched.speciesId);
+      const isNew = !g.discovered.includes(catched.speciesId);
       if (g.addFish(catched)) {
-        const fresh = catched.storm ? ' · штормова!' : '';
-        this.hud.toast(`Улов: ${name}, ${catched.kg.toFixed(2)} кг${fresh}`, 'good');
-        this.particles.sparkle(this.boat.localToWorld(0, BOAT.deckY + 1, 3.9, this._v).x, this.boat.localToWorld(0, BOAT.deckY + 1, 3.9, this._v).y, this.boat.localToWorld(0, BOAT.deckY + 1, 3.9, this._v).z);
+        this.hud.catchCard(name, catched.kg, catched.speciesId, isNew, catched.storm ? 'штормова' : '');
+        const rw = this.boat.localToWorld(0, BOAT.deckY + 1, 3.9, this._v);
+        this.particles.sparkle(rw.x, rw.y, rw.z);
       } else {
         // трюм повний — продаємо одразу
         const v = g.sellOne(catched.uid) || 0;
-        this.hud.toast(`Трюм повний — ${name} продано за ${v} ₴`, 'warn');
+        this.hud.catchCard(name, catched.kg, catched.speciesId, isNew, `трюм повний — продано за ${v} ₴`);
       }
     }
 
     // свіжість
     g.decayFreshness(this.time.gameHourDelta(dt));
+
+    // кранці — лише біля причалу
+    this.boat.setFenders(Math.hypot(this.boat.pos.x - MOOR.x, this.boat.pos.z - MOOR.z) < 30);
 
     // порт / поїздка
     const d = Math.hypot(this.boat.pos.x, this.boat.pos.z);
@@ -814,10 +823,21 @@ class Game {
         g.stats.tripsOut++;
         this.hud.toast('У море! Пам\'ятай про паливо і погоду.', 'warn', 4000);
       } else {
-        this.hud.toast('Порт «Шторм». Вдома.', 'good', 3500);
+        this.hud.titleCard('Порт «Шторм»', 'вдома');
         if (g.hold.some((f) => f.storm)) g.objectives.stormReturn = true;
       }
     }
+
+    // нова зона моря — великий напис, як назви місць у дорожніх іграх
+    const zone = zoneFromDist(d);
+    if (zone !== this.lastZone) {
+      if (this.lastZone && this.phase === 'play') this.hud.titleCard(ZONE_NAMES[zone], ZONE_SUB[zone]);
+      this.lastZone = zone;
+    }
+    // світанок — новий день
+    const h = this.time.hours;
+    if (this.lastHours < 6 && h >= 6 && h < 7) this.dawnCard();
+    this.lastHours = h;
 
     // цілі: тости про досягнення
     for (const k of Object.keys(g.objectives) as Array<keyof typeof g.objectives>) {
@@ -838,6 +858,12 @@ class Game {
   }
 
   private lastDay = 1;
+  private lastZone: string | null = null;
+  private lastHours = 8;
+
+  private dawnCard() {
+    this.hud.titleCard(`День ${this.time.dayCount}`, 'світанок');
+  }
   private mapRefreshT = 0;
   private lastWeather: string = 'calm';
 
@@ -949,6 +975,8 @@ class Game {
     }
     this.coop.sendEvent('sleep');
     const delta = this.time.sleepToDawn();
+    this.lastHours = this.time.hours;
+    this.dawnCard();
     this.game.addEnergy(100);
     this.game.decayFreshness(delta);
     this.hud.toast(`Сон. Пройшло ${Math.round(delta)} год. ${inPort ? 'Безкоштовно в хаті.' : 'Виспався на койці.'}`, 'good', 3500);
@@ -1042,6 +1070,11 @@ class Game {
       t,
       orbitYaw: this.introYaw(),
     });
+    // вітрові завитки (не в каюті)
+    if (simDt > 0) {
+      const indoor = this.rig.mode === 'fp' && this.player.mode === 'boat' && this.player.level !== 'deck';
+      this.windLines.update(simDt, t, this.camera.position, this.weather.windDir, this.weather.wind, time.daylight, (x, z) => this.ocean.heightAt(x, z, t), indoor);
+    }
     // свій рибалка за штурвалом — видно лише збоку
     this.updateSelfAvatar(chase);
 

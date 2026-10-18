@@ -34,6 +34,8 @@ export interface YachtRefs {
   /** основна вудка: шарнір у тримачі, вудлище вздовж локальної +Y */
   rod: THREE.Group;
   rodLen: number;
+  /** кранці (ховаються, коли яхта в морі) */
+  fenders: THREE.Object3D[];
 }
 
 // ── палітра ──
@@ -322,6 +324,7 @@ export class YachtBuilder {
       lights: [],
       spotlight: null,
       furledJib: [],
+      fenders: [],
       helmDisplay: null,
       rod: new THREE.Group(),
       rodLen: 2.4,
@@ -886,6 +889,7 @@ export class YachtBuilder {
         const fx = s * (hullHalfWidth(z) + 0.12);
         const f = this.cyl(g, 0.11, 0.11, 0.5, fx, 0.82, z, this.mat(0xf3f3f0, 0.6), 10);
         f.castShadow = true;
+        this.refs.fenders.push(f);
       }
     }
     // dorade-вентилятори

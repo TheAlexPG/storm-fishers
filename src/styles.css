@@ -423,3 +423,32 @@ body.intro-mode #vignette { opacity: 0.6; }
 .coop-link input { flex: 1; font-size: 12.5px; }
 .coop-players { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
 .coop-chip { font-size: 12.5px; font-weight: 700; padding: 4px 10px; border-radius: 20px; background: #fff; border-left: 4px solid var(--c); }
+
+/* ── великі написи (зона, світанок) ── */
+.title-card { position: absolute; top: 38%; left: 0; right: 0; text-align: center; color: #fff; opacity: 0; pointer-events: none; text-shadow: 0 3px 24px rgba(10, 20, 30, 0.45); }
+.title-card.show { animation: titleCard 5.2s ease forwards; }
+.tc-title { font-family: var(--font-display); font-weight: 700; font-size: 46px; letter-spacing: 3px; }
+.tc-sub { font-weight: 800; font-size: 13px; letter-spacing: 5px; text-transform: uppercase; margin-top: 8px; opacity: 0.85; }
+@keyframes titleCard {
+  0% { opacity: 0; transform: translateY(10px); letter-spacing: 1px; }
+  15% { opacity: 1; transform: none; }
+  75% { opacity: 1; }
+  100% { opacity: 0; letter-spacing: 6px; }
+}
+
+/* ── листівка улову ── */
+.catch-slot { position: absolute; right: 16px; bottom: 110px; }
+.catch-card {
+  display: flex; align-items: center; gap: 8px; padding: 10px 18px 10px 8px;
+  background: var(--glass); color: var(--text); border-radius: 18px; box-shadow: var(--shadow);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  animation: catchIn 0.55s cubic-bezier(.2,.9,.3,1.25); transform-origin: right center;
+}
+.catch-card canvas { width: 112px; height: 56px; }
+.catch-card.out { animation: catchOut 0.5s ease forwards; }
+.cc-badge { font-size: 10.5px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-soft); }
+.catch-card.new .cc-badge { color: var(--accent); }
+.cc-name { font-family: var(--font-display); font-weight: 600; font-size: 18px; line-height: 1.2; }
+.cc-kg { font-size: 12.5px; font-weight: 700; color: var(--text-soft); }
+@keyframes catchIn { from { opacity: 0; transform: translateX(30px) rotate(3deg) scale(0.9); } }
+@keyframes catchOut { to { opacity: 0; transform: translateX(30px); } }

@@ -181,6 +181,7 @@ export class Boat {
     this.lights = r.lights;
     this.spotlight = r.spotlight;
     this.sails = new SailRig(this.group, r.furledJib);
+    this.fenders = r.fenders;
 
     // маркери станцій (м'які кільця)
     const markerGeo = new THREE.RingGeometry(0.28, 0.38, 24);
@@ -193,6 +194,14 @@ export class Boat {
       this.stationMarkers.add(m);
     }
     this.group.add(this.stationMarkers);
+  }
+
+  private fenders: THREE.Object3D[] = [];
+
+  /** кранці за бортом лише біля причалу — у морі їх прибирають */
+  setFenders(out: boolean) {
+    if (this.fenders[0]?.visible === out) return;
+    for (const f of this.fenders) f.visible = out;
   }
 
   /** застосувати рівні апгрейдів до mesh */

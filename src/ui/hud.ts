@@ -55,6 +55,8 @@ export class Hud {
   private elChatInput!: HTMLInputElement;
   private chatSend: ((text: string) => void) | null = null;
   private rosterKey = '';
+  private elTitle!: HTMLElement;
+  private elCatch!: HTMLElement;
 
   constructor() {
     const root = document.createElement('div');
@@ -87,6 +89,8 @@ export class Hud {
         <input class="chat-input" maxlength="160" autocomplete="off" spellcheck="false" placeholder="Повідомлення екіпажу… (Enter — надіслати, Esc — закрити)">
       </div>
       <div class="toasts"></div>
+      <div class="title-card"></div>
+      <div class="catch-slot"></div>
       <div class="prompt"><kbd>E</kbd><span class="ptext"></span></div>
       <div class="action-progress"><div class="ap-label"></div><div class="bar"><i></i></div></div>
       <div class="fight-ui">
@@ -152,6 +156,8 @@ export class Hud {
       e.stopPropagation();
     });
     this.elChatInput.addEventListener('blur', () => this.closeChat());
+    this.elTitle = root.querySelector('.title-card')!;
+    this.elCatch = root.querySelector('.catch-slot')!;
     this.chipPort = root.querySelector('#chip-port')!;
     this.chipWp = root.querySelector('#chip-wp')!;
     this._day = elDay;
@@ -412,6 +418,52 @@ export class Hud {
     while (this.toasts.children.length > 4) this.toasts.firstChild?.remove();
   }
 
+  /** великий напис посеред екрана (нова зона, світанок) — як назви місць у дорожніх іграх */
+  titleCard(title: string, sub = '') {
+    this.elTitle.replaceChildren();
+    const t = document.createElement('div');
+    t.className = 'tc-title';
+    t.textContent = title;
+    this.elTitle.append(t);
+    if (sub) {
+      const s2 = document.createElement('div');
+      s2.className = 'tc-sub';
+      s2.textContent = sub;
+      this.elTitle.append(s2);
+    }
+    this.elTitle.classList.remove('show');
+    void this.elTitle.offsetWidth; // перезапуск анімації
+    this.elTitle.classList.add('show');
+  }
+
+  /** листівка улову: силует риби, вага, «новий вид» */
+  catchCard(name: string, kg: number, speciesId: string, isNew: boolean, note = '') {
+    const el = document.createElement('div');
+    el.className = 'catch-card' + (isNew ? ' new' : '');
+    const cv = document.createElement('canvas');
+    cv.width = 168;
+    cv.height = 84;
+    drawFish(cv, speciesId);
+    const info = document.createElement('div');
+    info.className = 'cc-info';
+    const badge = document.createElement('div');
+    badge.className = 'cc-badge';
+    badge.textContent = isNew ? 'Новий вид!' : 'Улов';
+    const nm = document.createElement('div');
+    nm.className = 'cc-name';
+    nm.textContent = name;
+    const w = document.createElement('div');
+    w.className = 'cc-kg';
+    w.textContent = `${kg.toFixed(2).replace('.', ',')} кг${note ? ' · ' + note : ''}`;
+    info.append(badge, nm, w);
+    el.append(cv, info);
+    this.elCatch.replaceChildren(el);
+    setTimeout(() => {
+      el.classList.add('out');
+      setTimeout(() => el.remove(), 500);
+    }, isNew ? 5200 : 3600);
+  }
+
   // ── кооп: екіпаж і чат ──
 
   /** список гравців у кімнаті (порожній — сховати) */
@@ -479,4 +531,70 @@ export class Hud {
   rootEl(): HTMLElement {
     return this.root;
   }
+}
+
+// ── силует риби для листівки улову (канвас, без асетів) ──
+const FISH_LOOK: Record<string, { top: string; belly: string; long: number; tall: number; fin?: 'shark' | 'tuna' | 'flat' }> = {
+  hamsa: { top: '#6f8fa6', belly: '#e6eef2', long: 0.9, tall: 0.42 },
+  balyk: { top: '#4f7896', belly: '#e9f0f2', long: 1, tall: 0.46 },
+  leschak: { top: '#8a7458', belly: '#e8dccb', long: 0.8, tall: 0.78, fin: 'flat' },
+  plyotka: { top: '#5d6670', belly: '#e9e6e0', long: 1, tall: 0.5 },
+  makrel: { top: '#2f6f7a', belly: '#eef2ee', long: 1.05, tall: 0.44 },
+  sula: { top: '#3f4d5a', belly: '#cfd6da', long: 1.05, tall: 0.48 },
+  krap: { top: '#c8543c', belly: '#f2cfa8', long: 0.95, tall: 0.6 },
+  forel: { top: '#5f7488', belly: '#f1d6c8', long: 1.05, tall: 0.5 },
+  lusk: { top: '#7a7454', belly: '#ece6cf', long: 1.05, tall: 0.55 },
+  shoraga: { top: '#5a5246', belly: '#eee8dc', long: 0.95, tall: 0.7, fin: 'flat' },
+  tunets: { top: '#24466e', belly: '#d9e2ea', long: 1.05, tall: 0.6, fin: 'tuna' },
+  akula: { top: '#6d7b86', belly: '#e8ecee', long: 1.1, tall: 0.42, fin: 'shark' },
+};
+
+function drawFish(cv: HTMLCanvasElement, id: string) {
+  const g = cv.getContext('2d')!;
+  const L = FISH_LOOK[id] ?? FISH_LOOK.balyk;
+  const W = cv.width, H = cv.height;
+  const cx = W * 0.45, cy = H * 0.52;
+  const rx = W * 0.33 * L.long, ry = H * 0.42 * L.tall;
+  const grad = g.createLinearGradient(0, cy - ry, 0, cy + ry);
+  grad.addColorStop(0, L.top);
+  grad.addColorStop(0.55, L.top);
+  grad.addColorStop(0.62, L.belly);
+  grad.addColorStop(1, L.belly);
+  g.fillStyle = grad;
+  // хвіст
+  g.beginPath();
+  g.moveTo(cx + rx * 0.82, cy);
+  g.lineTo(cx + rx * 1.35, cy - ry * (L.fin === 'tuna' || L.fin === 'shark' ? 1.15 : 0.8));
+  g.quadraticCurveTo(cx + rx * 1.18, cy, cx + rx * 1.35, cy + ry * (L.fin === 'shark' ? 0.6 : 0.8));
+  g.closePath();
+  g.fill();
+  // спинний плавець
+  g.fillStyle = L.top;
+  g.beginPath();
+  const fh = L.fin === 'shark' ? 1.25 : L.fin === 'flat' ? 0.35 : 0.6;
+  g.moveTo(cx - rx * 0.2, cy - ry * 0.9);
+  g.quadraticCurveTo(cx + rx * 0.05, cy - ry * (0.9 + fh), cx + rx * 0.35, cy - ry * 0.8);
+  g.closePath();
+  g.fill();
+  // тіло
+  g.fillStyle = grad;
+  g.beginPath();
+  g.moveTo(cx - rx, cy);
+  g.bezierCurveTo(cx - rx * 0.7, cy - ry * 1.15, cx + rx * 0.6, cy - ry * 1.05, cx + rx * 0.9, cy);
+  g.bezierCurveTo(cx + rx * 0.6, cy + ry * 1.05, cx - rx * 0.7, cy + ry * 1.1, cx - rx, cy);
+  g.fill();
+  // зябра й око
+  g.strokeStyle = 'rgba(30,40,50,0.35)';
+  g.lineWidth = 1.5;
+  g.beginPath();
+  g.arc(cx - rx * 0.45, cy, ry * 0.55, -0.9, 0.9);
+  g.stroke();
+  g.fillStyle = '#fff';
+  g.beginPath();
+  g.arc(cx - rx * 0.72, cy - ry * 0.22, Math.max(3, ry * 0.16), 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = '#1d2630';
+  g.beginPath();
+  g.arc(cx - rx * 0.74, cy - ry * 0.22, Math.max(1.6, ry * 0.09), 0, Math.PI * 2);
+  g.fill();
 }
