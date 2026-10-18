@@ -23,6 +23,8 @@ export class GameState {
   discovered: string[] = [];
   /** відкриті місця (пам'ятки в морі) */
   places: string[] = [];
+  /** крок навчання «що далі» (TUTORIAL.length — пройдено) */
+  tut = 0;
   objectives: ObjectiveState = {
     firstSale: false,
     allSpecies: false,
@@ -207,6 +209,7 @@ export class GameState {
       upgrades: this.upgrades,
       discovered: this.discovered,
       places: this.places,
+      tut: this.tut,
       objectives: this.objectives,
       timeHours: 0, // заповнюється зовні
       dayCount: 1,
@@ -259,6 +262,9 @@ export class GameState {
     if (data.upgrades) this.upgrades = { ...defaultUpgrades(), ...data.upgrades };
     if (Array.isArray(data.discovered)) this.discovered = data.discovered;
     if (Array.isArray(data.places)) this.places = data.places;
+    // старі сейви без кроку: досвідчений гравець — навчання пропускаємо
+    if (typeof data.tut === 'number') this.tut = data.tut;
+    else if (data.objectives?.firstSale) this.tut = 99;
     if (data.objectives) this.objectives = { ...this.objectives, ...data.objectives };
     if (data.stats) this.stats = { ...this.stats, ...data.stats };
     if (typeof data.priceWeek === 'number') this.priceWeek = data.priceWeek;

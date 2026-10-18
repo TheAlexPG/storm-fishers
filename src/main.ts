@@ -20,6 +20,16 @@ import { MapView } from './ui/map';
 import { Dialogs } from './ui/dialogs';
 import { zoneFromDist, ZONE_NAMES } from './game/fish';
 
+/** м'яке навчання: крок → підказка; умова виконання — у Game.updateTutorial */
+const TUTORIAL = [
+  'Підійди до штурвала на кормі й натисни E',
+  'Виведи яхту з гавані: W — газ, A/D — кермо',
+  'Підніми паруси: біля щогли натисни E. Найкраще йти, коли вітер збоку',
+  'Стань на носі біля вудки й натисни E — закинь',
+  'Клює — тисни E, далі тягни рибу пробілом, але не перетягни волосінь',
+  'Повертайся в порт і продай улов у магазині',
+];
+
 const ZONE_SUB: Record<string, string> = { shore: 'тихі води біля дому', mid: 'тут ходить скумбрія', open: 'далеко від берега' };
 import { Coop, type BoatAction } from './net/coop';
 import { CameraRig } from './world/cameraRig';
@@ -488,8 +498,7 @@ class Game {
     this.phase = 'play';
     this.requestLock();
     this.hud.flashHints();
-    this.hud.toast('Вітаємо на борту «Шторму»! Почни з порту: продавай, прокачуй, лови.', 'good', 6000);
-    this.hud.toast('Порада: пальне дороге — у вітер іди під парусами (підніми їх фалом біля щогли). Двигун — для штилю й причалу.', 'warn', 9000);
+    this.hud.toast('Вітаємо на борту «Шторму»! Море чекає.', 'good', 6000);
   }
 
   private continueGame() {
@@ -881,6 +890,8 @@ class Game {
     }
     this.checkPlaces();
 
+    this.updateTutorial();
+
     // цілі: тости про досягнення
     for (const k of Object.keys(g.objectives) as Array<keyof typeof g.objectives>) {
       if (g.objectives[k] && !this.prevObjectives[k]) {
@@ -904,6 +915,28 @@ class Game {
   private prevPitch = 0;
   private lastZone: string | null = null;
   private lastHours = 8;
+
+  private updateTutorial() {
+    const g = this.game;
+    if (g.tut >= TUTORIAL.length) {
+      this.hud.setGoal(null);
+      return;
+    }
+    const done = [
+      () => this.player.wheeling,
+      () => Math.hypot(this.boat.pos.x - MOOR.x, this.boat.pos.z - MOOR.z) > 60,
+      () => this.boat.sails.mode > 0,
+      () => this.fishing.state !== 'idle',
+      () => g.stats.totalCaught > 0,
+      () => g.objectives.firstSale,
+    ][g.tut];
+    if (done()) {
+      g.tut++;
+      this.audio.click();
+      if (g.tut >= TUTORIAL.length) this.hud.toast('Ти освоївся. Далі — море твоє: шукай місця на лоції й нові види риби.', 'good', 6000);
+    }
+    this.hud.setGoal(g.tut < TUTORIAL.length ? TUTORIAL[g.tut] : null, g.tut + 1, TUTORIAL.length);
+  }
 
   /** підплив до пам'ятки — місце відкрито */
   private checkPlaces() {
@@ -968,7 +1001,7 @@ class Game {
         this.coop.myHelm = [this.boat.throttle, this.boat.rudder];
       }
       p.wheeling = !p.wheeling;
-      if (p.wheeling) this.hud.toast('Штурвал: W/S — газ, A/D — кермо, E — вийти. Прибори — на тумбі перед колесом.', 'warn', 3500);
+      if (p.wheeling) this.hud.toast(this.chasePref ? 'Штурвал: W/S — газ, A/D — кермо, V — вид від першої особи (прибори на тумбі), E — вийти' : 'Штурвал: W/S — газ, A/D — кермо, V — вид з-за корми, E — вийти. Прибори — на тумбі перед колесом', 'warn', 4000);
       return;
     }
     if (id === 'st:rod') {

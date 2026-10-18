@@ -70,6 +70,7 @@ export class Hud {
         <div class="bar-row"><span class="bar-label">Корпус</span><div class="bar hull"><i></i></div><span class="bar-num">0</span></div>
         <div class="bar-row"><span class="bar-label">Енергія</span><div class="bar energy"><i></i></div><span class="bar-num">0</span></div>
       </div>
+      <div class="goal hud-card"><span class="g-step"></span><span class="g-text"></span></div>
       <div class="hud-tc">
         <div class="hud-card">
           <div class="clock"><span class="t">00:00</span><small class="d">День 1</small></div>
@@ -450,6 +451,23 @@ export class Hud {
     }, ms);
     // не більше 4 одночасно
     while (this.toasts.children.length > 4) this.toasts.firstChild?.remove();
+  }
+
+  private goalKey = '';
+
+  /** картка «що далі» (навчання); null — сховати */
+  setGoal(text: string | null, step = 0, total = 0) {
+    const key = text ? `${step}:${text}` : '';
+    if (key === this.goalKey) return;
+    this.goalKey = key;
+    const el = this.root.querySelector<HTMLElement>('.goal')!;
+    el.classList.toggle('show', !!text);
+    if (!text) return;
+    el.querySelector('.g-step')!.textContent = `Крок ${step}/${total}`;
+    el.querySelector('.g-text')!.textContent = text;
+    el.classList.remove('pop');
+    void el.offsetWidth;
+    el.classList.add('pop');
   }
 
   /** великий напис посеред екрана (нова зона, світанок) — як назви місць у дорожніх іграх */

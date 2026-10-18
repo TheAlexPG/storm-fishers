@@ -82,6 +82,8 @@ export interface SaveData {
   discovered: string[];
   /** відкриті місця (пам'ятки в морі) */
   places?: string[];
+  /** крок навчання (6 — пройдено) */
+  tut?: number;
   objectives: ObjectiveState;
   timeHours: number;
   dayCount: number;
