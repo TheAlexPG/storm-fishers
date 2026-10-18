@@ -220,7 +220,7 @@ void main() {
   float h = vWorldPos.y;
   vec3 water = mix(uDeepColor, uShallowColor, smoothstep(-1.6, 1.4, h) * 0.65);
   // власний колір води теж освітлений: вдень — бірюза, вночі — чорнило; трохи кольору неба
-  water *= 0.18 + 0.82 * uSunStrength;
+  water *= 0.3 + 0.7 * uSunStrength;
   water = mix(water, uSkyColor * 0.55, 0.18);
   vec3 col = mix(water, uSkyColor, fres * 0.85);
 

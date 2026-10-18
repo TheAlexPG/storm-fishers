@@ -1077,7 +1077,7 @@ class Game {
     const sunI = time.sunStrength;
     const cloudFactor = 1 - this.weather.cloudiness * 0.55;
     this.sunLight.intensity = sunI * 1.7 * cloudFactor + this.weather.flash * 3.0;
-    this.moonLight.intensity = (1 - time.daylight) * 0.22;
+    this.moonLight.intensity = (1 - time.daylight) * 0.38 * (1 - this.weather.cloudiness * 0.5);
     const sunPos = this._v.copy(time.sunDir).multiplyScalar(140).add(this.boat.pos);
     this.sunLight.position.copy(sunPos);
     this.sunLight.target.position.copy(this.boat.pos);
