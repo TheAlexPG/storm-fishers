@@ -1,5 +1,22 @@
 import * as THREE from 'three';
 import { NetSession, type GameMsg, type PeerInfo } from './session';
+import { P2PSession } from './p2p';
+
+/** є власне реле (dev-сервер / node server/relay.mjs) — інакше пряме з'єднання WebRTC */
+async function relayAvailable(): Promise<boolean> {
+  if (new URLSearchParams(location.search).has('p2p')) return false;
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 1500);
+    const r = await fetch('/net-info', { signal: ctl.signal });
+    clearTimeout(t);
+    if (!r.ok) return false;
+    const j = (await r.json()) as { ips?: unknown };
+    return Array.isArray(j.ips);
+  } catch {
+    return false;
+  }
+}
 import { Avatar, colorForId, type NetPlayer } from '../world/avatar';
 import type { Boat } from '../world/boat';
 import type { Ocean } from '../core/ocean';
@@ -67,7 +84,7 @@ export interface CoopHandlers {
 }
 
 export class Coop {
-  session: NetSession | null = null;
+  session: NetSession | P2PSession | null = null;
   readonly peers = new Map<number, RemotePeer>();
   /** хто за штурвалом (id) — від капітана */
   helmOwner: number | null = null;
@@ -126,7 +143,7 @@ export class Coop {
 
   async start(nick: string, room: string | null) {
     this.leave();
-    const s = new NetSession();
+    const s = (await relayAvailable()) ? new NetSession() : new P2PSession();
     s.onJoin = (p) => {
       this.ensurePeer(p);
       this.h.onPeer(p.nick, true);
