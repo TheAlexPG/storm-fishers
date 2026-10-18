@@ -31,6 +31,9 @@ export interface UpgradeDef {
   stats: UpgradeStat[];
 }
 
+/** топова швидкість під мотором (стенд фізики: опір ~ v², тож швидкість росте повільніше за потужність) */
+const motorKmh = (l: number) => 27 * Math.pow(1 + l * 0.2, 0.55);
+
 const pct = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v)} %`;
 
 export const UPGRADES: UpgradeDef[] = [
@@ -38,7 +41,7 @@ export const UPGRADES: UpgradeDef[] = [
     id: 'engine',
     name: 'Двигун',
     role: 'швидкість під мотором',
-    desc: (l) => `+${l * 20} % потужності (${Math.round(34 * (1 + l * 0.2))} км/год)`,
+    desc: (l) => `+${l * 20} % потужності (${Math.round(motorKmh(l))} км/год)`,
     costs: [400, 800, 1600, 3200, 6000],
     parts: [
       { name: 'Вихлоп із нержавійки', blurb: 'Широкий патрубок у транці — мотор дихає вільніше й бурчить басовитіше.' },
@@ -48,7 +51,7 @@ export const UPGRADES: UpgradeDef[] = [
       { name: 'Турбонаддув', blurb: 'Турбіна й висока хромована труба біля кокпіту. Видно здалеку — і чути теж.' },
     ],
     stats: [
-      { label: 'Швидкість під мотором', value: (l) => 34 * (1 + l * 0.2), fmt: (v) => `${Math.round(v)} км/год` },
+      { label: 'Швидкість під мотором', value: motorKmh, fmt: (v) => `${Math.round(v)} км/год` },
       { label: 'Потужність', value: (l) => l * 20, fmt: pct },
     ],
   },

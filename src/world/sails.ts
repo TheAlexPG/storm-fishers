@@ -232,9 +232,9 @@ export class SailRig {
       this.stressT = Math.max(0, this.stressT - dt * (this.overload < 0.8 ? 0.6 : 0.12));
     }
 
-    // у світ: тяга вздовж курсу + 12 % бокової сили як дрейф (кіль тримає решту)
-    const fx = drive * sh + sideF * 0.12 * ch;
-    const fz = drive * ch - sideF * 0.12 * sh;
+    // у світ: тяга вздовж курсу + 35 % бокової сили (її тримає кіль у Boat — дрейф кілька градусів)
+    const fx = drive * sh + sideF * 0.35 * ch;
+    const fz = drive * ch - sideF * 0.35 * sh;
     // крен: бокова сила в +X кладе човен на правий борт (roll < 0)
     const torqueRoll = -sideF * HEEL_LEVER;
     return { fx, fz, torqueRoll };

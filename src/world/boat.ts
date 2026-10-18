@@ -56,6 +56,18 @@ export interface RockObstacle {
   kind?: 'pier' | 'mark';
 }
 
+// ── гідродинаміка (налаштовано стендом: розгін, поляра, циркуляція) ──
+const THRUST = 11000;      // Н на повному газі (рів. 0)
+const DRAG_Q = 150;        // уздовж: квадратичний
+const DRAG_L = 380;        // уздовж: лінійний (човен зупиняється, а не повзе вічно)
+const KEEL_Q = 2600;       // впоперек: кіль
+const KEEL_L = 2200;
+const KEEL_CARVE = 1.6;    // рад/с — як швидко хід підтягується до курсу
+const ADDED_MASS = 1.8;    // приєднана маса по горизонталі
+const RUDDER_K = 2200;
+const PROP_WASH = 4;       // «еквівалентна швидкість» струменя гвинта на кермі, м/с
+const YAW_DAMP_V = 0.22;   // демпфування рисканням, що росте з ходом
+
 export class Boat {
   group = new THREE.Group();
   // фізика
@@ -92,6 +104,7 @@ export class Boat {
   private gridLocal: THREE.Vector3[] = [];
   private _v = new THREE.Vector3();
   private _fwd = new THREE.Vector3();
+  private _side = new THREE.Vector3();
   private _n = new THREE.Vector3();
   private _f = new THREE.Vector3();
   private _t = new THREE.Vector3();
@@ -319,7 +332,7 @@ export class Boat {
     // керування (штурвал)
     const enginePower = eff.enginePower(game.upgrades.engine);
     const wetPenalty = 1 - 0.22 * (this.deckWater / 100);
-    const maxThrust = 16500 * enginePower * wetPenalty;
+    const maxThrust = THRUST * enginePower * wetPenalty;
     const speed = this.vel.length();
     const fwd = this.forward(this._fwd); // окремий вектор: _v перезаписується в сітці буївності
 
@@ -366,11 +379,17 @@ export class Boat {
       }
     }
 
-    // водний опір (квадратичний → топову швидкість)
-    const dragC = 190;
-    this._f.x -= dragC * this.vel.x * Math.max(1, speed) + 4 * this.vel.x;
+    // водний опір в осях корпусу: уздовж — хвилеутворення (квадратичний →
+    // топова швидкість), впоперек — кіль. Без кіля опір був однаковий в усі
+    // боки: на гострих курсах човен їхав боком, у поворотах — заносило
+    const side = this._side.set(fwd.z, 0, -fwd.x);
+    const u = this.vel.x * fwd.x + this.vel.z * fwd.z;
+    const v = this.vel.x * side.x + this.vel.z * side.z;
+    const Fu = -(DRAG_Q * u * Math.max(1, Math.abs(u)) + DRAG_L * u);
+    const Fv = -(KEEL_Q * v * Math.abs(v) + KEEL_L * v);
+    this._f.x += fwd.x * Fu + side.x * Fv;
     this._f.y -= 30 * this.vel.y;
-    this._f.z -= dragC * this.vel.z * Math.max(1, speed) + 4 * this.vel.z;
+    this._f.z += fwd.z * Fu + side.z * Fv;
 
     // вітер
     const wind = weather.wind;
@@ -386,10 +405,10 @@ export class Boat {
     const dMoor = Math.hypot(dMx, dMz);
     this.mooredNow = dMoor < MOOR_CAPTURE && Math.abs(this.throttle) < 0.15 && speed < 3;
     if (this.mooredNow) {
-      let fxm = -dMx * 2100 - this.vel.x * 2500;
-      let fzm = -dMz * 2100 - this.vel.z * 2500;
+      let fxm = -dMx * 3200 - this.vel.x * 5200;
+      let fzm = -dMz * 3200 - this.vel.z * 5200;
       const fl = Math.hypot(fxm, fzm);
-      if (fl > 12000) { fxm *= 12000 / fl; fzm *= 12000 / fl; }
+      if (fl > 16000) { fxm *= 16000 / fl; fzm *= 16000 / fl; }
       this._f.x += fxm;
       this._f.z += fzm;
       // і розвертаємо бортом до причалу (нос на ±X — куди ближче)
@@ -411,18 +430,38 @@ export class Boat {
     // вітрила: тяга від вітру (безкоштовно) + крен
     this.applySails(dt, weather);
 
-    // кермо: момент залежить від швидкості (без ходу — не крутиться)
-    const rudderTorque = this.rudder * clamp(speed, 0, 10) * 800;
+    // кермо: обтікання від ходу + струмінь гвинта (з газом можна розвернутись
+    // майже на місці — як при швартуванні справжньої яхти)
+    const wash = this.engineOn ? Math.abs(this.throttle) * PROP_WASH : 0;
+    const rudderTorque = this.rudder * (clamp(Math.abs(u), 0, 10) + wash) * RUDDER_K;
     this._t.y += rudderTorque;
 
     // ── інтегрування (підкроки для стабільності) ──
     const rollDamp = 1 + (game.upgrades.stab ?? 0) * 0.3;
     const sub = 2;
     const sdt = dt / sub;
+    // приєднана маса води: по горизонталі човен «важчий» — розгін і гальмування
+    // плавні, а не як у катера-іграшки
+    const mH = this.mass * ADDED_MASS;
+    const yawDamp = 0.8 + YAW_DAMP_V * Math.min(10, Math.abs(u));
     for (let s = 0; s < sub; s++) {
-      this.vel.x += (this._f.x / this.mass) * sdt;
+      this.vel.x += (this._f.x / mH) * sdt;
       this.vel.y += (this._f.y / this.mass) * sdt;
-      this.vel.z += (this._f.z / this.mass) * sdt;
+      this.vel.z += (this._f.z / mH) * sdt;
+      // кіль як крило: на ходу вперед вектор швидкості «підтягується» до курсу
+      // (човен ріже воду в повороті, а не ковзає боком; модуль не росте)
+      const hs = Math.hypot(this.vel.x, this.vel.z);
+      const uu = this.vel.x * Math.sin(this.heading) + this.vel.z * Math.cos(this.heading);
+      if (hs > 0.3 && uu > 0) {
+        const va = Math.atan2(this.vel.x, this.vel.z);
+        const d = wrapAngle(this.heading - va);
+        const rot = clamp(d, -1, 1) * KEEL_CARVE * Math.min(1, uu / 3) * sdt;
+        const c = Math.cos(rot), sn = Math.sin(rot);
+        const nx = this.vel.x * c + this.vel.z * sn;
+        const nz = -this.vel.x * sn + this.vel.z * c;
+        this.vel.x = nx;
+        this.vel.z = nz;
+      }
       this.angVel.x += (this._t.x / this.inertiaPitch) * sdt;
       this.angVel.y += (this._t.y / this.inertiaYaw) * sdt;
       this.angVel.z += (this._t.z / this.inertiaRoll) * sdt;
@@ -434,7 +473,7 @@ export class Boat {
       this.angVel.z += -this.roll * 2.0 * rollDamp * sdt;
       this.angVel.x *= 1 - 9.0 * sdt;
       this.angVel.z *= 1 - 11.0 * rollDamp * sdt;
-      this.angVel.y *= 1 - 0.8 * sdt;
+      this.angVel.y *= 1 - yawDamp * sdt;
       this.pos.addScaledVector(this.vel, sdt);
       this.heading += this.angVel.y * sdt;
       this.pitch = clamp(this.pitch + this.angVel.x * sdt, -0.45, 0.45);

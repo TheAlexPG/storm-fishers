@@ -308,7 +308,9 @@ export class Dialogs {
 
   shop(game: GameState) {
     this.escAllowed = true;
-    const fuelPrice = 20;
+    // паливо: рейс у прибережну зону на моторі ≈ 40–50 ₴ — дешевше за трюм риби,
+    // але вітрила все одно вигідніші (20 ₴/л робили моторні рейси збитковими)
+    const fuelPrice = 6;
     // типова вибрана річ — наступна, яку можна купити
     if (!this.shopSel) {
       const next = UPGRADES.find((u) => game.upgrades[u.id] < MAX_LEVEL && (upgradeCost(u.id, game.upgrades[u.id]) ?? 1e9) <= game.money)
@@ -406,8 +408,8 @@ export class Dialogs {
     } else {
       body = `<div class="fish-row">
           <span class="fname">Паливо <span class="fmeta">(${Math.round(game.fuel)}/${game.maxFuel} л · ${fuelPrice} ₴/л)</span></span>
-          <button class="btn" data-fuel="10" ${game.money < 200 || game.fuel >= game.maxFuel ? 'disabled' : ''} style="padding:5px 10px;font-size:12.5px">+10 л</button>
-          <button class="btn" data-fuel="max" ${game.money < fuelPrice || game.fuel >= game.maxFuel ? 'disabled' : ''} style="padding:5px 10px;font-size:12.5px">Повний бак — ${formatMoney(fuelPrice * (game.maxFuel - game.fuel))}</button>
+          <button class="btn" data-fuel="10" ${game.money < fuelPrice * 10 || game.fuel >= game.maxFuel ? 'disabled' : ''} style="padding:5px 10px;font-size:12.5px">+10 л — ${formatMoney(fuelPrice * 10)}</button>
+          <button class="btn" data-fuel="max" ${game.money < fuelPrice || game.fuel >= game.maxFuel ? 'disabled' : ''} style="padding:5px 10px;font-size:12.5px">${game.money >= fuelPrice * Math.ceil(game.maxFuel - game.fuel) ? `Повний бак — ${formatMoney(fuelPrice * Math.ceil(game.maxFuel - game.fuel))}` : `На всі гроші — ${Math.floor(game.money / fuelPrice)} л`}</button>
         </div>
         <div class="fish-row" style="margin-top:6px">
           <span class="fname">Ремонт корпусу <span class="fmeta">(${Math.round(game.hull)}/${game.maxHull})</span></span>
@@ -486,15 +488,16 @@ export class Dialogs {
       b.addEventListener('click', () => {
         const v = (b as HTMLElement).dataset.fuel;
         if (v === 'max') {
-          const cost = fuelPrice * (game.maxFuel - game.fuel);
-          if (game.money >= cost) {
-            game.money -= cost;
-            this.onBoatPurchase?.({ fuel: game.maxFuel - game.fuel });
-            game.fuel = game.maxFuel;
+          // повний бак або стільки, на скільки вистачає грошей
+          const liters = Math.min(game.maxFuel - game.fuel, Math.floor(game.money / fuelPrice));
+          if (liters > 0) {
+            game.money -= Math.ceil(liters * fuelPrice);
+            game.addFuel(liters);
+            this.onBoatPurchase?.({ fuel: liters });
           }
         } else {
-          const liters = Number(v);
-          const cost = liters * fuelPrice;
+          const liters = Math.min(Number(v), game.maxFuel - game.fuel);
+          const cost = Math.ceil(liters * fuelPrice);
           if (game.money >= cost) {
             game.money -= cost;
             game.addFuel(liters);
