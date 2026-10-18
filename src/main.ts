@@ -104,6 +104,9 @@ class Game {
   private _v = new THREE.Vector3();
   private _v2 = new THREE.Vector3();
   private _v3 = new THREE.Vector3();
+  private reflHorizon = new THREE.Color();
+  private reflZenith = new THREE.Color();
+  private _reflGrey = new THREE.Color();
   private _fogGrey = new THREE.Color();
   private fogRaw = new THREE.Color(0xbcd8e6);
   private rig: CameraRig;
@@ -776,7 +779,12 @@ class Game {
 
     // океан
     this.ocean.setConditions(this.weather.intensity, this.weather.windDir);
-    this.ocean.update(dt, t, this.camera.position, this.time.sunDir, this.time.skyHorizon, this.fogRaw, this.fogDensity(), this.time.sunStrength, this.weather.flash);
+    // небо, яке відбиває вода: хмари роблять його сірішим (як туман)
+    const cl = this.weather.cloudiness;
+    this._reflGrey.setRGB(0.3, 0.33, 0.38).multiplyScalar(0.35 + 0.65 * this.time.daylight);
+    this.reflHorizon.copy(this.time.skyHorizon).lerp(this._reflGrey, cl * 0.6);
+    this.reflZenith.copy(this.time.skyZenith).lerp(this._reflGrey, cl * 0.75);
+    this.ocean.update(dt, t, this.camera.position, this.time.sunDir, this.reflHorizon, this.fogRaw, this.fogDensity(), this.time.sunStrength * (1 - cl * 0.65), this.weather.flash, this.reflZenith);
 
     // паливо
     // повний газ — непропорційно дорожче: економний хід і паруси окупаються
