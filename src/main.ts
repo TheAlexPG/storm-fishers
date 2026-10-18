@@ -1168,7 +1168,7 @@ class Game {
     if (this.fishing.state === 'fight') {
       const f = this.fishing.fightInfo;
       fight = {
-        name: g.speciesName(f.speciesId) + ` · ${f.kg.toFixed(1)} кг`,
+        name: g.speciesName(f.speciesId) + ` · ${f.kg.toFixed(f.kg < 1 ? 2 : 1).replace('.', ',')} кг`,
         tension: f.tension,
         limit: f.limit,
         dist: f.dist,

@@ -306,7 +306,7 @@ export class Dialogs {
         return `
           <div class="fish-row">
             <span class="fname">${sp?.name ?? f.speciesId} ${tags}</span>
-            <span class="fmeta">${f.kg.toFixed(2)} кг · свіжість ${f.cooked ? '—' : Math.round(f.freshness) + '%'}</span>
+            <span class="fmeta">${f.kg.toFixed(2).replace(".", ",")} кг · свіжість ${f.cooked ? '—' : Math.round(f.freshness) + '%'}</span>
             <span class="fprice">${formatMoney(price)}</span>
             <button class="btn" data-sell="${f.uid}" style="padding:4px 10px;font-size:12px">Продати</button>
           </div>`;
@@ -425,7 +425,7 @@ export class Dialogs {
     else forecastText = `Погода стабільна: ${st === 'storm' ? 'шторм затихає' : st === 'wind' ? 'вітер помірнає' : 'хвилі невеликі'}.`;
 
     const repRows = game.reports
-      .map((r) => `<div class="radio-item"><b>${ZONE_NAMES[r.zone]}:</b> ${game.speciesName(r.speciesId)} клює добре (×${r.boost.toFixed(1)})</div>`)
+      .map((r) => `<div class="radio-item"><b>${ZONE_NAMES[r.zone]}:</b> ${game.speciesName(r.speciesId)} клює добре (×${r.boost.toFixed(1).replace(".", ",")})</div>`)
       .join('');
 
     this.show(`

@@ -243,7 +243,7 @@ export class MapView {
       c.fillText('🐟', px, pz + 6);
       c.font = `800 11.5px ${FONT}`;
       c.fillStyle = '#1d6f73';
-      c.fillText(`${game.speciesName(r.speciesId)} ×${r.boost.toFixed(1)}`, px, pz + 38);
+      c.fillText(`${game.speciesName(r.speciesId)} ×${r.boost.toFixed(1).replace(".", ",")}`, px, pz + 38);
     }
 
     // ── waypoint + лінія від човна ──

@@ -18,10 +18,14 @@ export type FishingState = 'idle' | 'waiting' | 'bite' | 'fight';
 
 export class Fishing {
   state: FishingState = 'idle';
+  /** класичний поплавок: червоний верх, білий низ, ледь світиться — видно з 15 м */
   bobber = new THREE.Mesh(
-    new THREE.SphereGeometry(0.09, 8, 8),
-    new THREE.MeshStandardMaterial({ color: 0xe04040, roughness: 0.4 }),
+    new THREE.SphereGeometry(0.14, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.MeshStandardMaterial({ color: 0xe8432f, roughness: 0.4, emissive: 0xe8432f, emissiveIntensity: 0.35 }),
   );
+  /** кола на воді довкола поплавка */
+  private ripples: Array<{ m: THREE.Mesh; age: number }> = [];
+  private rippleT = 0;
   private line: THREE.Line;
   private lineGeo: THREE.BufferGeometry;
   private bobberPos = new THREE.Vector3();
@@ -49,6 +53,22 @@ export class Fishing {
     this.line = new THREE.Line(this.lineGeo, new THREE.LineBasicMaterial({ color: 0xdde8ee, transparent: true, opacity: 0.6 }));
     this.line.visible = false;
     this.bobber.visible = false;
+    const belly = new THREE.Mesh(
+      new THREE.SphereGeometry(0.14, 12, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2),
+      new THREE.MeshStandardMaterial({ color: 0xf4f1ea, roughness: 0.5 }),
+    );
+    this.bobber.add(belly);
+    const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.22, 5), new THREE.MeshStandardMaterial({ color: 0xe8432f, emissive: 0xe8432f, emissiveIntensity: 0.35 }));
+    stick.position.y = 0.2;
+    this.bobber.add(stick);
+    const ringGeo = new THREE.RingGeometry(0.85, 1, 32);
+    ringGeo.rotateX(-Math.PI / 2);
+    for (let i = 0; i < 5; i++) {
+      const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }));
+      m.visible = false;
+      this.scene.add(m);
+      this.ripples.push({ m, age: 9 });
+    }
     this.scene.add(this.bobber);
     this.scene.add(this.line);
   }
@@ -64,12 +84,13 @@ export class Fishing {
     const rodLvl = game.upgrades.rod;
     const dist = eff.castDist(rodLvl) * rand(0.85, 1.15);
     this.castDist = dist;
-    // поплавок вперед від носа, трохи на правий борт (вудка в тримачі праворуч)
-    const h = boat.heading - 0.15;
+    // поплавок вперед і помітно на правий борт: прямо по курсу його ховає згорнутий стаксель на штазі
+    const h = boat.heading - 0.42;
     const fwd = new THREE.Vector3(Math.sin(h), 0, Math.cos(h));
     const base = boat.rodTipWorld(new THREE.Vector3());
     this.bobberPos.copy(base).addScaledVector(fwd, dist);
     this.state = 'waiting';
+    this.rippleT = 0;
     // базовий час: 5–30 с, зона, погода, вудка, радіо
     let t = rand(5, 30);
     t *= zone === 'shore' ? 0.7 : zone === 'mid' ? 1.0 : 1.45;
@@ -139,17 +160,49 @@ export class Fishing {
     this.state = 'fight';
   }
 
+  private spawnRipple(power: number) {
+    const r = this.ripples.reduce((a, b) => (a.age > b.age ? a : b));
+    r.age = 0;
+    r.m.userData.power = power;
+    r.m.visible = true;
+  }
+
+  private updateRipples(dt: number, t: number, ocean: Ocean) {
+    for (const r of this.ripples) {
+      if (!r.m.visible) continue;
+      r.age += dt;
+      const life = 1.6;
+      if (r.age > life || this.state === 'idle') {
+        r.m.visible = false;
+        continue;
+      }
+      const u = r.age / life;
+      const p = (r.m.userData.power as number) ?? 0.5;
+      const sc = 0.15 + u * (0.6 + p * 0.5);
+      r.m.scale.setScalar(sc);
+      r.m.position.set(this.bobberPos.x, ocean.heightAt(this.bobberPos.x, this.bobberPos.z, t) + 0.03, this.bobberPos.z);
+      (r.m.material as THREE.MeshBasicMaterial).opacity = (1 - u) * 0.5 * (0.5 + p * 0.5);
+    }
+  }
+
   /** чи тримає гравець лінію */
   isPulling(input: Input): boolean {
     return input.down('Space');
   }
 
   update(dt: number, t: number, boat: Boat, ocean: Ocean, input: Input, game: GameState, weather: Weather, time: TimeCycle) {
+    this.updateRipples(dt, t, ocean);
     if (this.state === 'idle') {
       this.bobber.visible = false;
       this.line.visible = false;
       boat.setRodBend(0);
       return;
+    }
+    // нові кола: спокійно — рідко, клювання — часто
+    this.rippleT -= dt;
+    if (this.rippleT <= 0 && this.state !== 'fight') {
+      this.rippleT = this.state === 'bite' ? 0.22 : 1.8 + Math.random();
+      this.spawnRipple(this.state === 'bite' ? 1 : 0.5);
     }
 
     // вигин вудлища: натяг волосіні
