@@ -1246,6 +1246,11 @@ class Game {
     Input.instance.sens = st.sens;
     Input.instance.invertY = st.invertY;
     this.rig.fovFp = st.fov;
+    const pr = Math.max(0.75, Math.min(window.devicePixelRatio, 2) * st.scale);
+    if (Math.abs(this.renderer.getPixelRatio() - pr) > 0.01) {
+      this.renderer.setPixelRatio(pr);
+      this.renderer.setSize(window.innerWidth, window.innerHeight);
+    }
   }
 
   private setPhoto(on: boolean) {

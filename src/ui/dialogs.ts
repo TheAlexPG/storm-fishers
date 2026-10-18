@@ -214,6 +214,7 @@ export class Dialogs {
         <label>Музика<input type="range" min="0" max="100" data-k="music"><output></output></label>
         <label>Чутливість миші<input type="range" min="30" max="250" data-k="sens"><output></output></label>
         <label>Поле зору<input type="range" min="55" max="95" data-k="fov"><output></output></label>
+        <label>Чіткість<input type="range" min="50" max="100" step="5" data-k="scale"><output></output></label>
         <label class="chk"><input type="checkbox" data-k="invertY"><span>Інвертувати мишу по вертикалі</span></label>
       </div>
       <h2>Керування</h2>
@@ -252,8 +253,9 @@ export class Dialogs {
       music: (v) => (v < 0.005 ? 'вимк' : `${Math.round(v * 100)} %`),
       sens: (v) => `×${v.toFixed(2).replace('.', ',')}`,
       fov: (v) => `${Math.round(v)}°`,
+      scale: (v) => (v >= 0.995 ? 'максимум' : `${Math.round(v * 100)} %`),
     };
-    const scale: Record<string, number> = { volume: 100, music: 100, sens: 100, fov: 1 };
+    const scale: Record<string, number> = { volume: 100, music: 100, sens: 100, fov: 1, scale: 100 };
     for (const el of this.panel.querySelectorAll<HTMLInputElement>('.settings input')) {
       const k = el.dataset.k as keyof Settings;
       const out = el.nextElementSibling as HTMLOutputElement | null;
