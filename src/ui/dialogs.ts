@@ -1,6 +1,8 @@
 import { formatMoney } from '../core/math';
 import { fishSellPrice, FISH_BY_ID, ZONE_NAMES } from '../game/fish';
-import { UPGRADES, upgradeCost } from '../game/upgrades';
+import { UPGRADES, UPGRADE_BY_ID, MAX_LEVEL, upgradeCost } from '../game/upgrades';
+import { PartPreview } from './partPreview';
+import type { UpgradeId } from '../core/types';
 import type { GameState } from '../game/state';
 import type { Weather } from '../core/weather';
 import type { TimeCycle } from '../core/time';
@@ -76,6 +78,8 @@ export class Dialogs {
     // тому його НЕ виводимо в null: інакше після першого закриття
     // (інтро) phase залишався б 'dialog' і світ би застигав.
     if (!this.open) return; // захист від подвійного закриття в одному кадрі
+    this.preview.stopLive();
+    this.shopNote = '';
     this.overlay.classList.remove('show');
     document.body.classList.remove('intro-mode');
     this.open = false;
@@ -293,10 +297,26 @@ export class Dialogs {
   }
 
   // ── МАГАЗИН ──
+  // Вітрина: усі речі на полицях (дерево = полиця, 5 речей по рівнях),
+  // вибрана річ крутиться на вітрині з описом і характеристиками.
+  // Продаж риби й сервіс — окремими вкладками.
+
+  private preview = new PartPreview();
+  private shopTab: 'vitrine' | 'fish' | 'service' = 'vitrine';
+  private shopSel: { id: UpgradeId; lvl: number } | null = null;
+  private shopNote = '';
 
   shop(game: GameState) {
     this.escAllowed = true;
     const fuelPrice = 20;
+    // типова вибрана річ — наступна, яку можна купити
+    if (!this.shopSel) {
+      const next = UPGRADES.find((u) => game.upgrades[u.id] < MAX_LEVEL && (upgradeCost(u.id, game.upgrades[u.id]) ?? 1e9) <= game.money)
+        ?? UPGRADES.find((u) => game.upgrades[u.id] < MAX_LEVEL) ?? UPGRADES[0];
+      this.shopSel = { id: next.id, lvl: Math.min(MAX_LEVEL, game.upgrades[next.id] + 1) };
+    }
+    const sel = this.shopSel;
+
     const holdRows = game.hold
       .map((f) => {
         const sp = FISH_BY_ID[f.speciesId];
@@ -316,44 +336,138 @@ export class Dialogs {
       .join('');
     const total = game.hold.reduce((a, f) => a + fishSellPrice(f, game.priceMult), 0);
 
-    const upgCards = UPGRADES.map((u) => {
-      const lvl = game.upgrades[u.id];
-      const cost = upgradeCost(u.id, lvl);
-      const pips = Array.from({ length: 5 }, (_, i) => `<div class="pip ${i < lvl ? 'on' : ''}"></div>`).join('');
-      const desc = cost != null ? u.desc(lvl + 1) : 'МАКСИМУМ';
-      return `
-        <div class="upg-card">
-          <h3>${u.name} <span style="font-size:12px;opacity:0.6">рів. ${lvl}/5</span></h3>
-          <div class="pips">${pips}</div>
-          <div class="desc">${desc}</div>
-          ${cost != null ? `<button class="btn" data-upg="${u.id}" ${game.money < cost ? 'disabled' : ''} style="width:100%;padding:7px">${formatMoney(cost)}</button>` : '<div style="font-size:12px;color:var(--accent);text-align:center">Повна прокачка ✓</div>'}
+    // ── полиці ──
+    const shelves = UPGRADES.map((u) => {
+      const cur = game.upgrades[u.id];
+      const items = u.parts.map((part, i) => {
+        const lvl = i + 1;
+        const owned = lvl <= cur;
+        const next = lvl === cur + 1;
+        const cost = u.costs[i];
+        const state = owned ? 'owned' : next ? (game.money >= cost ? 'next' : 'next poor') : 'locked';
+        const tag = owned ? '<span class="tag-on">✓ на човні</span>' : next ? `<span class="price">${formatMoney(cost)}</span>` : `<span class="price dim">${formatMoney(cost)}</span>`;
+        const isSel = sel.id === u.id && sel.lvl === lvl;
+        return `<button class="shelf-item ${state}${isSel ? ' sel' : ''}" data-item="${u.id}:${lvl}" title="${esc(part.name)}">
+            <img alt="" src="${this.preview.thumb(u.id, lvl)}">
+            ${tag}
+          </button>`;
+      }).join('');
+      return `<div class="shelf">
+          <div class="shelf-label"><b>${u.name}</b><small>${u.role}</small><span class="shelf-lvl">${cur}/5</span></div>
+          <div class="shelf-row">${items}</div>
         </div>`;
     }).join('');
 
-    this.show(`
-      <h1>ПОРТ «ШТОРМ»</h1>
-      <p class="sub">Гроші: <b style="color:var(--sun)">${formatMoney(game.money)}</b> · ${game.priceTrendText} · тиж. ${game.priceWeek}</p>
-      <h2>🐟 Продаж риби — трюм ${game.hold.length}/${game.holdCap}</h2>
-      ${game.hold.length === 0 ? '<p class="sub">Трюм порожній. Час ловити!</p>' : `
+    // ── вітрина вибраної речі ──
+    const def = UPGRADE_BY_ID[sel.id];
+    const cur = game.upgrades[sel.id];
+    const part = def.parts[sel.lvl - 1];
+    const cost = def.costs[sel.lvl - 1];
+    const owned = sel.lvl <= cur;
+    const next = sel.lvl === cur + 1;
+    const statRows = def.stats.map((st) => {
+      const a = st.value(cur);
+      const b = st.value(Math.max(cur, sel.lvl));
+      const better = owned ? false : st.lowerBetter ? b < a : b > a;
+      return `<tr><td>${st.label}</td><td class="v">${st.fmt(a)}</td>${owned ? '' : `<td class="arr">→</td><td class="v ${better ? 'up' : ''}">${st.fmt(b)}</td>`}</tr>`;
+    }).join('');
+    const statHead = owned ? '<tr><th></th><th>зараз</th></tr>' : `<tr><th></th><th>зараз</th><th></th><th>${next ? 'з цією річчю' : `на рівні ${sel.lvl}`}</th></tr>`;
+    let action: string;
+    if (owned) action = `<div class="sc-status ok">✓ Стоїть на твоєму човні</div>`;
+    else if (next) action = `<button class="btn primary sc-buy" data-buy="${sel.id}" ${game.money < cost ? 'disabled' : ''}>Купити й поставити — ${formatMoney(cost)}</button>
+        ${game.money < cost ? `<div class="sc-status">Бракує ${formatMoney(cost - game.money)}</div>` : ''}`;
+    else action = `<div class="sc-status">🔒 Спершу постав «${esc(def.parts[cur].name)}»</div>`;
+    const showcase = `
+      <div class="showcase">
+        <div class="sc-view" data-view></div>
+        <div class="sc-cat">${def.name} · рівень ${sel.lvl}/5</div>
+        <h3 class="sc-name">${esc(part.name)}</h3>
+        <p class="sc-blurb">${esc(part.blurb)}</p>
+        <table class="sc-stats">${statHead}${statRows}</table>
+        ${this.shopNote ? `<div class="sc-note">${this.shopNote}</div>` : ''}
+        ${action}
+      </div>`;
+
+    const tab = this.shopTab;
+    const tabs = `<div class="shop-tabs">
+        <button class="shop-tab ${tab === 'vitrine' ? 'on' : ''}" data-tab="vitrine">🛠 Вітрина</button>
+        <button class="shop-tab ${tab === 'fish' ? 'on' : ''}" data-tab="fish">🐟 Риба <span class="cnt">${game.hold.length}</span></button>
+        <button class="shop-tab ${tab === 'service' ? 'on' : ''}" data-tab="service">⛽ Сервіс</button>
+      </div>`;
+
+    let body = '';
+    if (tab === 'vitrine') {
+      body = `<div class="vitrine"><div class="shelves">${shelves}</div>${showcase}</div>`;
+    } else if (tab === 'fish') {
+      body = `<p class="sub">Трюм ${game.hold.length}/${game.holdCap} · ${game.priceTrendText} · тиж. ${game.priceWeek}</p>
+        ${game.hold.length === 0 ? '<p class="sub">Трюм порожній. Час ловити!</p>' : `
         <div class="fish-list">${holdRows}</div>
-        <div class="btn-row"><button class="btn primary" data-sellall>Продати все — ${formatMoney(total)}</button></div>
-      `}
-      <h2>⛽ Сервіс</h2>
-      <div class="fish-row">
-        <span class="fname">Паливо <span class="fmeta">(${Math.round(game.fuel)}/${game.maxFuel} л · ${fuelPrice} ₴/л)</span></span>
-        <button class="btn" data-fuel="10" ${game.money < 200 || game.fuel >= game.maxFuel ? 'disabled' : ''} style="padding:5px 10px;font-size:12.5px">+10 л</button>
-        <button class="btn" data-fuel="max" ${game.money < fuelPrice || game.fuel >= game.maxFuel ? 'disabled' : ''} style="padding:5px 10px;font-size:12.5px">Повний бак — ${formatMoney(fuelPrice * (game.maxFuel - game.fuel))}</button>
+        <div class="btn-row"><button class="btn primary" data-sellall>Продати все — ${formatMoney(total)}</button></div>`}`;
+    } else {
+      body = `<div class="fish-row">
+          <span class="fname">Паливо <span class="fmeta">(${Math.round(game.fuel)}/${game.maxFuel} л · ${fuelPrice} ₴/л)</span></span>
+          <button class="btn" data-fuel="10" ${game.money < 200 || game.fuel >= game.maxFuel ? 'disabled' : ''} style="padding:5px 10px;font-size:12.5px">+10 л</button>
+          <button class="btn" data-fuel="max" ${game.money < fuelPrice || game.fuel >= game.maxFuel ? 'disabled' : ''} style="padding:5px 10px;font-size:12.5px">Повний бак — ${formatMoney(fuelPrice * (game.maxFuel - game.fuel))}</button>
+        </div>
+        <div class="fish-row" style="margin-top:6px">
+          <span class="fname">Ремонт корпусу <span class="fmeta">(${Math.round(game.hull)}/${game.maxHull})</span></span>
+          <button class="btn" data-repair ${game.hull >= game.maxHull || game.money < 100 ? 'disabled' : ''} style="padding:5px 10px;font-size:12.5px">Повний — 100 ₴</button>
+        </div>`;
+    }
+
+    this.show(`
+      <div class="shop-head">
+        <div><h1>КРАМНИЦЯ «ШТОРМ»</h1><p class="sub">Усе, що на полицях, ставиться просто на твій човен</p></div>
+        <div class="shop-head-right">
+          <div class="money-chip">${formatMoney(game.money)}</div>
+          ${game.hold.length && tab !== 'fish' ? `<button class="btn" data-sellall>Продати рибу — ${formatMoney(total)}</button>` : ''}
+        </div>
       </div>
-      <div class="fish-row" style="margin-top:6px">
-        <span class="fname">Ремонт корпусу <span class="fmeta">(${Math.round(game.hull)}/${game.maxHull})</span></span>
-        <button class="btn" data-repair ${game.hull >= game.maxHull || game.money < 100 ? 'disabled' : ''} style="padding:5px 10px;font-size:12.5px">Повний — 100 ₴</button>
-      </div>
-      <h2>🔧 Апгрейди</h2>
-      <div class="upg-grid">${upgCards}</div>
+      ${tabs}
+      ${body}
       <div class="btn-row"><button class="btn" data-close>Закрити (Esc)</button></div>
-    `, true);
+    `, true, 'shop');
 
     const refresh = () => this.shop(game);
+    const view = this.panel.querySelector('[data-view]') as HTMLElement | null;
+    if (view) requestAnimationFrame(() => view.isConnected && this.preview.showLive(view, sel.id, sel.lvl));
+
+    this.panel.querySelectorAll('[data-tab]').forEach((b) => {
+      b.addEventListener('click', () => {
+        this.shopTab = (b as HTMLElement).dataset.tab as typeof this.shopTab;
+        this.shopNote = '';
+        this.audio.click();
+        refresh();
+      });
+    });
+    this.panel.querySelectorAll('[data-item]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const [id, lvl] = (b as HTMLElement).dataset.item!.split(':');
+        this.shopSel = { id: id as UpgradeId, lvl: Number(lvl) };
+        this.shopNote = '';
+        this.audio.click();
+        const sc = this.panel.querySelector('.shelves');
+        const scroll = sc?.scrollTop ?? 0;
+        refresh();
+        const sc2 = this.panel.querySelector('.shelves');
+        if (sc2) sc2.scrollTop = scroll;
+      });
+    });
+    this.panel.querySelector('[data-buy]')?.addEventListener('click', () => {
+      const id = sel.id;
+      if (game.buyUpgrade(id)) {
+        this.onBoatPurchase?.({ upgrade: id });
+        this.audio.catchJingle();
+        this.shopNote = `🔧 «${esc(UPGRADE_BY_ID[id].parts[game.upgrades[id] - 1].name)}» вже на човні`;
+        // вітрина одразу показує наступну річ із цієї ж полиці
+        if (game.upgrades[id] < MAX_LEVEL) this.shopSel = { id, lvl: game.upgrades[id] + 1 };
+        const sc = this.panel.querySelector('.shelves');
+        const scroll = sc?.scrollTop ?? 0;
+        refresh();
+        const sc2 = this.panel.querySelector('.shelves');
+        if (sc2) sc2.scrollTop = scroll;
+      }
+    });
 
     this.panel.querySelectorAll('[data-sell]').forEach((b) => {
       b.addEventListener('click', () => {
@@ -400,16 +514,6 @@ export class Dialogs {
         this.audio.click();
         refresh();
       }
-    });
-    this.panel.querySelectorAll('[data-upg]').forEach((b) => {
-      b.addEventListener('click', () => {
-        const id = (b as HTMLElement).dataset.upg as any;
-        if (game.buyUpgrade(id)) {
-          this.onBoatPurchase?.({ upgrade: id });
-          this.audio.catchJingle();
-          refresh();
-        }
-      });
     });
     this.panel.querySelector('[data-close]')!.addEventListener('click', () => this.close());
   }

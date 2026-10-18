@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import { eff } from '../game/upgrades';
+import type { UpgradeId } from '../core/types';
+import { PART_SPECS, buildPartOnBoat } from './upgradeParts';
 import { HelmDisplay } from './helmDisplay';
 import {
   HALF_LEN, HULL_LEN, DECK_Y, SOLE_Y, WATERLINE_Y, HOUSE, RIG, COCKPIT, STAIR,
-  hullHalfWidth, hullBottomY, sheerY,
+  hullHalfWidth, hullBottomY, sheerY, hullXAt,
 } from './yachtLayout';
 
 // ─────────────────────────────────────────────────────────────
@@ -26,7 +28,7 @@ export interface YachtRefs {
   flag: THREE.Mesh;
   exhaustTip: THREE.Vector3;
   upg: Record<string, THREE.Object3D[]>;
-  lights: Array<{ light: THREE.PointLight; lamp: THREE.Mesh }>;
+  lights: Array<{ light: THREE.PointLight | null; lamp: THREE.Mesh }>;
   spotlight: THREE.SpotLight | null;
   /** згорнутий на штагу стаксель (ховається, коли парус розгорнуто) */
   furledJib: THREE.Object3D[];
@@ -212,14 +214,7 @@ function dialTexture(kind: 'rpm' | 'fuel' | 'speed' | 'compass'): THREE.CanvasTe
 
 // ── корпус ──
 
-/** x корпусу на висоті y у секції z (для ілюмінаторів і кріплень) */
-export function hullXAt(y: number, z: number): number {
-  const top = sheerY(z);
-  const bot = hullBottomY(z);
-  const r = Math.min(1, Math.max(0, (top - y) / (top - bot)));
-  const th = Math.asin(Math.pow(r, 1 / 1.6));
-  return hullHalfWidth(z) * Math.sqrt(Math.cos(th));
-}
+export { hullXAt };
 
 /**
  * Лофт корпусу: 56 секцій × 33 точки (лівий борт → кіль → правий борт).
@@ -319,7 +314,7 @@ export class YachtBuilder {
       compassCard: new THREE.Group(),
       onLampMat: new THREE.MeshStandardMaterial(),
       flag: new THREE.Mesh(),
-      exhaustTip: new THREE.Vector3(0.75, WATERLINE_Y + 0.25, -HALF_LEN - 0.05),
+      exhaustTip: new THREE.Vector3(0.75, WATERLINE_Y + 0.45, -HALF_LEN - 0.2),
       upg: {},
       lights: [],
       spotlight: null,
@@ -411,6 +406,10 @@ export class YachtBuilder {
     reel.rotation.z = Math.PI / 2;
     reel.position.set(0, 0.36, -0.06);
     rod.add(reel);
+    // базова котушка — до першого апгрейду вудки (далі замінює «Шторм»)
+    reel.userData.lvl = 0;
+    reel.userData.until = 1;
+    (this.refs.upg.rod ||= []).push(reel);
     for (const f of [0.35, 0.6, 0.85]) {
       const ring = new THREE.Mesh(new THREE.TorusGeometry(0.018 - f * 0.008, 0.003, 4, 10), steel);
       ring.position.set(0, L * f, -0.02);
@@ -889,20 +888,6 @@ export class YachtBuilder {
   private buildDeckGear() {
     const g = this.g;
     const steel = this.mat(STEEL, 0.25, 0.9);
-    // вудка на носовій палубі
-    const rod = new THREE.Group();
-    rod.position.set(0, DECK_Y, 3.95);
-    g.add(rod);
-    this.cyl(rod, 0.03, 0.04, 0.3, 0, 0.15, 0, this.mat(0x333333, 0.4, 0.5), 8);
-    const rodMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.025, 1.6, 6), this.mat(0x222831, 0.4, 0.5));
-    rodMesh.rotation.x = Math.PI / 3.2;
-    rodMesh.position.set(0, 0.75, 0.3);
-    rod.add(rodMesh);
-    const reel = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.05, 12), this.mat(0x999999, 0.3, 0.8));
-    reel.rotation.z = Math.PI / 2;
-    reel.position.set(0.08, 0.4, 0.08);
-    rod.add(reel);
-    this.refs.upg.rod = [rod];
     // якір у носовому ролику + брашпиль
     this.box(g, 0.14, 0.12, 0.5, 0, sheerY(4.55) - 0.02, 4.6, steel);
     this.cyl(g, 0.12, 0.14, 0.18, 0, DECK_Y + 0.09, 4.1, this.mat(0x30343a, 0.4, 0.6), 12);
@@ -1077,148 +1062,52 @@ export class YachtBuilder {
     this.box(g, HOUSE.x * 2 - 0.16, 0.02, HOUSE.z1 - 0.45 - 0.2, 0, HOUSE.top - 0.04, (0.45 + HOUSE.z1) / 2 - 0.1, HEADLINER, false);
   }
 
-  // ── візуали апгрейдів (приховані, вмикаються по рівнях) ──
+  // ── візуали апгрейдів: кожен рівень — фізична річ (upgradeParts.ts) ──
   private buildUpgradeVisuals() {
     const g = this.g;
     const upg = this.refs.upg;
-    const list = (id: string, o: THREE.Object3D, lvl: number) => {
-      o.userData.lvl = lvl;
-      (upg[id] ||= []).push(o);
-      o.visible = false;
-      if (!o.parent) g.add(o);
-    };
-    const steel = this.mat(STEEL, 0.25, 0.9);
-    const T = -HALF_LEN - 0.03;
-
-    // Двигун: вихлопи у транці, вентиляційні грибки, турбо-кожух, другий вихлоп, бак
-    {
-      const ex1 = this.cyl(g, 0.07, 0.07, 0.12, 0.75, WATERLINE_Y + 0.25, T, steel, 12);
-      ex1.rotation.x = Math.PI / 2;
-      list('engine', ex1, 1);
-      for (const s of [-1, 1]) {
-        const v = this.cyl(g, 0.06, 0.08, 0.16, s * 0.75, DECK_Y + 0.5, -4.25, this.mat(0x30343a, 0.4, 0.6), 10);
-        list('engine', v, 2);
-      }
-      const hood = this.box(g, 0.7, 0.12, 0.55, 0.62, DECK_Y + 0.06, -4.05, this.mat(0x33373c, 0.4, 0.6));
-      list('engine', hood, 3);
-      const ex2 = this.cyl(g, 0.07, 0.07, 0.12, -0.75, WATERLINE_Y + 0.25, T, steel, 12);
-      ex2.rotation.x = Math.PI / 2;
-      list('engine', ex2, 4);
-      const tank = this.cyl(g, 0.2, 0.2, 0.9, 0, WATERLINE_Y + 0.5, T - 0.3, this.mat(0x2f3338, 0.4, 0.7), 12);
-      tank.rotation.z = Math.PI / 2;
-      list('engine', tank, 5);
-    }
-
-    // Корпус: привальний брус (2), броньовий пояс (3), броня + кільова накладка (5)
-    const sheerTube = (dy: number, out: number, r: number) => {
-      const grp = new THREE.Group();
-      for (const s of [-1, 1]) {
-        const pts: THREE.Vector3[] = [];
-        for (let i = 0; i <= 30; i++) {
-          const z = -HALF_LEN + 0.1 + (i / 30) * (HULL_LEN - 0.5);
-          const y = sheerY(z) + dy;
-          pts.push(new THREE.Vector3(s * (hullXAt(y, z) + out), y, z));
+    const kit = { mat: (c: number, r?: number, m?: number) => this.mat(c, r, m) };
+    for (const id of Object.keys(PART_SPECS) as UpgradeId[]) {
+      PART_SPECS[id].forEach((spec, i) => {
+        const lvl = i + 1;
+        const o = buildPartOnBoat(id, lvl, kit);
+        o.userData.lvl = lvl;
+        if (spec.until) o.userData.until = spec.until;
+        o.visible = false;
+        o.traverse((c) => {
+          if ((c as THREE.Mesh).isMesh) {
+            c.castShadow = true;
+            c.receiveShadow = true;
+          }
+        });
+        (spec.parent === 'rod' ? this.refs.rod : g).add(o);
+        (upg[id] ||= []).push(o);
+        // ліхтарі: скло світиться, деякі ще й світять
+        if (spec.lamp || spec.spot) {
+          o.traverse((c) => {
+            if (c.name !== 'glass') return;
+            const lamp = c as THREE.Mesh;
+            lamp.castShadow = false;
+            let light: THREE.PointLight | null = null;
+            if (spec.lamp === 'light') {
+              light = new THREE.PointLight(0xffd9a0, 0, eff.lightRadius(1), 1.6);
+              light.position.y = 0.1;
+              lamp.add(light);
+            }
+            this.refs.lights.push({ light, lamp });
+          });
         }
-        const m = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 60, r, 6), this.mat(0x4a4f55, 0.4, 0.7));
-        m.castShadow = true;
-        grp.add(m);
-      }
-      return grp;
-    };
-    list('hull', sheerTube(-0.08, 0.02, 0.04), 2);
-    list('hull', sheerTube(-0.6, 0.02, 0.06), 3);
-    list('hull', sheerTube(-0.95, 0.02, 0.08), 5);
-    list('hull', this.box(g, 0.2, 0.14, 1.3, 0, -2.28, 0.15, this.mat(0x2c3036, 0.35, 0.8)), 5);
-
-    // Трюм: рибні ящики (1–3) у кормі кокпіту, контейнери на даху (4), сітка (5)
-    {
-      const crate = (x: number, y: number, z: number, c: number) => this.box(g, 0.42, 0.32, 0.42, x, y, z, this.mat(c, 0.9));
-      list('hold', crate(-0.95, DECK_Y + 0.16, -4.15, 0x3c6e9a), 1);
-      list('hold', crate(0.95, DECK_Y + 0.16, -4.15, 0x3c6e9a), 2);
-      list('hold', crate(-0.95, DECK_Y + 0.48, -4.15, 0x2f5c84), 3);
-      const roofBox = this.box(g, 1.0, 0.4, 0.7, 0, COCKPIT.roofY + 0.25, -3.6, this.mat(0x4a6b8a, 0.7));
-      list('hold', roofBox, 4);
-      const net = this.box(g, 1.0, 0.25, 0.5, 0, HOUSE.top + 0.15, 2.25, this.mat(0x5a7d6a, 0.95));
-      list('hold', net, 5);
-    }
-
-    // Вудка: бобіни (1, 3), друга й третя вудки (4, 5) у тримачах пульпіта
-    {
-      const r = this.cyl(g, 0.09, 0.09, 0.06, 0.12, DECK_Y + 0.4, 4.0, this.mat(0x888888, 0.3, 0.8), 12);
-      r.rotation.z = Math.PI / 2;
-      list('rod', r, 1);
-      const r2 = this.cyl(g, 0.1, 0.1, 0.07, -0.12, DECK_Y + 0.42, 3.95, this.mat(0x99a0a8, 0.25, 0.85), 12);
-      r2.rotation.z = Math.PI / 2;
-      list('rod', r2, 3);
-      for (const [s, lvl] of [[-1, 4], [1, 5]] as const) {
-        const rr = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.025, 1.8, 6), this.mat(0x222831, 0.3, 0.6));
-        rr.position.set(s * 0.45, DECK_Y + 0.9, 4.1);
-        rr.rotation.x = 0.6;
-        rr.rotation.z = -s * 0.35;
-        list('rod', rr, lvl);
-      }
-    }
-
-    // Паливо: каністри на кормовому релінгу (1–4), великий бак (5)
-    for (let i = 0; i < 8; i++) {
-      const lvl = i < 4 ? i + 1 : i - 2;
-      const side = i % 2 === 0 ? -1 : 1;
-      const k = Math.floor(i / 2);
-      const can = this.box(g, 0.18, 0.36, 0.28, side * (1.35 - k * 0.0), DECK_Y + 0.2, -3.9 + k * 0.32, this.mat(0xc8431c, 0.6, 0.1));
-      list('fuel', can, lvl);
-    }
-    list('fuel', (() => {
-      const big = this.cyl(g, 0.24, 0.24, 1.1, 0, HOUSE.top + 0.27, 2.0, this.mat(0xa05a18, 0.55, 0.35), 12);
-      big.rotation.x = Math.PI / 2;
-      return big;
-    })(), 5);
-
-    // Світло: ліхтарі (1–4) + прожектор на hardtop (5)
-    const lampGeo = new THREE.BoxGeometry(0.12, 0.1, 0.12);
-    const lampPositions: Array<[number, number, number]> = [
-      [0, sheerY(4.5) + 0.7, 4.5],
-      [-(HOUSE.x + 0.02), HOUSE.top - 0.1, 0.6],
-      [HOUSE.x + 0.02, HOUSE.top - 0.1, 0.6],
-      [0, COCKPIT.roofY + 0.12, COCKPIT.z0 + 0.05],
-    ];
-    for (let i = 0; i < 4; i++) {
-      const [lx, ly, lz] = lampPositions[i];
-      const lamp = new THREE.Mesh(lampGeo, new THREE.MeshStandardMaterial({ color: 0x333333, emissive: 0xffd9a0, emissiveIntensity: 0, roughness: 0.4 }));
-      lamp.position.set(lx, ly, lz);
-      const grp = new THREE.Group();
-      grp.add(lamp);
-      list('lights', grp, i + 1);
-      if (i === 0) {
-        const light = new THREE.PointLight(0xffd9a0, 0, eff.lightRadius(1), 1.6);
-        light.position.set(lx, ly + 0.1, lz);
-        grp.add(light);
-        this.refs.lights.push({ light, lamp });
-      }
-    }
-    {
-      const spot = new THREE.SpotLight(0xfff2d0, 0, 40, 0.5, 0.5, 1.2);
-      spot.position.set(0, COCKPIT.roofY + 0.2, 0.3);
-      const tgt = new THREE.Object3D();
-      tgt.position.set(0, 0, 14);
-      g.add(tgt);
-      spot.target = tgt;
-      const housing = this.cyl(g, 0.09, 0.12, 0.18, 0, COCKPIT.roofY + 0.15, 0.3, this.mat(0x2a2f36, 0.4, 0.6), 12);
-      housing.rotation.x = Math.PI / 2;
-      list('lights', housing, 5);
-      list('lights', spot, 5);
-      this.refs.spotlight = spot;
-    }
-
-    // Стабілізатор: крила по бортах (зростають по рівнях)
-    for (const s of [-1, 1]) {
-      for (let lvl = 1; lvl <= 5; lvl++) {
-        const w = 0.35 + lvl * 0.18;
-        const grp = new THREE.Group();
-        const x = hullXAt(-0.4, 0.6);
-        this.box(grp, 0.06, w, 0.9, s * (x + 0.25), -0.45, 0.6, this.mat(0x7c8894, 0.35, 0.75));
-        this.box(grp, 0.3, 0.08, 0.1, s * (x + 0.1), -0.3, 0.6, this.mat(0x5a636d, 0.5, 0.5));
-        list('stab', grp, lvl);
-      }
+        if (spec.spot) {
+          const mount = o.children[0];
+          const spot = new THREE.SpotLight(0xfff2d0, 0, 40, 0.5, 0.5, 1.2);
+          spot.position.set(0, 0.2, 0.12);
+          const tgt = new THREE.Object3D();
+          tgt.position.set(0, -2.5, 14);
+          mount.add(spot, tgt);
+          spot.target = tgt;
+          this.refs.spotlight = spot;
+        }
+      });
     }
   }
 }

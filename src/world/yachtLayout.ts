@@ -41,6 +41,15 @@ export function sheerY(z: number): number {
   return DECK_Y + 0.06 + 0.28 * t * t;
 }
 
+/** x корпусу на висоті y у секції z (для ілюмінаторів і кріплень) */
+export function hullXAt(y: number, z: number): number {
+  const top = sheerY(z);
+  const bot = hullBottomY(z);
+  const r = Math.min(1, Math.max(0, (top - y) / (top - bot)));
+  const th = Math.asin(Math.pow(r, 1 / 1.6));
+  return hullHalfWidth(z) * Math.sqrt(Math.cos(th));
+}
+
 function smooth(a: number, b: number, x: number): number {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
   return t * t * (3 - 2 * t);

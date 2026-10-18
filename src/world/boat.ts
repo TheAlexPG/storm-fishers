@@ -108,7 +108,7 @@ export class Boat {
   private interiorLight!: THREE.PointLight;
   private cockpitLight!: THREE.PointLight;
   private glowMats: THREE.MeshStandardMaterial[] = [];
-  private lights: Array<{ light: THREE.PointLight; lamp: THREE.Mesh }> = [];
+  private lights: Array<{ light: THREE.PointLight | null; lamp: THREE.Mesh }> = [];
   private spotlight: THREE.SpotLight | null = null;
   private exhaustTip = new THREE.Vector3();
   private bowPoint = new THREE.Vector3(0, 0.6, 4.4);
@@ -214,7 +214,8 @@ export class Boat {
       const lvl = levels[id] ?? 0;
       for (const o of arr) {
         const need = (o.userData.lvl ?? 0) as number;
-        o.visible = need > 0 && need <= lvl;
+        const until = o.userData.until as number | undefined;
+        o.visible = need <= lvl && (until === undefined || lvl < until);
       }
     }
     // колір корпусу по рівню
@@ -222,14 +223,17 @@ export class Boat {
     // білий гелькоут → «бронзово-сталевий» відтінок з рівнем корпусу
     const base = new THREE.Color(0xffffff);
     const dark = new THREE.Color(0x8d96a0);
-    for (const m of this.hullMats) m.color.copy(base.lerp(dark, hullLvl * 0.14));
+    for (const m of this.hullMats) m.color.copy(base.lerp(dark, hullLvl * 0.04));
 
     // світло
     const lightsLvl = levels.lights ?? 0;
     const night = 1 - timeDaylight;
     for (const l of this.lights) {
-      l.light.intensity = lightsLvl > 0 ? night * (1.2 + lightsLvl * 0.5) : 0;
-      (l.lamp.material as THREE.MeshStandardMaterial).emissiveIntensity = lightsLvl > 0 ? night * 1.6 : 0;
+      if (l.light) {
+        l.light.intensity = lightsLvl > 0 ? night * (1.2 + lightsLvl * 0.5) : 0;
+        l.light.distance = eff.lightRadius(lightsLvl);
+      }
+      (l.lamp.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.15 + night * 1.8;
     }
     if (this.spotlight && lightsLvl >= 5) this.spotlight.intensity = night * 26;
   }
