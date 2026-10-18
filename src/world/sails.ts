@@ -132,7 +132,24 @@ export class SailRig {
     boom.position.z = -boomLen / 2;
     boom.castShadow = true;
     this.boomPivot.add(boom);
-    this.bag = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.36, boomLen - 0.35), navy);
+    // лейзі-бег: м'який заокруглений профіль замість гострого бруска
+    const bagShape = new THREE.Shape();
+    {
+      const hw = 0.17, hh = 0.18, r = 0.11;
+      bagShape.moveTo(-hw + 0.04, -hh);
+      bagShape.lineTo(hw - 0.04, -hh);
+      bagShape.quadraticCurveTo(hw, -hh, hw, -hh + 0.04);
+      bagShape.lineTo(hw, hh - r);
+      bagShape.quadraticCurveTo(hw, hh, hw - r, hh);
+      bagShape.lineTo(-hw + r, hh);
+      bagShape.quadraticCurveTo(-hw, hh, -hw, hh - r);
+      bagShape.lineTo(-hw, -hh + 0.04);
+      bagShape.quadraticCurveTo(-hw, -hh, -hw + 0.04, -hh);
+    }
+    const bagLen = boomLen - 0.35;
+    const bagGeo = new THREE.ExtrudeGeometry(bagShape, { depth: bagLen - 0.06, bevelEnabled: true, bevelThickness: 0.03, bevelSize: 0.012, bevelSegments: 3, curveSegments: 6 });
+    bagGeo.translate(0, 0, -(bagLen - 0.06) / 2);
+    this.bag = new THREE.Mesh(bagGeo, navy);
     this.bag.position.set(0, 0.2, -boomLen / 2 - 0.1);
     this.bag.castShadow = true;
     this.boomPivot.add(this.bag);
