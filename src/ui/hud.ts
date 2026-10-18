@@ -322,7 +322,7 @@ export class Hud {
     }
 
     // навігація: компасна стрічка + чіпи до порту/точки
-    this.drawCompass(extra.heading ?? 0, boatPos, game.waypoint);
+    this.drawCompass(extra.heading ?? 0, boatPos, game.waypoint, weather.windDir, weather.wind);
     this.updateNavChips(boatPos, game.waypoint);
   }
 
@@ -338,7 +338,7 @@ export class Hud {
   }
 
   /** компасна стрічка: шкала курсу, рубка-лінія, маркери порту й точки */
-  private drawCompass(headingRad: number, boat: { x: number; z: number }, wp: { x: number; z: number } | null) {
+  private drawCompass(headingRad: number, boat: { x: number; z: number }, wp: { x: number; z: number } | null, windDir = 0, wind = 0) {
     const c = this.compassCtx;
     if (!c || !this.compass) return;
     const w = 300; // логічний розмір (dpr закладений у transform)
@@ -400,6 +400,32 @@ export class Hud {
     };
     drawMark(Hud.bearing(boat.x, boat.z, MOOR.x, MOOR.z), '#e39a2d', false);
     if (wp) drawMark(Hud.bearing(boat.x, boat.z, wp.x, wp.z), this.night ? '#7fd6cc' : '#24878c', true);
+    // вітер: звідки дме (стрілка вниз, «у тебе»), довжина — сила
+    {
+      const from = ((windDir * 180) / Math.PI + 180 + 360) % 360;
+      const dRaw = wrap(from);
+      // ззаду — притискаємо до краю стрічки (блідіше)
+      const behind = Math.abs(dRaw) > 88;
+      const d = behind ? Math.sign(dRaw) * 86 : dRaw;
+      {
+        const x = cx + d * pxPerDeg;
+        c.globalAlpha = behind ? 0.45 : 1;
+        const L = 5 + wind * 6;
+        c.strokeStyle = c.fillStyle = this.night ? '#9ec9ff' : '#3a76c4';
+        c.lineWidth = 2;
+        c.beginPath();
+        c.moveTo(x, 1);
+        c.lineTo(x, 1 + L);
+        c.stroke();
+        c.beginPath();
+        c.moveTo(x, 4 + L);
+        c.lineTo(x + 3.5, L - 1);
+        c.lineTo(x - 3.5, L - 1);
+        c.closePath();
+        c.fill();
+        c.globalAlpha = 1;
+      }
+    }
     // рубка-лінія (курсова риска)
     c.strokeStyle = '#e2674a';
     c.lineWidth = 2;

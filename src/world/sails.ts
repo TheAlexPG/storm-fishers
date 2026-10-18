@@ -188,13 +188,14 @@ export class SailRig {
     const awx = Math.sin(windDir) * this.tws - vel.x;
     const awz = -Math.cos(windDir) * this.tws - vel.z;
     this.aws = Math.hypot(awx, awz);
-    // у локаль човна: +Z — нос, +X — правий борт
+    // у локаль човна: +Z — нос; +X — ЛІВИЙ борт (обличчям до носа в +Z праворуч −X)
     const ch = Math.cos(heading), sh = Math.sin(heading);
     const lz = awx * sh + awz * ch;
     const lx = awx * ch - awz * sh;
     // звідки дме: −(lx, lz)
     this.awa = (Math.atan2(Math.abs(lx), -lz) * 180) / Math.PI;
-    this.windFromStarboard = lx < 0;
+    // дме в +X (на лівий борт) — отже приходить з правого
+    this.windFromStarboard = lx > 0;
     this.luffing = this.hoist > 0.05 && this.awa < NO_GO;
 
     const q = this.hoist * this.aws * this.aws;
