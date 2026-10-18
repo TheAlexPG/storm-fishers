@@ -506,24 +506,23 @@ export class YachtBuilder {
       const za = HOUSE.z0 - 0.25, zb = HOUSE.z1 + 1.4;
       const N = 24;
       const edge = (z: number) => Math.max(0.05, hullXAt(hy, z) - 0.06);
+      // П-подібний контур (без отвору: отвір, що торкався краю, ламав
+      // триангуляцію — під рубкою лишалась суцільна біла площина)
+      const hz1 = HOUSE.z1 + 0.7, hx = 0.9;
       const shape = new THREE.Shape();
+      shape.moveTo(hx, -za);
       for (let i = 0; i <= N; i++) {
         const z = za + ((zb - za) * i) / N;
-        if (i === 0) shape.moveTo(edge(z), -z);
-        else shape.lineTo(edge(z), -z);
+        shape.lineTo(edge(z), -z);
       }
       for (let i = N; i >= 0; i--) {
         const z = za + ((zb - za) * i) / N;
         shape.lineTo(-edge(z), -z);
       }
-      const hz0 = za - 0.05, hz1 = HOUSE.z1 + 0.7;
-      const hole = new THREE.Path();
-      hole.moveTo(-0.9, -hz0);
-      hole.lineTo(-0.9, -hz1);
-      hole.lineTo(0.9, -hz1);
-      hole.lineTo(0.9, -hz0);
-      hole.lineTo(-0.9, -hz0);
-      shape.holes.push(hole);
+      shape.lineTo(-hx, -za);
+      shape.lineTo(-hx, -hz1);
+      shape.lineTo(hx, -hz1);
+      shape.lineTo(hx, -za);
       const hg = new THREE.ExtrudeGeometry(shape, { depth: 0.03, bevelEnabled: false, curveSegments: 1 });
       hg.rotateX(-Math.PI / 2);
       hg.translate(0, hy, 0);
