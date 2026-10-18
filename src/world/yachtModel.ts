@@ -215,6 +215,8 @@ function dialTexture(kind: 'rpm' | 'fuel' | 'speed' | 'compass'): THREE.CanvasTe
 // ── корпус ──
 
 export { hullXAt };
+/** зсув штурвальної тумби до корми (м) */
+export const HELM_DZ = -0.45;
 export const FLAG_NU = 14;
 export const FLAG_NV = 7;
 
@@ -717,7 +719,10 @@ export class YachtBuilder {
 
   // ── штурвальна тумба: колесо, бінакль, приборна панель, газ ──
   private buildHelm() {
-    const g = this.g;
+    // уся штурвальна тумба — на HELM_DZ ближче до корми (ширший прохід повз скло кокпіту)
+    const g = new THREE.Group();
+    g.position.z = HELM_DZ;
+    this.g.add(g);
     const steel = this.mat(STEEL, 0.25, 0.9);
     const dark = this.mat(0x1f2328, 0.5, 0.4);
     // тумба

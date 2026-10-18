@@ -40,7 +40,7 @@ export const MOOR_CAPTURE = 16;
 
 // станції (локальні координати палуби, y = deckY)
 export const STATION_POS: Record<string, { x: number; z: number; y?: number }> = {
-  wheel: { x: 0, z: -3.75 },
+  wheel: { x: 0, z: -4.2 },
   engine: { x: 0.62, z: -4.05 },
   pump: { x: -0.62, z: -4.05 },
   rod: { x: 0, z: 3.9 },
