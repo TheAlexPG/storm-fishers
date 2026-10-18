@@ -5,7 +5,7 @@ import { FISH, FISH_BY_ID, makeFish, zoneFromDist } from './fish';
 import { eff, holderBiteSpeed, holderBiteWindow } from './upgrades';
 import { rodModel, RACK_SLOTS, HOLDER_MOUNTS, type PartKit } from '../world/upgradeParts';
 import type { GameState } from './state';
-import type { Weather } from '../core/weather';
+import { offshore, type Weather } from '../core/weather';
 import type { TimeCycle } from '../core/time';
 import type { Ocean } from '../core/ocean';
 import type { AudioEngine } from '../core/audio';
@@ -395,12 +395,15 @@ export class Fishing {
     const pool = FISH.filter((f) => f.zones.includes(zone) && (day ? f.day : f.night));
     if (pool.length === 0) pool.push(...FISH.filter((f) => f.zones.includes(zone)));
     // ваги: рідкісність, радіо, шторм; «трофейні» вудки тягнуть рідкісну велику рибу
+    const off = offshore(this.boat.pos.x, this.boat.pos.z);
     const weights = pool.map((f) => {
       let w = 1 / f.rarity;
       const rep = game.reportBoost(f.id, zone);
       if (rep > 1) w *= rep;
       if (weather.intensity > 0.6 && f.zones.includes('open')) w *= 1.6;
       w *= 1 + info.trophy * (f.rarity - 1) * 1.5;
+      // далі від берега — рідкісніша риба
+      w *= 1 + off * (f.rarity - 1) * 2.2;
       return w;
     });
     const sum = weights.reduce((a, b) => a + b, 0);
@@ -414,7 +417,7 @@ export class Fishing {
       }
     }
     this.fishSpeciesId = sp.id;
-    this.fishKg = rand(sp.minKg, sp.maxKg) * rand(0.85, 1.3) * (1 + info.trophy * 0.25);
+    this.fishKg = rand(sp.minKg, sp.maxKg) * rand(0.85, 1.3) * (1 + info.trophy * 0.25) * (1 + off * 0.45);
     r.tip.getWorldPosition(this.tipW);
     this.fightDir.set(r.bobberPos.x - this.tipW.x, 0, r.bobberPos.z - this.tipW.z);
     this.fightMaxDist = Math.max(6, this.fightDir.length() - 2);

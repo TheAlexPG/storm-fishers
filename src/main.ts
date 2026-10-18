@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Input } from './core/input';
 import { TimeCycle } from './core/time';
-import { Weather } from './core/weather';
+import { offshore, seaFactor, Weather } from './core/weather';
 import { Ocean, UNDERWATER_LAYER } from './core/ocean';
 import { AudioEngine } from './core/audio';
 import { clamp, rand } from './core/math';
@@ -793,7 +793,11 @@ class Game {
       if (g.lastMarketEvent) this.hud.toast(`📈 Біржа: ${g.lastMarketEvent.text}`, g.lastMarketEvent.mult > 1 ? 'good' : 'warn', 6000);
     }
 
-    // погода
+    // погода: у відкритому морі сильніша (множник від відстані до берега)
+    {
+      const wp = this.player.mode === 'boat' ? this.boat.pos : this.player.head;
+      this.weather.localMul = seaFactor(offshore(wp.x, wp.z));
+    }
     if (this.coop.isClient) this.weather.updatePassive(dt);
     else this.weather.update(dt);
     if (this.weather.state() !== this.lastWeather) {
@@ -836,7 +840,7 @@ class Game {
     }
 
     // океан
-    this.ocean.setConditions(this.weather.intensity, this.weather.windDir);
+    this.ocean.setConditions(this.weather.base, this.weather.windDir);
     // небо, яке відбиває вода: хмари роблять його сірішим (як туман)
     const cl = this.weather.cloudiness;
     this._reflGrey.setRGB(0.3, 0.33, 0.38).multiplyScalar(0.35 + 0.65 * this.time.daylight);

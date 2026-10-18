@@ -587,7 +587,7 @@ export class Boat {
     }
 
     // шторм + мокра палуба → просочення корпусу
-    if (this.deckWater > 85 && weather.intensity > 0.85) {
+    if (this.deckWater > 85 && weather.intensity > 0.95) {
       game.damage(1.6 * dt);
     }
 

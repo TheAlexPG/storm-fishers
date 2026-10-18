@@ -320,7 +320,9 @@ export class Hud {
       this.lastClock = clock;
     }
     const ws = weather.state();
-    const wName = W_NAMES[ws];
+    const bf = weather.beaufort;
+    const wName = `${W_NAMES[ws]} · ${bf.b} б.`;
+    this.elWeather.title = `${bf.b} балів за Бофортом — ${bf.name}, ${weather.windMs.toFixed(0)} м/с`;
     if (this.elWeather.textContent !== wName) this.elWeather.textContent = wName;
     this.elWeather.className = 'w' + (ws === 'storm' ? ' weather-storm' : '');
     this.elZone.textContent = ZONE_NAMES[zoneFromDist(Math.hypot(boatPos.x, boatPos.z))];

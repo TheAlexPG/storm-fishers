@@ -20,7 +20,7 @@ const NO_GO = 28;           // мертвий кут (°)
 
 /** справжній вітер у м/с з погоди 0..1 */
 export function trueWindSpeed(wind01: number): number {
-  return 1.5 + wind01 * 15;
+  return 1.5 + wind01 * 19;
 }
 
 /** поляра тяги за курсовим кутом (градуси, 0 = в ніс) */

@@ -312,7 +312,7 @@ export class Coop {
       k: 's',
       t: r(simTime),
       b: boat.netState(),
-      w: [r(weather.intensity, 1e4), r(weather.snapshot().forecast, 1e3), r(weather.windDir, 1e4), r(weather.flash, 100)],
+      w: [r(weather.base, 1e4), r(weather.snapshot().forecast, 1e3), r(weather.windDir, 1e4), r(weather.flash, 100)],
       tm: [r(time.hours, 1e4), time.dayCount],
       res: [r(g.fuel, 100), r(g.hull, 10)],
       up: g.upgrades,

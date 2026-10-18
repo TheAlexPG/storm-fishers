@@ -52,6 +52,21 @@ const WAVE_TABLE: Array<[number, number, number, number]> = [
 ];
 export const WAVE_COUNT = WAVE_TABLE.length;
 
+/**
+ * Висота хвиль від сили погоди: нелінійно — бриз дає ~0.5 м, шторм ~2 м,
+ * сильний шторм у відкритому морі (сила ~1.5) — вали до 3.5 м амплітуди
+ * (7 м від підошви до гребеня). Дзеркало gain() у шейдері.
+ */
+export function waveGain(s: number): number {
+  return 0.15 + 0.85 * s + 0.6 * s * s;
+}
+/** дзеркало offshore()/seaFactor() з weather.ts — локальне посилення у відкритому морі */
+function seaMul(x: number, z: number): number {
+  const d = Math.hypot(x, z);
+  const t = Math.min(1, Math.max(0, (d - 350) / 1650));
+  return 0.7 + 0.75 * t * t * (3 - 2 * t);
+}
+
 /** Оновлює набір хвиль на місці (без alloc). */
 export function updateWaveSet(defs: WaveDef[], intensity: number, windDir: number): void {
   const s = intensity;
@@ -62,7 +77,7 @@ export function updateWaveSet(defs: WaveDef[], intensity: number, windDir: numbe
     w.dir[0] = Math.sin(a);
     w.dir[1] = -Math.cos(a);
     // підлог 0.15: навіть у тиші море дихає легким брижовим валом
-    w.amp = baseAmp * (0.15 + 1.12 * s);
+    w.amp = baseAmp * waveGain(s);
     w.len = len;
     w.q = q;
   }
@@ -143,9 +158,17 @@ uniform float uWaveQ[NW];
 uniform float uWaveLen[NW];
 uniform sampler2D uShore;
 uniform vec4 uShoreRect;
+uniform float uIntensity;
 varying vec3 vWorldPos;
 varying vec2 vBase;
 varying float vCrest;
+varying float vLocalI;
+
+float gain(float s) { return 0.15 + 0.85 * s + 0.6 * s * s; }
+float seaMul(vec2 p) {
+  float t = clamp((length(p) - 350.0) / 1650.0, 0.0, 1.0);
+  return 0.7 + 0.75 * t * t * (3.0 - 2.0 * t);
+}
 
 void main() {
   // радіальна сітка їде за камерою; крок росте з відстанню від центру
@@ -161,6 +184,10 @@ void main() {
     float bed = texture2D(uShore, suv).r * 20.0 - 10.0;
     damp = ${SHORE_MIN.toFixed(2)} + ${(1 - SHORE_MIN).toFixed(2)} * (1.0 - smoothstep(-${SHORE_DEEP.toFixed(1)}, -0.6, bed));
   }
+  // відкрите море: погода сильніша — хвилі вищі (набір хвиль рахується для загальної сили)
+  float li = uIntensity * seaMul(p);
+  vLocalI = li;
+  damp *= gain(li) / gain(uIntensity);
   for (int i = 0; i < NW; i++) {
     // хвиля, коротша за 3 кроки сітки, не малюється геометрією (лише нормалями)
     float lod = clamp((uWaveLen[i] / step - 3.0) / 3.0, 0.0, 1.0);
@@ -221,6 +248,7 @@ uniform float uRefrScale;
 varying vec3 vWorldPos;
 varying vec2 vBase;
 varying float vCrest;
+varying float vLocalI;
 
 float viewDist(float d) {
   float z = d * 2.0 - 1.0;
@@ -312,7 +340,7 @@ void main() {
     kept += sl * sl * w;
     total += sl * sl;
   }
-  float wind = clamp(uIntensity, 0.0, 1.2);
+  float wind = clamp(vLocalI, 0.0, 1.4);
   // брижі: дві шкали тайлової карти нормалей, повернуті за вітром і зсунуті
   // в різні боки — живий дрібний візерунок без помітних повторів
   vec2 wd = normalize(uWindDir + 1e-4);
@@ -406,7 +434,7 @@ void main() {
   col += vec3(0.5, 0.6, 0.85) * pow(NdM, 20.0) * moonI * 0.06;
 
   // барашки: найвищі гребені, лише коли дме; рвана піна, витягнута за вітром
-  float capOn = smoothstep(0.22, 0.75, uIntensity);
+  float capOn = smoothstep(0.22, 0.75, vLocalI);
   if (capOn > 0.0) {
     float cap = smoothstep(0.7 - 0.2 * capOn, 1.0, vCrest);
     if (cap > 0.0) {
@@ -668,6 +696,12 @@ export class Ocean {
 
   private shore: { data: Uint8Array; nx: number; nz: number; x0: number; z0: number; w: number; h: number } | null = null;
 
+  /** сумарний множник амплітуди в точці: мілина × відкрите море (дзеркало шейдера) */
+  damp(x: number, z: number): number {
+    const li = this.intensity * seaMul(x, z);
+    return this.shoreDamp(x, z) * (waveGain(li) / waveGain(this.intensity));
+  }
+
   /** множник амплітуди хвиль на мілині (дзеркало вершинного шейдера; білінійно як LinearFilter) */
   shoreDamp(x: number, z: number): number {
     const S = this.shore;
@@ -797,16 +831,16 @@ export class Ocean {
    */
   renderedHeightAt(x: number, z: number, t: number): number {
     const r = Math.hypot(x - this.center.x, z - this.center.y);
-    return surfaceHeight(x, z, t, this.waves, gridStep(r), this.shoreDamp(x, z));
+    return surfaceHeight(x, z, t, this.waves, gridStep(r), this.damp(x, z));
   }
 
   heightAt(x: number, z: number, t: number): number {
-    return surfaceHeight(x, z, t, this.waves, null, this.shoreDamp(x, z));
+    return surfaceHeight(x, z, t, this.waves, null, this.damp(x, z));
   }
   normalAt(x: number, z: number, t: number, out: THREE.Vector3): THREE.Vector3 {
     waveNormal(x, z, t, this.waves, out);
-    const d = this.shoreDamp(x, z);
-    if (d < 1) out.set(out.x * d, out.y, out.z * d).normalize();
+    const d = this.damp(x, z);
+    if (d !== 1) out.set(out.x * d, out.y, out.z * d).normalize();
     return out;
   }
 }
