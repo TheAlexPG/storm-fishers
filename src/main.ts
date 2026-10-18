@@ -751,6 +751,7 @@ class Game {
       g.rollPrices();
       g.rollReports();
       this.hud.toast(`Новий день. ${g.priceTrendText}.`, 'warn');
+      if (g.lastMarketEvent) this.hud.toast(`📈 Біржа: ${g.lastMarketEvent.text}`, g.lastMarketEvent.mult > 1 ? 'good' : 'warn', 6000);
     }
 
     // погода
@@ -903,6 +904,7 @@ class Game {
 
     // свіжість
     g.decayFreshness(this.time.gameHourDelta(dt));
+    g.tickMarket(this.time.gameHourDelta(dt));
 
     // орієнтир шварту: світний обрис місця біля причалу, коли повертаєшся
     {
@@ -1158,6 +1160,7 @@ class Game {
       this.lastHours = this.time.hours;
       this.game.addEnergy(100);
       this.game.decayFreshness(delta);
+      this.game.tickMarket(delta);
       this.fade.classList.remove('on');
       this.dawnCard();
       this.hud.toast(`Пройшло ${Math.round(delta)} год. ${inPort ? 'Виспався в хаті.' : 'Виспався на койці.'}`, 'good', 3500);

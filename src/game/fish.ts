@@ -58,8 +58,8 @@ export function fishPrice(item: FishItem, priceMult: Record<string, number>): nu
   return v;
 }
 
-/** повна ціна з урахуванням свіжості */
-export function fishSellPrice(item: FishItem, priceMult: Record<string, number>): number {
+/** повна ціна з урахуванням свіжості; market — множник біржі (подія × попит) */
+export function fishSellPrice(item: FishItem, priceMult: Record<string, number>, market = 1): number {
   const fresh = item.cooked ? 1.0 : item.freshness / 100;
-  return Math.max(1, Math.round(fishPrice(item, priceMult) * (0.35 + 0.65 * fresh)));
+  return Math.max(1, Math.round(fishPrice(item, priceMult) * market * (0.35 + 0.65 * fresh)));
 }

@@ -1,5 +1,6 @@
 import { clamp, mulberry32 } from '../core/math';
 import { FISH, FISH_BY_ID, fishSellPrice } from './fish';
+import { demandAt, FishMarket, glutUnits, type MarketEvent } from './market';
 import { defaultUpgrades, eff, UPGRADES, MAX_LEVEL, upgradeCost } from './upgrades';
 import type {
   FishItem,
@@ -39,6 +40,10 @@ export class GameState {
   priceWeek = 1;
   priceMult: Record<string, number> = {};
   private weekRng = mulberry32(1234);
+  /** біржа: насичення за видами, історія цін, події */
+  market = new FishMarket();
+  /** подія біржі, що з'явилась у новий день (для оголошення) */
+  lastMarketEvent: MarketEvent | null = null;
 
   // радіо-звіти дня (обновлюються щодня)
   reports: RadioReport[] = [];
@@ -49,6 +54,7 @@ export class GameState {
   constructor() {
     this.rollPrices();
     this.rollReports();
+    this.market.sample(this.priceMult);
   }
 
   // ── Економіка ──
@@ -104,22 +110,51 @@ export class GameState {
     return this.hold.splice(i, 1)[0];
   }
 
-  /** продати все, повертає суму */
-  sellAll(): number {
+  /** ціна цієї риби, якщо продати її зараз (тренд × біржа × свіжість) */
+  sellPrice(f: FishItem): number {
+    return fishSellPrice(f, this.priceMult, this.market.factor(f.speciesId));
+  }
+
+  /** порядок продажу «спершу найдорожчі» (попит падає з кожною рибиною) */
+  sellOrder(items: FishItem[]): FishItem[] {
+    return [...items].sort((a, b) => this.sellPrice(b) - this.sellPrice(a));
+  }
+
+  /** чесний прорахунок продажу кількох риб поспіль: ціни по черзі й сума */
+  quote(items: FishItem[]): { total: number; prices: number[] } {
+    const glut: Record<string, number> = { ...this.market.glut };
+    const prices: number[] = [];
+    let total = 0;
+    for (const f of this.sellOrder(items)) {
+      const g = glut[f.speciesId] ?? 0;
+      const v = fishSellPrice(f, this.priceMult, this.market.eventMult(f.speciesId) * demandAt(g));
+      glut[f.speciesId] = g + glutUnits(f);
+      prices.push(v);
+      total += v;
+    }
+    return { total, prices };
+  }
+
+  /** продати кілька риб поспіль (найдорожчі першими), повертає суму */
+  sellMany(uids: number[]): number {
+    const set = new Set(uids);
+    const items = this.sellOrder(this.hold.filter((f) => set.has(f.uid)));
     let sum = 0;
-    for (const f of this.hold) sum += fishSellPrice(f, this.priceMult);
-    this.hold = [];
-    this.money += sum;
-    this.stats.totalEarned += sum;
-    this.objectives.firstSale = true;
-    this.checkObjectives();
+    for (const f of items) sum += this.sellOne(f.uid);
     return sum;
   }
 
+  /** продати все, повертає суму */
+  sellAll(): number {
+    return this.sellMany(this.hold.map((f) => f.uid));
+  }
+
   sellOne(uid: number): number {
-    const f = this.removeFish(uid);
+    const f = this.hold.find((x) => x.uid === uid);
     if (!f) return 0;
-    const v = fishSellPrice(f, this.priceMult);
+    const v = this.sellPrice(f);
+    this.removeFish(uid);
+    this.market.recordSale(f);
     this.money += v;
     this.stats.totalEarned += v;
     this.objectives.firstSale = true;
@@ -140,10 +175,17 @@ export class GameState {
 
   /** щотижневий (кожні 24 год гри) коливання цін ±15 % */
   rollPrices() {
+    const old = { ...this.priceMult };
     this.priceWeek++;
     for (const sp of FISH) {
       this.priceMult[sp.id] = 0.85 + this.weekRng() * 0.3;
     }
+    this.lastMarketEvent = this.market.newDay(old, this.priceWeek);
+  }
+
+  /** хід ігрового часу для біржі (годин) */
+  tickMarket(dtHours: number) {
+    this.market.tick(dtHours, this.priceMult);
   }
 
   /** свіжий радіо-звіт дня: 2–3 види в зонах */
@@ -227,6 +269,7 @@ export class GameState {
       weatherSeed: 0,
       priceWeek: this.priceWeek,
       priceMult: this.priceMult,
+      market: this.market.serialize(),
       stats: this.stats,
       boatX: 0,
       boatZ: 0,
@@ -281,6 +324,10 @@ export class GameState {
     if (data.stats) this.stats = { ...this.stats, ...data.stats };
     if (typeof data.priceWeek === 'number') this.priceWeek = data.priceWeek;
     if (data.priceMult) this.priceMult = data.priceMult;
+    // біржа: старі сейви — повний попит, без подій; історія стартує з поточної ціни
+    this.market.load(data.market);
+    this.lastMarketEvent = null;
+    if (!this.market.hist[FISH[0].id]?.length) this.market.sample(this.priceMult);
     if (data.waypoint && typeof data.waypoint.x === 'number' && typeof data.waypoint.z === 'number') {
       this.waypoint = { x: data.waypoint.x, z: data.waypoint.z };
     }

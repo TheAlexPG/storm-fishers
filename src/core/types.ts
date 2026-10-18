@@ -93,6 +93,8 @@ export interface SaveData {
   weatherSeed: number;
   priceWeek: number;
   priceMult: Record<string, number>;
+  /** біржа риби (насичення, історія, події); старі сейви — без поля */
+  market?: import('../game/market').MarketSave;
   stats: PlayerStats;
   boatX: number;
   boatZ: number;
