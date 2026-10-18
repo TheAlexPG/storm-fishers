@@ -65,6 +65,7 @@ class Rod {
   shake = 0;
   constructor(readonly kind: RodKind, mesh: THREE.Object3D, tipY: number) {
     this.pivot.add(this.inner);
+    this.pivot.userData.rod = true;
     this.inner.add(mesh);
     const tip = mesh.getObjectByName('tip');
     if (tip) this.tip = tip;
@@ -757,6 +758,14 @@ export class Fishing {
     const there = this.holders[h];
     if (there) return there.state === 'bite' ? `ХАПАЙ: ${there.name.toLowerCase()} — клює!` : `Взяти зі стійки: ${there.name.toLowerCase()}`;
     return this.hand ? `Поставити в стійку: ${this.hand.name.toLowerCase()}` : `Стійка для вудки (${HOLDER_NAMES[h]})`;
+  }
+
+  /** для підсвітки: вудки в носовій стійці / вудка в бортовій стійці h */
+  rackObjects(): THREE.Object3D[] {
+    return this.rods.filter((r) => r.where === 'rack').map((r) => r.pivot);
+  }
+  holderObject(h: number): THREE.Object3D | null {
+    return this.holders[h]?.pivot ?? null;
   }
 
   /** підказка для HUD, коли вудка в руках */

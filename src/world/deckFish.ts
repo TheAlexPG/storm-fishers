@@ -69,9 +69,38 @@ export class DeckFish {
     lidM.position.set(0, 0.02, D / 2 + 0.01);
     lidM.castShadow = true;
     this.lid.add(lidM);
-    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.01, 6, 12, Math.PI), new THREE.MeshStandardMaterial({ color: 0xc9ced3, roughness: 0.25, metalness: 0.9 }));
-    handle.position.set(0, 0.04, D + 0.01);
+    // ручка-важіль на кришці (добре видно — за неї відкривають/закривають)
+    const steel = new THREE.MeshStandardMaterial({ color: 0xd8dde2, roughness: 0.2, metalness: 0.9 });
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.016, 8, 16, Math.PI), steel);
+    handle.position.set(0, 0.04, D - 0.02);
+    handle.castShadow = true;
     this.lid.add(handle);
+    const lever = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.025, 0.035), new THREE.MeshStandardMaterial({ color: 0xd0342c, roughness: 0.5 }));
+    lever.position.set(0, 0.055, D * 0.45);
+    this.lid.add(lever);
+    // табличка «ТРЮМ» на кришці
+    {
+      const c = document.createElement('canvas');
+      c.width = 128;
+      c.height = 48;
+      const x = c.getContext('2d')!;
+      x.fillStyle = '#f2e6c4';
+      x.fillRect(0, 0, 128, 48);
+      x.strokeStyle = '#3a2a1c';
+      x.lineWidth = 4;
+      x.strokeRect(3, 3, 122, 42);
+      x.fillStyle = '#3a2a1c';
+      x.font = 'bold 28px sans-serif';
+      x.textAlign = 'center';
+      x.textBaseline = 'middle';
+      x.fillText('ТРЮМ', 64, 26);
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.075), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6 }));
+      plate.rotation.x = -Math.PI / 2;
+      plate.position.set(0, 0.042, D * 0.2);
+      this.lid.add(plate);
+    }
     this.box.add(this.lid);
     this.box.position.set(FISH_BOX.x, DECK_Y, FISH_BOX.z);
     this.box.rotation.y = 0.15;
@@ -103,6 +132,15 @@ export class DeckFish {
       }
     }
     return best?.fish ?? null;
+  }
+
+  /** меш риби на палубі (для підсвітки) */
+  meshOf(f: FishItem): THREE.Object3D | null {
+    return this.loose.find((l) => l.fish === f)?.mesh ?? null;
+  }
+  /** люк трюму (для підсвітки) */
+  get hatch(): THREE.Object3D {
+    return this.box;
   }
 
   get count(): number {

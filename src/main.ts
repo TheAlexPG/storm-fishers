@@ -40,6 +40,10 @@ import { FoamTrail } from './world/foamTrail';
 import { FishJump } from './world/fishJump';
 import { DeckFish } from './world/deckFish';
 import { RadioSet, RADIO_CHANNELS } from './world/radioSet';
+import { Highlighter } from './world/highlight';
+import { HOLDER_MOUNTS } from './world/upgradeParts';
+import { DECK_Y as Y_DECK, HOUSE as L_HOUSE, RIG as L_RIG, SOLE_Y as Y_SOLE } from './world/yachtLayout';
+import { HELM_DZ } from './world/yachtModel';
 import { PLANS, applySinkToUpgrades, dailyPremium, type SinkReport } from './game/insurance';
 import { Landmarks, LANDMARKS } from './world/landmarks';
 import { Avatar } from './world/avatar';
@@ -126,6 +130,8 @@ class Game {
   private deckFish: DeckFish;
   private radio!: RadioSet;
   private radioTextT = 0;
+  private hl = new Highlighter();
+  private _hv = new THREE.Vector3();
   private landmarks: Landmarks;
   private bellCd = 0;
   /** «з-за корми» за штурвалом (V); запам'ятовується */
@@ -585,6 +591,7 @@ class Game {
   private syncUpgrades() {
     this.boat.applyUpgrades(this.game.upgrades, this.time.daylight);
     this.fishing.setOwned(this.game.upgrades.holders ?? 0);
+    this.hl.invalidate();
   }
 
   private handleSunk() {
@@ -605,6 +612,60 @@ class Game {
       this.phase = 'play';
       this.requestLock();
     });
+  }
+
+  /** підсвітка того, з чим зараз взаємодієш (E) */
+  private updateHighlight(t: number) {
+    const p = this.player;
+    let key = '';
+    let objs: THREE.Object3D[] | null = null;
+    const near = (id: string, x: number, y: number, z: number, r: number, max: number) =>
+      this.hl.near(id, this.boat.group, this._hv.set(x, y, z), r, max, (o) => {
+        // вудки рухаються (руки/стійки) — їх додаємо окремо
+        for (let q: THREE.Object3D | null = o; q; q = q.parent) if (q.userData.rod) return true;
+        return false;
+      });
+    if (this.phase === 'play' && !this.dialogs.isOpen && !p.wheeling && p.mode === 'boat') {
+      const fish = !this.deckFish.carried && this.deckFish.nearest(p.localX, p.localZ, 1.2);
+      const id = p.nearest?.id ?? '';
+      if (fish) {
+        key = 'fish:' + fish.uid;
+        objs = [this.deckFish.meshOf(fish)!].filter(Boolean);
+      } else if (id === 'st:fishbox') {
+        key = id;
+        objs = [this.deckFish.hatch];
+      } else if (id === 'st:radio') {
+        key = id;
+        objs = [this.radio.group];
+      } else if (id === 'st:rod') {
+        key = id + this.fishing.rackObjects().length;
+        objs = [...this.fishing.rackObjects(), ...near('rack', 0.42, Y_DECK + 0.2, 3.76, 0.2, 0.6)];
+      } else if (id.startsWith('st:holder')) {
+        const h = Number(id.slice(9));
+        const m = HOLDER_MOUNTS[h].base;
+        const rod = this.fishing.holderObject(h);
+        key = id + (rod ? 'r' : '');
+        objs = [...near('holder' + h + this.game.upgrades.holders, m[0], m[1] + 0.2, m[2], 0.35, 0.8), ...(rod ? [rod] : [])];
+      } else if (id === 'st:wheel') {
+        key = id;
+        objs = near('wheel', 0, Y_DECK + 0.75, -3.38 + HELM_DZ, 0.55, 1.6);
+      } else if (id === 'st:engine' || id === 'st:pump') {
+        const x = id === 'st:engine' ? 0.62 : -0.62;
+        key = id;
+        objs = near(id, x, Y_DECK + 0.05, -4.05, 0.3, 0.9);
+      } else if (id === 'st:sails') {
+        key = id;
+        objs = near('sails', 0, L_HOUSE.top + 0.15, L_RIG.mastZ - 0.3, 0.6, 0.7);
+      } else if (id === 'st:kitchen') {
+        key = id;
+        objs = near('kitchen', -0.82, Y_SOLE + 1.0, 1.15, 0.3, 0.6);
+      } else if (id === 'st:bed') {
+        key = id;
+        objs = near('bed', 0, Y_SOLE + 0.45, 3.2, 0.8, 2.2);
+      }
+    }
+    this.hl.set(key, objs && objs.length ? objs : null);
+    this.hl.update(t);
   }
 
   /** що говорить станція, на яку налаштоване радіо */
@@ -982,6 +1043,7 @@ class Game {
     this.deckFish.update(dt, t, this.time.gameHourDelta(dt), this.boat.deckWater, g.hold, this.boat.hatchOpen);
     // радіо: текст станції й звук (чути в каюті, тихіше — з палуби)
     this.radio.update(dt);
+    this.updateHighlight(t);
     this.radioTextT -= dt;
     if (this.radioTextT <= 0) {
       this.radioTextT = 2;
