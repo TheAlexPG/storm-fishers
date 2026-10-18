@@ -11,6 +11,9 @@ export class AudioEngine {
   private master: GainNode | null = null;
   muted = false;
   musicOn = true;
+  /** загальна гучність 0..1 (з налаштувань) */
+  volume = 0.8;
+  private musicVol = 0.7;
   private music: Music | null = null;
   private sea: SeaSounds | null = null;
 
@@ -30,7 +33,7 @@ export class AudioEngine {
       const ctx = new AudioContext();
       this.ctx = ctx;
       this.master = ctx.createGain();
-      this.master.gain.value = 0.55;
+      this.master.gain.value = this.muted ? 0 : 0.7 * this.volume;
       this.master.connect(ctx.destination);
 
       // спільний буфер шуму (2 с білого шуму)
@@ -101,6 +104,7 @@ export class AudioEngine {
       this.music = new Music(ctx, this.master!);
       this.sea = new SeaSounds(ctx, this.master!);
       this.music.setOn(this.musicOn);
+      this.music.level = this.musicVol;
     } catch {
       this.ctx = null;
     }
@@ -125,8 +129,20 @@ export class AudioEngine {
   setMuted(m: boolean) {
     this.muted = m;
     if (this.master && this.ctx) {
-      this.master.gain.setTargetAtTime(m ? 0 : 0.55, this.ctx.currentTime, 0.05);
+      this.master.gain.setTargetAtTime(m ? 0 : 0.7 * this.volume, this.ctx.currentTime, 0.05);
     }
+  }
+
+  /** гучність з налаштувань: загальна й музики (0..1) */
+  setLevels(volume: number, music: number) {
+    this.volume = volume;
+    this.musicVol = music;
+    this.musicOn = music > 0.001;
+    if (this.music) {
+      this.music.level = music;
+      this.music.setOn(this.musicOn);
+    }
+    this.setMuted(this.muted);
   }
 
   setMusic(on: boolean) {

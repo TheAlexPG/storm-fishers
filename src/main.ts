@@ -23,6 +23,7 @@ import { zoneFromDist, ZONE_NAMES } from './game/fish';
 const ZONE_SUB: Record<string, string> = { shore: 'тихі води біля дому', mid: 'тут ходить скумбрія', open: 'далеко від берега' };
 import { Coop, type BoatAction } from './net/coop';
 import { CameraRig } from './world/cameraRig';
+import { loadSettings, saveSettings, type Settings } from './game/settings';
 import { WindLines } from './world/windLines';
 import { FoamTrail } from './world/foamTrail';
 import { Landmarks, LANDMARKS } from './world/landmarks';
@@ -93,6 +94,7 @@ class Game {
   private _fogGrey = new THREE.Color();
   private fogRaw = new THREE.Color(0xbcd8e6);
   private rig: CameraRig;
+  private settings: Settings = loadSettings();
   private windLines: WindLines;
   private foamTrail: FoamTrail;
   private landmarks: Landmarks;
@@ -248,11 +250,7 @@ class Game {
     this.boat.onSunk = () => this.handleSunk();
 
     // звук стартує з першого жесту (політика автоплею) — музика грає вже в заставці
-    try {
-      this.audio.setMusic(localStorage.getItem('storm-music') !== 'off');
-    } catch {
-      /* ок */
-    }
+    this.applySettings(this.settings);
     const wake = () => {
       this.audio.resume();
       window.removeEventListener('pointerdown', wake);
@@ -555,16 +553,10 @@ class Game {
         GameState.clear();
         this.showIntro();
       },
-      sound: !this.audio.muted,
-      onToggleSound: () => this.audio.setMuted(!this.audio.muted),
-      music: this.audio.musicOn,
-      onToggleMusic: () => {
-        this.audio.setMusic(!this.audio.musicOn);
-        try {
-          localStorage.setItem('storm-music', this.audio.musicOn ? 'on' : 'off');
-        } catch {
-          /* ок */
-        }
+      settings: this.settings,
+      onSettings: (st) => {
+        this.applySettings(st);
+        saveSettings(st);
       },
       playTime: this.playTime,
       places: LANDMARKS.map((l) => ({ name: l.name, found: this.game.places.includes(l.id) })),
@@ -1213,6 +1205,14 @@ class Game {
     const px = clamp(bx, d.x0, d.x1), pz = clamp(bz, d.z0, d.z1);
     const ax = bx - px || bx - cx, az = bz - pz || bz - cz;
     return Math.atan2(ax, az);
+  }
+
+  private applySettings(st: Settings) {
+    this.settings = st;
+    this.audio.setLevels(st.volume, st.music);
+    Input.instance.sens = st.sens;
+    Input.instance.invertY = st.invertY;
+    this.rig.fovFp = st.fov;
   }
 
   private setPhoto(on: boolean) {

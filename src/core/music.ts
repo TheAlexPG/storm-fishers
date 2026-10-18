@@ -49,6 +49,8 @@ export class Music {
   private delay: DelayNode;
   private reverb: ConvolverNode;
   private on = true;
+  /** гучність музики з налаштувань 0..1 */
+  level = 0.7;
   private nextBar = 0;
   private bar = 0;
   private chordIdx = 0;
@@ -113,7 +115,7 @@ export class Music {
     const t = this.ctx.currentTime;
     if (this.ctx.state !== 'running') return;
     // гучність: заставка голосніше, шторм майже глушить
-    const vol = !this.on ? 0 : (mood.intro ? 0.34 : 0.22) * (1 - mood.storm * 0.75) * (1 - mood.night * 0.25);
+    const vol = !this.on ? 0 : this.level * 1.4 * (mood.intro ? 0.34 : 0.22) * (1 - mood.storm * 0.75) * (1 - mood.night * 0.25);
     this.out.gain.setTargetAtTime(vol, t, 1.5);
     this.padFilter.frequency.setTargetAtTime(1500 - mood.night * 700 - mood.storm * 600, t, 2);
     if (this.nextBar < t) this.nextBar = t + 0.1;

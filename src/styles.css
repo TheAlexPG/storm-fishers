@@ -473,3 +473,11 @@ body.intro-mode #vignette { opacity: 0.6; }
 .place { font-size: 12.5px; font-weight: 800; padding: 5px 12px; border-radius: 999px; background: var(--track); color: var(--text-soft); letter-spacing: 1px; }
 .place.found { background: #fff; color: var(--text); letter-spacing: 0; box-shadow: 0 1px 0 rgba(34,48,59,0.08); }
 .place.found::before { content: '📍 '; }
+
+/* ── налаштування (пауза) ── */
+.settings { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 22px; }
+.settings label { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 8px; font-size: 13px; font-weight: 700; color: var(--text); }
+.settings label input[type=range] { grid-column: 1 / -1; grid-row: 2; width: 100%; accent-color: var(--accent); pointer-events: auto; cursor: pointer; }
+.settings output { font-size: 12px; font-weight: 800; color: var(--text-soft); font-variant-numeric: tabular-nums; }
+.settings label.chk { grid-column: 1 / -1; display: flex; gap: 8px; cursor: pointer; }
+.settings label.chk input { accent-color: var(--accent); width: 16px; height: 16px; pointer-events: auto; }

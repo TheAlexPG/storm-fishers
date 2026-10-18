@@ -8,6 +8,9 @@ export class Input {
   mouseDX = 0;
   mouseDY = 0;
   pointerLocked = false;
+  /** налаштування: множник чутливості й інверсія осі Y */
+  sens = 1;
+  invertY = false;
   /** накопичене коліщатко миші (з'їдає consumeWheel) */
   wheel = 0;
 
@@ -78,7 +81,7 @@ export class Input {
   }
 
   consumeMouse(): [number, number] {
-    const d = [this.mouseDX, this.mouseDY] as [number, number];
+    const d = [this.mouseDX * this.sens, this.mouseDY * this.sens * (this.invertY ? -1 : 1)] as [number, number];
     this.mouseDX = 0;
     this.mouseDY = 0;
     return d;

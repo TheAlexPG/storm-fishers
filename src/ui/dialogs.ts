@@ -5,6 +5,7 @@ import type { GameState } from '../game/state';
 import type { Weather } from '../core/weather';
 import type { TimeCycle } from '../core/time';
 import type { AudioEngine } from '../core/audio';
+import type { Settings } from '../game/settings';
 
 // ─────────────────────────────────────────────────────────────
 // Оверлеї: вступ, пауза, магазин, радіо.
@@ -189,15 +190,13 @@ export class Dialogs {
 
   // ── ПАУЗА ──
 
-  pause(opts: { onResume: () => void; onReset: () => void; sound: boolean; onToggleSound: () => void; music: boolean; onToggleMusic: () => void; playTime: number; places?: Array<{ name: string; found: boolean }>; coop?: CoopPause }) {
+  pause(opts: { onResume: () => void; onReset: () => void; settings: Settings; onSettings: (s: Settings) => void; playTime: number; places?: Array<{ name: string; found: boolean }>; coop?: CoopPause }) {
     this.escAllowed = false;
     this.show(`
       <h1>Пауза</h1>
       <p class="sub">${opts.coop ? 'Світ живе далі — екіпаж у морі.' : 'Час зупинений. Море чекає.'}</p>
       <div class="btn-row">
         <button class="btn primary" data-act="resume">Продовжити</button>
-        <button class="btn" data-act="sound">Звук: ${opts.sound ? 'вкл' : 'вимк'}</button>
-        <button class="btn" data-act="music">Музика: ${opts.music ? 'вкл' : 'вимк'}</button>
         ${opts.coop ? '' : '<button class="btn danger" data-act="reset">Скинути гру</button>'}
       </div>
       ${opts.coop ? `
@@ -209,6 +208,14 @@ export class Dialogs {
       ${opts.places ? `
       <h2>Місця · ${opts.places.filter((p) => p.found).length}/${opts.places.length}</h2>
       <div class="places">${opts.places.map((p) => `<span class="place${p.found ? ' found' : ''}">${p.found ? esc(p.name) : '???'}</span>`).join('')}</div>` : ''}
+      <h2>Налаштування</h2>
+      <div class="settings">
+        <label>Гучність<input type="range" min="0" max="100" data-k="volume"><output></output></label>
+        <label>Музика<input type="range" min="0" max="100" data-k="music"><output></output></label>
+        <label>Чутливість миші<input type="range" min="30" max="250" data-k="sens"><output></output></label>
+        <label>Поле зору<input type="range" min="55" max="95" data-k="fov"><output></output></label>
+        <label class="chk"><input type="checkbox" data-k="invertY"><span>Інвертувати мишу по вертикалі</span></label>
+      </div>
       <h2>Керування</h2>
       <div class="intro-keys">
         <kbd>WASD</kbd><span>ходити · за штурвалом: W/S газ, A/D кермо</span>
@@ -238,23 +245,47 @@ export class Dialogs {
       this.close();
       opts.onResume();
     });
-    let sound = opts.sound;
-    this.panel.querySelector('[data-act="sound"]')!.addEventListener('click', () => {
-      opts.onToggleSound();
-      sound = !sound;
-      this.panel.querySelector('[data-act="sound"]')!.textContent = `Звук: ${sound ? 'вкл' : 'вимк'}`;
-    });
-    let music = opts.music;
-    this.panel.querySelector('[data-act="music"]')!.addEventListener('click', () => {
-      opts.onToggleMusic();
-      music = !music;
-      this.panel.querySelector('[data-act="music"]')!.textContent = `Музика: ${music ? 'вкл' : 'вимк'}`;
-    });
-    this.panel.querySelector('[data-act="reset"]')?.addEventListener('click', () => {
-      if (confirm('Точно скинути весь прогрес?')) {
-        this.close();
-        opts.onReset();
+    // налаштування: повзунки змінюють одразу
+    const st = { ...opts.settings };
+    const fmt: Record<string, (v: number) => string> = {
+      volume: (v) => `${Math.round(v * 100)} %`,
+      music: (v) => (v < 0.005 ? 'вимк' : `${Math.round(v * 100)} %`),
+      sens: (v) => `×${v.toFixed(2).replace('.', ',')}`,
+      fov: (v) => `${Math.round(v)}°`,
+    };
+    const scale: Record<string, number> = { volume: 100, music: 100, sens: 100, fov: 1 };
+    for (const el of this.panel.querySelectorAll<HTMLInputElement>('.settings input')) {
+      const k = el.dataset.k as keyof Settings;
+      const out = el.nextElementSibling as HTMLOutputElement | null;
+      if (el.type === 'checkbox') el.checked = !!st[k];
+      else {
+        el.value = String(Math.round((st[k] as number) * scale[k]));
+        if (out) out.textContent = fmt[k](st[k] as number);
       }
+      el.addEventListener('input', () => {
+        if (el.type === 'checkbox') (st as Record<string, unknown>)[k] = el.checked;
+        else {
+          (st as Record<string, unknown>)[k] = Number(el.value) / scale[k];
+          if (out) out.textContent = fmt[k](st[k] as number);
+        }
+        opts.onSettings({ ...st });
+      });
+    }
+    // скидання — у два натиски (без системного confirm)
+    const reset = this.panel.querySelector<HTMLButtonElement>('[data-act="reset"]');
+    let armed = false;
+    reset?.addEventListener('click', () => {
+      if (!armed) {
+        armed = true;
+        reset.textContent = 'Точно? Натисни ще раз';
+        setTimeout(() => {
+          armed = false;
+          reset.textContent = 'Скинути гру';
+        }, 3000);
+        return;
+      }
+      this.close();
+      opts.onReset();
     });
     void opts.playTime;
   }

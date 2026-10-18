@@ -33,6 +33,8 @@ const BLEND_S = 0.8;
 
 export class CameraRig {
   mode: CamMode = 'orbit';
+  /** поле зору від першої особи (налаштування) */
+  fovFp = FOV_FP;
   /** відстань «з-за корми» (коліщатко) */
   dist = 15;
 
@@ -66,7 +68,7 @@ export class CameraRig {
 
   update(dt: number, c: CamInput) {
     const cam = this.camera;
-    let fov = FOV_FP;
+    let fov = this.fovFp;
     if (this.mode === 'fp') {
       cam.position.copy(c.head).add(c.shake);
       cam.rotation.set(c.pitch, c.yaw, c.roll, 'YXZ');
