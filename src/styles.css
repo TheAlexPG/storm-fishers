@@ -55,7 +55,9 @@ body.intro-mode #vignette { opacity: 0.6; }
 .hud-tl { position: absolute; top: 16px; left: 16px; display: flex; flex-direction: column; gap: 8px; width: 230px; }
 .money { font-family: var(--font-display); font-size: 24px; font-weight: 700; letter-spacing: 0.5px; color: var(--text); }
 .money small { font-family: var(--font); font-size: 15px; opacity: 0.5; font-weight: 800; }
-.bar-row { display: flex; align-items: center; gap: 8px; }
+.bar-row { display: flex; align-items: center; gap: 8px; max-height: 20px; transition: max-height 0.5s ease, opacity 0.5s ease, margin 0.5s ease; }
+.bar-row.quiet { max-height: 0; opacity: 0; margin-top: -8px; overflow: hidden; }
+.hud-tl:not(:has(.bar-row:not(.quiet))) { width: auto; padding-right: 18px; }
 .bar-label { width: 62px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text-soft); }
 .bar { flex: 1; height: 8px; background: var(--track); border-radius: 6px; overflow: hidden; }
 .bar > i { display: block; height: 100%; border-radius: 6px; transition: width 0.25s ease; }

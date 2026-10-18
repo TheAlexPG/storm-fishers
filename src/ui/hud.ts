@@ -55,6 +55,8 @@ export class Hud {
   private elChatInput!: HTMLInputElement;
   private chatSend: ((text: string) => void) | null = null;
   private rosterKey = '';
+  private barRows: HTMLElement[] = [];
+  private barState = [0, 1, 2].map(() => ({ v: -1, t: 0, shown: true }));
   private elTitle!: HTMLElement;
   private elCatch!: HTMLElement;
 
@@ -156,6 +158,7 @@ export class Hud {
       e.stopPropagation();
     });
     this.elChatInput.addEventListener('blur', () => this.closeChat());
+    this.barRows = [...root.querySelectorAll<HTMLElement>('.hud-tl .bar-row')];
     this.elTitle = root.querySelector('.title-card')!;
     this.elCatch = root.querySelector('.catch-slot')!;
     this.chipPort = root.querySelector('#chip-port')!;
@@ -257,6 +260,24 @@ export class Hud {
       this.elSail.style.display = sail ? '' : 'none';
       this.lastSail = sail;
     }
+
+    // «тихий» HUD: смужка видна, коли значення низьке або щойно змінилось
+    const now = performance.now();
+    const quiet = (i: number, v: number, low: number) => {
+      const st = this.barState[i];
+      if (Math.abs(v - st.v) > 2) {
+        st.v = v;
+        st.t = now;
+      }
+      const show = v < low || now - st.t < 4000;
+      if (show !== st.shown) {
+        st.shown = show;
+        this.barRows[i].classList.toggle('quiet', !show);
+      }
+    };
+    quiet(0, (game.fuel / game.maxFuel) * 100, 45);
+    quiet(1, (game.hull / game.maxHull) * 100, 70);
+    quiet(2, game.energy, 40);
 
     const fuelPct = (game.fuel / game.maxFuel) * 100;
     this.elFuel.style.width = fuelPct + '%';
