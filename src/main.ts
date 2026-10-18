@@ -15,7 +15,7 @@ import { SkyEnvironment } from './world/graphics';
 import { ParticlePool } from './world/particles';
 import { Stations } from './game/stations';
 import { Fishing } from './game/fishing';
-import { Hud } from './ui/hud';
+import { Hud, type FightHud } from './ui/hud';
 import { Minimap } from './ui/minimap';
 import { MapView } from './ui/map';
 import { Dialogs } from './ui/dialogs';
@@ -104,6 +104,7 @@ class Game {
   private _v = new THREE.Vector3();
   private _v2 = new THREE.Vector3();
   private _v3 = new THREE.Vector3();
+  private _v4 = new THREE.Vector3();
   private reflHorizon = new THREE.Color();
   private reflZenith = new THREE.Color();
   private _reflGrey = new THREE.Color();
@@ -114,6 +115,8 @@ class Game {
   private windLines: WindLines;
   private foamTrail: FoamTrail;
   private fishJump: FishJump;
+  /** стрибок риби під час боротьби */
+  private leapJump: FishJump;
   private landmarks: Landmarks;
   private bellCd = 0;
   /** «з-за корми» за штурвалом (V); запам'ятовується */
@@ -188,6 +191,7 @@ class Game {
     this.windLines = new WindLines(this.scene);
     this.foamTrail = new FoamTrail(this.scene);
     this.fishJump = new FishJump(this.scene);
+    this.leapJump = new FishJump(this.scene);
     this.scene.add(this.moorMark);
     this.landmarks = new Landmarks(this.scene, this.port.rocks);
     this.boat = new Boat(this.scene);
@@ -263,6 +267,16 @@ class Game {
       this.coop.sendEvent('toast', [msg, kind]);
     };
     this.fishing.onEvent = (msg, kind) => this.hud.toast(msg, kind, 4500);
+    this.fishing.onSplash = (pos, power) => {
+      this.particles.splash(pos.x, pos.y, pos.z, power);
+      this.audio.splash(power * 0.7);
+    };
+    this.fishing.onLeap = (sp, kg, pos) => {
+      // риба виринає дугою вбік і пірнає назад
+      const a = Math.random() * Math.PI * 2;
+      const to = this._v4.set(pos.x + Math.cos(a) * 1.6, pos.y - 0.2, pos.z + Math.sin(a) * 1.6);
+      this.leapJump.start(sp, kg, pos, to, true);
+    };
     this.boat.onEngineStall = () => {
       this.hud.toast('Хвиля заглушила двигун! Запусти його на двигунній (E)', 'bad');
       this.audio.snap();
@@ -851,7 +865,9 @@ class Game {
     // ловля
     const bobW = this._v3.copy(this.fishing.bobber.position);
     this.fishing.update(dt, t, this.boat, this.ocean, input, g, this.weather, this.time);
+    this.player.rodBusy = this.fishing.state === 'fight' || this.fishing.state === 'charge';
     this.fishJump.update(dt, t);
+    this.leapJump.update(dt, t);
     const catched = this.fishing.takeCatch();
     if (catched) {
       // риба вилітає з води в руки
@@ -1075,13 +1091,15 @@ class Game {
     if (id === 'st:rod') {
       if (this.fishing.state === 'idle') {
         if (p.mode !== 'boat') return;
-        const ok = this.fishing.cast(this.boat, g, this.weather, this.time);
+        // тримай E — шкала сили, відпусти — закид
+        const ok = this.fishing.startCharge(this.boat, g);
         if (!ok) {
           if (Math.hypot(this.boat.pos.x, this.boat.pos.z) < 60) this.hud.toast('Занадто близько до причалу — відійди в море.', 'warn');
           else this.hud.toast('Не вистачає енергії.', 'warn');
         }
       } else if (this.fishing.state === 'waiting') {
-        this.fishing.reelIn();
+        // поплавок щойно смикнувся — це лише «пробування»: підсічка зарано
+        if (!this.fishing.strikeIfNibbling()) this.fishing.reelIn();
       }
       return;
     }
@@ -1273,7 +1291,7 @@ class Game {
 
     // HUD
     const prompt = this.currentPrompt();
-    let fight: { name: string; tension: number; limit: number; dist: number } | null = null;
+    let fight: FightHud | null = null;
     if (this.fishing.state === 'fight') {
       const f = this.fishing.fightInfo;
       fight = {
@@ -1281,8 +1299,16 @@ class Game {
         tension: f.tension,
         limit: f.limit,
         dist: f.dist,
+        stamina: f.stamina,
+        pull: f.pull,
+        lean: f.lean,
+        status: f.status,
+        jump: f.jump,
+        lo: f.lo,
+        hi: f.hi,
       };
     }
+    this.hud.setCast(this.fishing.state === 'charge' ? this.fishing.castPower : null, this.fishing.status);
     this.hud.setRoster(this.coop.active ? this.coop.roster() : []);
     this.hud.setNight(time.daylight < 0.3);
     this.hud.update(
@@ -1454,7 +1480,7 @@ class Game {
 
   private currentPrompt(): { text: string | null; bite: boolean } {
     // боротьба — перш за все
-    if (this.fishing.state === 'fight') return { text: null, bite: false };
+    if (this.fishing.state === 'fight' || this.fishing.state === 'charge') return { text: null, bite: false };
     if (this.fishing.state === 'bite') return { text: 'Клює! Тисни E!', bite: true };
     // станція-дія активна
     if (this.stations.active) return { text: this.stations.active.label, bite: false };
@@ -1462,7 +1488,7 @@ class Game {
     if (this.player.nearest) {
       const n = this.player.nearest;
       if (n.id === 'st:rod' && this.fishing.state === 'waiting') {
-        return { text: 'Поплавок у воді… (E — зняти)', bite: false };
+        return { text: 'Чекай, поки поплавок піде під воду (E — зняти)', bite: false };
       }
       return { text: n.label, bite: false };
     }

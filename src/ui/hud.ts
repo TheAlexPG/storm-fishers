@@ -16,6 +16,20 @@ const W_NAMES: Record<string, string> = {
   storm: '⛈ Шторм',
 };
 
+export interface FightHud {
+  name: string;
+  tension: number;
+  limit: number;
+  dist: number;
+  stamina: number;
+  pull: number;
+  lean: number;
+  status: string;
+  jump: boolean;
+  lo: number;
+  hi: number;
+}
+
 export class Hud {
   private root: HTMLElement;
   private elMoney!: HTMLElement;
@@ -40,6 +54,15 @@ export class Hud {
   private elTensionLimit!: HTMLElement;
   private elDist!: HTMLElement;
   private elDistN!: HTMLElement;
+  private elSweet!: HTMLElement;
+  private elStamina!: HTMLElement;
+  private elLean!: HTMLElement;
+  private elPullL!: HTMLElement;
+  private elPullR!: HTMLElement;
+  private elFightStatus!: HTMLElement;
+  private elCast!: HTMLElement;
+  private elCastFill!: HTMLElement;
+  private elFishStatus!: HTMLElement;
   private compass: HTMLCanvasElement | null = null;
   private compassCtx: CanvasRenderingContext2D | null = null;
   private chipPort!: HTMLElement;
@@ -96,11 +119,26 @@ export class Hud {
       <div class="catch-slot"></div>
       <div class="prompt"><kbd>E</kbd><span class="ptext"></span></div>
       <div class="action-progress"><div class="ap-label"></div><div class="bar"><i></i></div></div>
+      <div class="cast-ui">
+        <div class="cast-label">Сила закиду</div>
+        <div class="cast-bar"><div class="cast-sweet"></div><i></i></div>
+        <div class="cast-hint">відпусти <kbd>E</kbd> у зеленій зоні</div>
+      </div>
+      <div class="fish-status"></div>
       <div class="fight-ui">
         <div class="fish-name"></div>
-        <div class="tension-label"><span>Тяга лінії</span><span class="tval">0 %</span></div>
-        <div class="tension-bar"><i></i><div class="limit"></div></div>
-        <div class="dist-row"><span>Відстань</span><span class="distn">0 м</span></div>
+        <div class="fight-arena">
+          <div class="pull-arrow left">◀</div>
+          <div class="fight-core">
+            <div class="tension-label"><span>Натяг</span><span class="tval">0 %</span></div>
+            <div class="tension-bar"><div class="sweet"></div><i></i><div class="limit"></div></div>
+            <div class="rod-lean"><div class="lean-dot"></div></div>
+            <div class="stamina-row"><span>Сили риби</span><div class="stamina-bar"><i></i></div></div>
+          </div>
+          <div class="pull-arrow right">▶</div>
+        </div>
+        <div class="fight-status"></div>
+        <div class="dist-row"><span><kbd>Space</kbd> тягти · <kbd>A</kbd>/<kbd>D</kbd> нахил вудки</span><span class="distn">0 м</span></div>
       </div>
       <div class="controls-hint">
         <kbd>WASD</kbd> рух · <kbd>Миша</kbd> погляд · <kbd>Shift</kbd> біг · <kbd>E</kbd> дія<br>
@@ -137,6 +175,15 @@ export class Hud {
     this.elTensionLimit = this.elFight.querySelector('.tension-bar .limit')!;
     this.elDist = this.elFight.querySelector<HTMLElement>('.tension-label .tval')!;
     this.elDistN = this.elFight.querySelector<HTMLElement>('.distn')!;
+    this.elSweet = this.elFight.querySelector<HTMLElement>('.tension-bar .sweet')!;
+    this.elStamina = this.elFight.querySelector<HTMLElement>('.stamina-bar > i')!;
+    this.elLean = this.elFight.querySelector<HTMLElement>('.lean-dot')!;
+    this.elPullL = this.elFight.querySelector<HTMLElement>('.pull-arrow.left')!;
+    this.elPullR = this.elFight.querySelector<HTMLElement>('.pull-arrow.right')!;
+    this.elFightStatus = this.elFight.querySelector<HTMLElement>('.fight-status')!;
+    this.elCast = root.querySelector<HTMLElement>('.cast-ui')!;
+    this.elCastFill = this.elCast.querySelector<HTMLElement>('.cast-bar > i')!;
+    this.elFishStatus = root.querySelector<HTMLElement>('.fish-status')!;
     this.toasts = root.querySelector('.toasts')!;
     this.hintEl = root.querySelector('.controls-hint')!;
     this.elLockHint = root.querySelector('.lock-hint')!;
@@ -226,12 +273,24 @@ export class Hud {
   private lastClock = '';
   private lockHintShown = false;
 
+  /** шкала закиду (null — сховати) і коротке повідомлення риболовлі поза боротьбою */
+  setCast(power: number | null, status: string) {
+    this.elCast.classList.toggle('show', power != null);
+    if (power != null) {
+      this.elCastFill.style.left = power * 100 + '%';
+      this.elCast.classList.toggle('good', power >= 0.78 && power <= 0.95);
+    }
+    const show = !!status && !this.elFight.classList.contains('show');
+    this.elFishStatus.textContent = show ? status : '';
+    this.elFishStatus.classList.toggle('show', show);
+  }
+
   update(game: GameState, time: TimeCycle, weather: Weather, boatPos: { x: number; z: number }, extra: {
     prompt?: string | null;
     promptBite?: boolean;
     actionLabel?: string | null;
     actionProgress?: number;
-    fight?: { name: string; tension: number; limit: number; dist: number } | null;
+    fight?: FightHud | null;
     heading?: number;
     speedKn?: number;
     sail?: string | null;
@@ -313,10 +372,24 @@ export class Hud {
     if (extra.fight) {
       this.elFight.classList.add('show');
       this.elFishName.textContent = extra.fight.name;
-      this.elTension.style.width = extra.fight.tension + '%';
+      this.elTension.style.left = extra.fight.tension + '%';
       this.elTensionLimit.style.left = extra.fight.limit + '%';
       this.elDist.textContent = Math.round(extra.fight.tension) + ' %';
       this.elDistN.textContent = Math.round(extra.fight.dist) + ' м';
+      const f = extra.fight;
+      this.elSweet.style.left = f.lo + '%';
+      this.elSweet.style.width = f.hi - f.lo + '%';
+      const inSweet = f.tension >= f.lo && f.tension <= f.hi;
+      this.elFight.classList.toggle('sweet-on', inSweet);
+      this.elFight.classList.toggle('danger', f.tension > f.limit - 6);
+      this.elFight.classList.toggle('jump', f.jump);
+      this.elStamina.style.width = Math.round(f.stamina * 100) + '%';
+      this.elLean.style.left = 50 + f.lean * 42 + '%';
+      // стрілка — куди рветься риба; підсвічена «правильна» сторона нахилу
+      this.elPullL.classList.toggle('on', f.pull < 0);
+      this.elPullR.classList.toggle('on', f.pull > 0);
+      this.elFight.classList.toggle('countered', f.pull !== 0 && f.lean * f.pull < -0.5);
+      this.elFightStatus.textContent = f.status;
     } else {
       this.elFight.classList.remove('show');
     }

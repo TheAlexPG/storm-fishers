@@ -30,6 +30,8 @@ export class FishJump {
   private to = new THREE.Vector3();
   private t = -1;
   private dur = 0.9;
+  /** стрибок під час боротьби: виринає й пірнає назад (без лежання на палубі) */
+  private leap = false;
 
   constructor(scene: THREE.Scene) {
     // тіло: сплюснутий ромбоїд з двох конусів (верх темний, черево світле)
@@ -60,7 +62,8 @@ export class FishJump {
   }
 
   /** запустити: з води (from) до рук (to); kg — розмір */
-  start(speciesId: string, kg: number, from: THREE.Vector3, to: THREE.Vector3) {
+  start(speciesId: string, kg: number, from: THREE.Vector3, to: THREE.Vector3, leap = false) {
+    this.leap = leap;
     const [top, belly] = COLORS[speciesId] ?? COLORS.balyk;
     this.topMat.color.setHex(top);
     this.bellyMat.color.setHex(belly);
@@ -80,6 +83,11 @@ export class FishJump {
     this.t += dt;
     const u = this.t / this.dur;
     if (u >= 1.6) {
+      this.fish.visible = false;
+      this.t = -1;
+      return false;
+    }
+    if (this.leap && u >= 1) {
       this.fish.visible = false;
       this.t = -1;
       return false;

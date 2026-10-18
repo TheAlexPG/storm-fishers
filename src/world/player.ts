@@ -44,6 +44,8 @@ export class Player {
   wz = -20;
   /** керування човном */
   wheeling = false;
+  /** руки зайняті вудкою (закид / боротьба): A/D/Space — для вудки, не для ходьби */
+  rodBusy = false;
   /** у салоні (внизу або на трапі): затишок + каютні станції */
   inCabin = false;
   /** рівень на яхті та висота підлоги під ногами (локальна y) */
@@ -119,9 +121,10 @@ export class Player {
     this.pitch = clamp(this.pitch - mdy * 0.0021, -1.35, 1.35);
 
     const running = input.down('ShiftLeft') || input.down('ShiftRight');
-    const inF = (input.down('KeyW') ? 1 : 0) - (input.down('KeyS') ? 1 : 0);
-    const inL = (input.down('KeyD') ? 1 : 0) - (input.down('KeyA') ? 1 : 0);
-    const inUp = input.down('Space') ? 1 : 0;
+    const busy = this.rodBusy && !this.wheeling;
+    const inF = busy ? 0 : (input.down('KeyW') ? 1 : 0) - (input.down('KeyS') ? 1 : 0);
+    const inL = busy ? 0 : (input.down('KeyD') ? 1 : 0) - (input.down('KeyA') ? 1 : 0);
+    const inUp = !busy && input.down('Space') ? 1 : 0;
     const inDown = input.down('KeyC') ? 1 : 0;
 
     let moving = false;

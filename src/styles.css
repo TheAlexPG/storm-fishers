@@ -109,14 +109,41 @@ body.intro-mode #vignette { opacity: 0.6; }
 .action-progress .bar > i { background: #fff; }
 
 /* ── боротьба за рибу ── */
-.fight-ui { position: absolute; bottom: 150px; left: 50%; transform: translateX(-50%); width: 340px; display: none; }
-.fight-ui.show { display: block; }
+.fight-ui { position: absolute; bottom: 130px; left: 50%; transform: translateX(-50%); width: 420px; display: none; }
+.fight-ui.show { display: block; animation: panelIn 0.25s ease; }
 .fight-ui .fish-name { text-align: center; font-family: var(--font-display); font-weight: 600; font-size: 17px; margin-bottom: 8px; color: #fff; text-shadow: 0 2px 10px rgba(0,0,0,0.55); }
+.fight-arena { display: flex; align-items: center; gap: 10px; background: rgba(12, 24, 34, 0.42); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border-radius: 18px; padding: 12px 12px 10px; box-shadow: 0 8px 26px rgba(0,0,0,0.25); }
+.fight-core { flex: 1; }
+.pull-arrow { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 15px; color: rgba(255,255,255,0.25); background: rgba(255,255,255,0.06); transition: all 0.15s; }
+.pull-arrow.on { color: #fff; background: var(--accent); box-shadow: 0 0 16px rgba(226, 103, 74, 0.7); animation: pulse 0.35s infinite alternate; }
+.fight-ui.countered .pull-arrow.on { background: var(--sea); box-shadow: 0 0 16px rgba(36, 135, 140, 0.7); animation: none; }
 .fight-ui .tension-label { display: flex; justify-content: space-between; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #fff; text-shadow: 0 1px 5px rgba(0,0,0,0.6); margin-bottom: 4px; }
-.fight-ui .tension-bar { height: 12px; border-radius: 8px; background: rgba(255,255,255,0.3); overflow: hidden; position: relative; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
-.fight-ui .tension-bar > i { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #4fb7a8, #f2b544 70%, #e2674a); border-radius: 8px; }
-.fight-ui .tension-bar .limit { position: absolute; top: -2px; bottom: -2px; width: 3px; background: #fff; }
+.fight-ui .tension-bar { height: 16px; border-radius: 9px; background: rgba(255,255,255,0.18); overflow: hidden; position: relative; }
+.fight-ui .tension-bar .sweet { position: absolute; top: 0; bottom: 0; background: rgba(79, 183, 168, 0.35); border-left: 2px solid rgba(120, 220, 200, 0.8); border-right: 2px solid rgba(120, 220, 200, 0.8); }
+.fight-ui .tension-bar > i { position: absolute; top: 2px; bottom: 2px; width: 6px; margin-left: -3px; border-radius: 4px; background: #fff; box-shadow: 0 0 8px rgba(255,255,255,0.9); transition: left 0.06s linear; }
+.fight-ui.sweet-on .tension-bar .sweet { background: rgba(79, 183, 168, 0.65); }
+.fight-ui.danger .tension-bar { background: rgba(226, 103, 74, 0.45); animation: pulse 0.2s infinite alternate; }
+.fight-ui .tension-bar .limit { position: absolute; top: 0; bottom: 0; right: 0; background: repeating-linear-gradient(45deg, rgba(226,103,74,0.7) 0 4px, rgba(226,103,74,0.35) 4px 8px); }
+.rod-lean { position: relative; height: 6px; margin: 9px 6px 8px; border-radius: 4px; background: rgba(255,255,255,0.14); }
+.rod-lean::after { content: ''; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 2px; background: rgba(255,255,255,0.4); }
+.lean-dot { position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--sun); box-shadow: 0 0 10px rgba(227, 154, 45, 0.8); }
+.stamina-row { display: flex; align-items: center; gap: 8px; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.8px; color: rgba(255,255,255,0.85); }
+.stamina-bar { flex: 1; height: 7px; border-radius: 5px; background: rgba(255,255,255,0.15); overflow: hidden; }
+.stamina-bar > i { display: block; height: 100%; background: linear-gradient(90deg, #e2674a, #f2b544); border-radius: 5px; transition: width 0.2s; }
+.fight-status { text-align: center; margin-top: 8px; min-height: 20px; font-family: var(--font-display); font-weight: 600; font-size: 15px; color: #fff; text-shadow: 0 2px 8px rgba(0,0,0,0.6); }
+.fight-ui.jump .fight-status { color: #ffd36b; transform: scale(1.12); }
 .fight-ui .dist-row { display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; margin-top: 4px; color: #fff; text-shadow: 0 1px 5px rgba(0,0,0,0.6); }
+.fight-ui .dist-row kbd, .cast-ui kbd { font-size: 10px; padding: 0 5px; }
+.cast-ui { position: absolute; bottom: 150px; left: 50%; transform: translateX(-50%); width: 300px; display: none; text-align: center; background: rgba(12, 24, 34, 0.42); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border-radius: 16px; padding: 10px 14px; }
+.cast-ui.show { display: block; }
+.cast-label { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #fff; margin-bottom: 6px; }
+.cast-bar { position: relative; height: 14px; border-radius: 8px; background: linear-gradient(90deg, rgba(255,255,255,0.12), rgba(255,255,255,0.3) 90%, rgba(226,103,74,0.5)); }
+.cast-sweet { position: absolute; left: 78%; width: 17%; top: 0; bottom: 0; background: rgba(79, 183, 168, 0.6); border-radius: 4px; }
+.cast-bar > i { position: absolute; top: -3px; bottom: -3px; width: 5px; margin-left: -2.5px; border-radius: 3px; background: #fff; box-shadow: 0 0 8px #fff; }
+.cast-ui.good .cast-sweet { background: rgba(79, 220, 190, 0.9); }
+.cast-hint { font-size: 11px; color: rgba(255,255,255,0.8); margin-top: 6px; font-weight: 600; }
+.fish-status { position: absolute; bottom: 210px; left: 50%; transform: translateX(-50%); font-family: var(--font-display); font-weight: 600; font-size: 18px; color: #fff; text-shadow: 0 2px 10px rgba(0,0,0,0.6); opacity: 0; transition: opacity 0.2s; pointer-events: none; }
+.fish-status.show { opacity: 1; }
 
 /* ── тости ── */
 /* тости — під компасом, щоб не налазили на нього */
