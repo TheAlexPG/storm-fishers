@@ -10,7 +10,8 @@ import { wrapAngle } from './math';
 
 export interface WaveDef {
   dir: [number, number]; // напрямок (2D, нормалізований)
-  amp: number;           // амплітуда (м)
+  amp: number;           // одинична амплітуда (м); реальна = amp × gain(локальна сила)
+  swell: boolean;        // довгий штормовий вал (росте лише в шторм)
   len: number;           // довжина хвилі (м)
   q: number;             // крутість (steepness) 0..~0.2
 }
@@ -39,7 +40,11 @@ function waveLod(len: number, step: number): number {
 // Параметри 5 хвиль: [кут від вітру, базова амплітуда, довжина, крутість]
 // 9 хвиль: довгий брижовий вал + дедалі коротші під різними кутами — профіль
 // не «лоуполі», а з дрібнішими горбами на великих
-const WAVE_TABLE: Array<[number, number, number, number]> = [
+// + 2 довгі штормові вали (120 і 175 м, період 9–11 с): у шторм ростуть саме
+// вони — великі хвилі довгі й повільні, як у справжньому морі, а не «прискорені»
+const WAVE_TABLE: Array<[number, number, number, number, boolean?]> = [
+  [0.15, 1.0, 120, 0.05, true],
+  [-0.35, 0.8, 175, 0.04, true],
   [0.0, 1.0, 58, 0.09],
   [0.45, 0.62, 33, 0.1],
   [-0.6, 0.42, 21, 0.11],
@@ -58,7 +63,20 @@ export const WAVE_COUNT = WAVE_TABLE.length;
  * (7 м від підошви до гребеня). Дзеркало gain() у шейдері.
  */
 export function waveGain(s: number): number {
-  return 0.15 + 0.85 * s + 0.6 * s * s;
+  return 0.15 + 0.85 * s + 0.15 * s * s;
+}
+/** штормовий вал: з'являється від «вітру» й росте до ~3 м амплітуди в 11 балів */
+export function swellGain(s: number): number {
+  const x = Math.max(0, s - 0.35);
+  return 1.8 * Math.pow(x, 1.6);
+}
+/** у шторм гребені гострішають (більше горизонтального зсуву Герстнера) */
+function stormChop(s: number): number {
+  const t = Math.min(1, Math.max(0, (s - 0.6) / 0.8));
+  return 1 + 0.8 * t * t * (3 - 2 * t);
+}
+function gainOf(w: WaveDef, s: number): number {
+  return w.swell ? swellGain(s) : waveGain(s);
 }
 /** дзеркало offshore()/seaFactor() з weather.ts — локальне посилення у відкритому морі */
 function seaMul(x: number, z: number): number {
@@ -72,12 +90,14 @@ export function updateWaveSet(defs: WaveDef[], intensity: number, windDir: numbe
   const s = intensity;
   for (let i = 0; i < WAVE_COUNT; i++) {
     const w = defs[i];
-    const [off, baseAmp, len, q] = WAVE_TABLE[i];
+    const [off, baseAmp, len, q, swell] = WAVE_TABLE[i];
     const a = windDir + off;
     w.dir[0] = Math.sin(a);
     w.dir[1] = -Math.cos(a);
-    // підлог 0.15: навіть у тиші море дихає легким брижовим валом
-    w.amp = baseAmp * waveGain(s);
+    // одинична амплітуда; сила погоди — у точці (gainOf), бо у відкритому морі вона більша
+    w.amp = baseAmp;
+    w.swell = !!swell;
+    void s;
     w.len = len;
     w.q = q;
   }
@@ -86,7 +106,7 @@ export function updateWaveSet(defs: WaveDef[], intensity: number, windDir: numbe
 export function waveSet(intensity: number, windDir = 0): WaveDef[] {
   // intensity ~0 (тиша) .. 1+ (шторм).
   // Конвенція: напрямок кута a → (sin a, −cos a); a=0 — хвиля іде на −Z («північ»).
-  const defs: WaveDef[] = Array.from({ length: WAVE_COUNT }, () => ({ dir: norm2(0, 0), amp: 0, len: 1, q: 0 }));
+  const defs: WaveDef[] = Array.from({ length: WAVE_COUNT }, () => ({ dir: norm2(0, 0), amp: 0, len: 1, q: 0, swell: false }));
   updateWaveSet(defs, intensity, windDir);
   return defs;
 }
@@ -100,7 +120,7 @@ function norm2(x: number, y: number): [number, number] {
 // Герстнер зсуває вершини по горизонталі, тож шукаємо базову точку p,
 // що після зсуву потрапляє в (x, z) (дві ітерації вистачає), і беремо її висоту.
 // lodStep(x, z) — крок сітки там (для «як намальовано»), null — усі хвилі.
-function surfaceHeight(x: number, z: number, t: number, waves: WaveDef[], lodStep: number | null, damp = 1): number {
+function surfaceHeight(x: number, z: number, t: number, waves: WaveDef[], lodStep: number | null, damp = 1, li = 0.5): number {
   let px = x, pz = z;
   for (let it = 0; it < 2; it++) {
     let dx = 0, dz = 0;
@@ -110,7 +130,7 @@ function surfaceHeight(x: number, z: number, t: number, waves: WaveDef[], lodSte
       if (lod <= 0) continue;
       const k = (Math.PI * 2) / w.len;
       const ph = k * (w.dir[0] * px + w.dir[1] * pz) - Math.sqrt(G * k) * t;
-      const hx = w.q * CHOP * w.amp * lod * damp * Math.cos(ph);
+      const hx = w.q * CHOP * (w.swell ? 1 : stormChop(li)) * w.amp * gainOf(w, li) * lod * damp * Math.cos(ph);
       dx += hx * w.dir[0];
       dz += hx * w.dir[1];
     }
@@ -123,24 +143,24 @@ function surfaceHeight(x: number, z: number, t: number, waves: WaveDef[], lodSte
     const lod = lodStep == null ? 1 : waveLod(w.len, lodStep);
     if (lod <= 0) continue;
     const k = (Math.PI * 2) / w.len;
-    h += w.amp * lod * damp * Math.sin(k * (w.dir[0] * px + w.dir[1] * pz) - Math.sqrt(G * k) * t);
+    h += w.amp * gainOf(w, li) * lod * damp * Math.sin(k * (w.dir[0] * px + w.dir[1] * pz) - Math.sqrt(G * k) * t);
   }
   return h;
 }
 
-export function waveHeight(x: number, z: number, t: number, waves: WaveDef[]): number {
-  return surfaceHeight(x, z, t, waves, null);
+export function waveHeight(x: number, z: number, t: number, waves: WaveDef[], li = 0.5): number {
+  return surfaceHeight(x, z, t, waves, null, 1, li);
 }
 
 // Аналітична нормаль (приблизна, достатня для плавучості).
-export function waveNormal(x: number, z: number, t: number, waves: WaveDef[], out: THREE.Vector3): THREE.Vector3 {
+export function waveNormal(x: number, z: number, t: number, waves: WaveDef[], out: THREE.Vector3, li = 0.5): THREE.Vector3 {
   let dx = 0, dz = 0;
   for (let i = 0; i < waves.length; i++) {
     const w = waves[i];
     const k = (Math.PI * 2) / w.len;
     const omega = Math.sqrt(G * k);
     const phase = k * (w.dir[0] * x + w.dir[1] * z) - omega * t;
-    const c = w.amp * k * Math.cos(phase);
+    const c = w.amp * gainOf(w, li) * k * Math.cos(phase);
     dx += c * w.dir[0];
     dz += c * w.dir[1];
   }
@@ -156,6 +176,7 @@ uniform float uWaveK[NW];
 uniform float uWaveOmega[NW];
 uniform float uWaveQ[NW];
 uniform float uWaveLen[NW];
+uniform float uWaveSwell[NW];
 uniform sampler2D uShore;
 uniform vec4 uShoreRect;
 uniform float uIntensity;
@@ -164,7 +185,8 @@ varying vec2 vBase;
 varying float vCrest;
 varying float vLocalI;
 
-float gain(float s) { return 0.15 + 0.85 * s + 0.6 * s * s; }
+float gain(float s) { return 0.15 + 0.85 * s + 0.15 * s * s; }
+float swellGain(float s) { return 1.8 * pow(max(0.0, s - 0.35), 1.6); }
 float seaMul(vec2 p) {
   float t = clamp((length(p) - 350.0) / 1650.0, 0.0, 1.0);
   return 0.7 + 0.75 * t * t * (3.0 - 2.0 * t);
@@ -187,18 +209,19 @@ void main() {
   // відкрите море: погода сильніша — хвилі вищі (набір хвиль рахується для загальної сили)
   float li = uIntensity * seaMul(p);
   vLocalI = li;
-  damp *= gain(li) / gain(uIntensity);
+  float gChop = gain(li), gSwell = swellGain(li);
   for (int i = 0; i < NW; i++) {
     // хвиля, коротша за 3 кроки сітки, не малюється геометрією (лише нормалями)
     float lod = clamp((uWaveLen[i] / step - 3.0) / 3.0, 0.0, 1.0);
     vec2 D = uWaveDir[i];
-    float A = uWaveAmp[i] * lod * damp;
+    float A = uWaveAmp[i] * (uWaveSwell[i] > 0.5 ? gSwell : gChop) * lod * damp;
     float ph = uWaveK[i] * dot(D, p) - uWaveOmega[i] * uTime;
     float c = cos(ph), s = sin(ph);
-    float hx = uWaveQ[i] * ${CHOP.toFixed(1)} * A * c;
+    float hx = uWaveQ[i] * ${CHOP.toFixed(1)} * (uWaveSwell[i] > 0.5 ? 1.0 : 1.0 + 0.8 * smoothstep(0.6, 1.4, li)) * A * c;
     disp += vec3(hx * D.x, A * s, hx * D.y);
-    hn += uWaveAmp[i] * damp * s;
-    ampSum += uWaveAmp[i];
+    float Af = uWaveAmp[i] * (uWaveSwell[i] > 0.5 ? gSwell : gChop) * damp;
+    hn += Af * s;
+    ampSum += Af;
   }
   // гребінь: наскільки точка близька до максимуму суми хвиль (0..1)
   vCrest = hn / max(ampSum, 1e-3);
@@ -225,6 +248,7 @@ uniform float uWaveK[NW];
 uniform float uWaveOmega[NW];
 uniform float uWaveQ[NW];
 uniform float uWaveLen[NW];
+uniform float uWaveSwell[NW];
 uniform vec3  uFogColor;
 uniform float uFogDensity;
 uniform float uTime;
@@ -249,6 +273,9 @@ varying vec3 vWorldPos;
 varying vec2 vBase;
 varying float vCrest;
 varying float vLocalI;
+
+float chopGainF(float s) { return 0.15 + 0.85 * s + 0.15 * s * s; }
+float swellGainF(float s) { return 1.8 * pow(max(0.0, s - 0.35), 1.6); }
 
 float viewDist(float d) {
   float z = d * 2.0 - 1.0;
@@ -335,7 +362,7 @@ void main() {
     float w = clamp(uWaveLen[i] / (fp * 8.0) - 1.0, 0.0, 1.0);
     vec2 D = uWaveDir[i];
     float ph = uWaveK[i] * dot(D, vBase) - uWaveOmega[i] * uTime;
-    float sl = uWaveAmp[i] * uWaveK[i];
+    float sl = uWaveAmp[i] * (uWaveSwell[i] > 0.5 ? swellGainF(vLocalI) : chopGainF(vLocalI)) * uWaveK[i];
     slope += D * (sl * cos(ph) * w);
     kept += sl * sl * w;
     total += sl * sl;
@@ -356,17 +383,21 @@ void main() {
   kept += 0.02 * ripA * ripA * (1.0 - smoothstep(0.03, 0.4, fp));
   vec3 N = normalize(vec3(-slope.x, 1.0, -slope.y));
   // загублені (відфільтровані) нахили → шорсткість: блиск ширшає, а не мерехтить
-  float rough = clamp(sqrt(max(total - kept, 0.0)) * 3.0, 0.0, 1.0);
+  // шторм: вода матова (дощ і брижі на брижах) — без «желейного» глянцю
+  float stormF = smoothstep(0.45, 1.2, vLocalI);
+  float rough = clamp(sqrt(max(total - kept, 0.0)) * 3.0 + stormF * 0.7, 0.0, 1.0);
   if (dot(N, V) < 0.0) N = -N;
 
   float NdV = max(dot(N, V), 0.0);
   // Френель (Шлік, вода F0 = 0.02)
-  float fres = 0.02 + 0.98 * pow(1.0 - NdV, 5.0);
+  float fres = (0.02 + 0.98 * pow(1.0 - NdV, 5.0)) * (1.0 - 0.45 * stormF);
 
   // відбите небо: градієнт горизонт → зеніт за напрямком відбиття
   vec3 R = reflect(-V, N);
   float ry = clamp(R.y, 0.0, 1.0);
   vec3 refl = mix(uSkyColor, uZenithColor, pow(ry, 0.55));
+  // шорстка вода відбиває небо розмито (без шовкових смуг)
+  refl = mix(refl, mix(uSkyColor, uZenithColor, 0.45), rough * 0.75);
 
   // тіло води: глибока синява, на гребенях і проти сонця — бірюзове світіння
   vec3 L = normalize(uSunDir);
@@ -375,7 +406,7 @@ void main() {
   vec3 body = mix(uDeepColor, uShallowColor, 0.28) * sunI;
   float thin = smoothstep(-0.2, 0.9, vCrest);                       // тонкий гребінь просвічує
   float back = pow(max(dot(V, -L), 0.0), 4.0) * 0.7 + 0.3;          // проти сонця — сильніше
-  body += uShallowColor * thin * back * 0.55 * uSunStrength;
+  body += uShallowColor * thin * back * 0.55 * uSunStrength * (1.0 - 0.75 * stormF);
   body += uShallowColor * 0.18 * (1.0 - NdV) * sunI;                // збоку вода світліша
   body = mix(body, uSkyColor * 0.55, 0.2); // вода завжди трохи бере колір неба (захід, ніч)
 
@@ -436,7 +467,7 @@ void main() {
   // барашки: найвищі гребені, лише коли дме; рвана піна, витягнута за вітром
   float capOn = smoothstep(0.22, 0.75, vLocalI);
   if (capOn > 0.0) {
-    float cap = smoothstep(0.7 - 0.2 * capOn, 1.0, vCrest);
+    float cap = smoothstep(0.7 - 0.2 * capOn - 0.3 * stormF, 1.0 - 0.15 * stormF, vCrest);
     if (cap > 0.0) {
       vec2 wd = normalize(uWindDir + 1e-4);
       vec2 q = vec2(dot(vBase, wd), dot(vBase, vec2(-wd.y, wd.x)));
@@ -449,6 +480,19 @@ void main() {
       foam *= 1.0 - 0.6 * smoothstep(0.05, 0.25, fp); // вдалині (великий піксель) — м'якше, без мерехтіння
       vec3 fcol = vec3(0.93, 0.96, 0.98) * clamp(0.12 + 0.88 * uSunStrength, 0.0, 1.0) + uSkyColor * 0.12;
       col = mix(col, fcol, foam * 0.85);
+    }
+    // від 8 балів: довгі смуги піни вздовж вітру й плями залишкової піни
+    if (stormF > 0.0) {
+      vec2 wd2 = normalize(uWindDir + 1e-4);
+      vec2 q2 = vec2(dot(vBase, wd2), dot(vBase, vec2(-wd2.y, wd2.x)));
+      float st = fbm(q2 * vec2(0.035, 0.55) + vec2(-uTime * 0.25, 0.0));
+      float streak = smoothstep(0.6, 0.78, st) * (0.6 + 0.4 * fbm(q2 * vec2(0.3, 1.2)));
+      float patchN = fbm(vBase * 0.09 + vec2(uTime * 0.03, 0.0));
+      float patches = smoothstep(0.58, 0.8, patchN) * fbm(vBase * 0.9);
+      float sf = clamp(streak * 0.75 + patches * 0.55, 0.0, 1.0) * stormF;
+      sf *= 1.0 - 0.5 * smoothstep(0.08, 0.4, fp);
+      vec3 fc2 = vec3(0.86, 0.9, 0.92) * clamp(0.12 + 0.88 * uSunStrength, 0.0, 1.0) + uSkyColor * 0.12;
+      col = mix(col, fc2, sf * 0.7);
     }
   }
 
@@ -629,6 +673,7 @@ export class Ocean {
         uWaveOmega: { value: omegas },
         uWaveQ: { value: qs },
         uWaveLen: { value: lens },
+        uWaveSwell: { value: init.map((w) => (w.swell ? 1 : 0)) },
         uZenithColor: { value: new THREE.Color(0x4a94d4) },
         uIntensity: { value: 0.3 },
         uWindDir: { value: new THREE.Vector2(0, -1) },
@@ -696,10 +741,9 @@ export class Ocean {
 
   private shore: { data: Uint8Array; nx: number; nz: number; x0: number; z0: number; w: number; h: number } | null = null;
 
-  /** сумарний множник амплітуди в точці: мілина × відкрите море (дзеркало шейдера) */
-  damp(x: number, z: number): number {
-    const li = this.intensity * seaMul(x, z);
-    return this.shoreDamp(x, z) * (waveGain(li) / waveGain(this.intensity));
+  /** локальна сила погоди в точці (відкрите море — сильніша; дзеркало шейдера) */
+  localI(x: number, z: number): number {
+    return this.intensity * seaMul(x, z);
   }
 
   /** множник амплітуди хвиль на мілині (дзеркало вершинного шейдера; білінійно як LinearFilter) */
@@ -831,15 +875,15 @@ export class Ocean {
    */
   renderedHeightAt(x: number, z: number, t: number): number {
     const r = Math.hypot(x - this.center.x, z - this.center.y);
-    return surfaceHeight(x, z, t, this.waves, gridStep(r), this.damp(x, z));
+    return surfaceHeight(x, z, t, this.waves, gridStep(r), this.shoreDamp(x, z), this.localI(x, z));
   }
 
   heightAt(x: number, z: number, t: number): number {
-    return surfaceHeight(x, z, t, this.waves, null, this.damp(x, z));
+    return surfaceHeight(x, z, t, this.waves, null, this.shoreDamp(x, z), this.localI(x, z));
   }
   normalAt(x: number, z: number, t: number, out: THREE.Vector3): THREE.Vector3 {
-    waveNormal(x, z, t, this.waves, out);
-    const d = this.damp(x, z);
+    waveNormal(x, z, t, this.waves, out, this.localI(x, z));
+    const d = this.shoreDamp(x, z);
     if (d !== 1) out.set(out.x * d, out.y, out.z * d).normalize();
     return out;
   }

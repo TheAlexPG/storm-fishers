@@ -62,7 +62,7 @@ export class Stations {
           this.stop();
           return { ok: true };
         }
-        if (this.boat.deckWater < 2) return { ok: false, msg: 'Палуба суха' };
+        if (this.boat.deckWater < 2 && this.boat.bilge < 1) return { ok: false, msg: 'Палуба й трюм сухі' };
         this.active = {
           id: 'pump',
           label: 'Помпа працює…',
@@ -71,7 +71,7 @@ export class Stations {
           energyRate: 1.6,
           tick: (dt) => {
             this.boat.dryDeck(dt);
-            if (this.boat.deckWater <= 0.5 || this.game.energy < 3) this.stop();
+            if ((this.boat.deckWater <= 0.5 && this.boat.bilge <= 0.5) || this.game.energy < 3) this.stop();
           },
         };
         return { ok: true };

@@ -38,6 +38,8 @@ export class DeckFish {
   /** риба в руках: група за камерою (ставить main) */
   readonly carryGroup = new THREE.Group();
   private box = new THREE.Group();
+  private lid = new THREE.Group();
+  private lidA = 0;
   private boxFish: THREE.Group[] = [];
   private boxShown = '';
   onWashed: ((f: FishItem) => void) | null = null;
@@ -61,6 +63,16 @@ export class DeckFish {
     }
     for (const s of [-1, 1]) add(0.03, 0.04, 0.16, (s * (W / 2 + 0.03)), H - 0.05, 0, new THREE.MeshStandardMaterial({ color: 0x3a2a1c, roughness: 0.9 }));
     add(W - 0.04, 0.05, D - 0.04, 0, 0.06, 0, new THREE.MeshStandardMaterial({ color: 0xdff0f4, roughness: 0.3, metalness: 0.05 }));
+    // кришка люка на петлях (задня крайка)
+    this.lid.position.set(0, H, -D / 2 - 0.01);
+    const lidM = new THREE.Mesh(new THREE.BoxGeometry(W + 0.06, 0.04, D + 0.04), new THREE.MeshStandardMaterial({ color: 0x6e4a2e, roughness: 0.8 }));
+    lidM.position.set(0, 0.02, D / 2 + 0.01);
+    lidM.castShadow = true;
+    this.lid.add(lidM);
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.01, 6, 12, Math.PI), new THREE.MeshStandardMaterial({ color: 0xc9ced3, roughness: 0.25, metalness: 0.9 }));
+    handle.position.set(0, 0.04, D + 0.01);
+    this.lid.add(handle);
+    this.box.add(this.lid);
     this.box.position.set(FISH_BOX.x, DECK_Y, FISH_BOX.z);
     this.box.rotation.y = 0.15;
     boat.group.add(this.box);
@@ -146,7 +158,10 @@ export class DeckFish {
   }
 
   /** dtHours — години гри (псування на палубі) */
-  update(dt: number, t: number, dtHours: number, deckWater: number, hold: FishItem[]) {
+  update(dt: number, t: number, dtHours: number, deckWater: number, hold: FishItem[], hatchOpen = false) {
+    // кришка люка відкривається/закривається
+    this.lidA += ((hatchOpen ? -1.9 : 0) - this.lidA) * (1 - Math.exp(-dt * 6));
+    this.lid.rotation.x = this.lidA;
     for (let i = this.loose.length - 1; i >= 0; i--) {
       const l = this.loose[i];
       if (l.delay > 0) {

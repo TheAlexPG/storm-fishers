@@ -107,6 +107,7 @@ class Game {
   private _v2 = new THREE.Vector3();
   private _v3 = new THREE.Vector3();
   private _v4 = new THREE.Vector3();
+  private hatchWarnT = 0;
   private _qHand = new THREE.Quaternion();
   private _eHand = new THREE.Euler();
   private reflHorizon = new THREE.Color();
@@ -207,7 +208,11 @@ class Game {
     this.deckFish.onWashed = (f) => this.hud.toast(`🌊 Хвиля змила за борт: ${this.game.speciesName(f.speciesId)}! Клади рибу в ящик одразу.`, 'bad', 4000);
     this.player.stationText = (id) =>
       id === 'fishbox'
-        ? this.deckFish.carried ? `Покласти в ящик: ${this.game.speciesName(this.deckFish.carried.fish.speciesId).toLowerCase()} (${this.game.hold.length}/${this.game.holdCap})` : `Рибний ящик (${this.game.hold.length}/${this.game.holdCap})`
+        ? !this.boat.hatchOpen
+          ? `Відкрити люк трюму (${this.game.hold.length}/${this.game.holdCap})${this.deckFish.carried ? ' й покласти рибу' : ''}`
+          : this.deckFish.carried
+            ? `Покласти в трюм: ${this.game.speciesName(this.deckFish.carried.fish.speciesId).toLowerCase()} (${this.game.hold.length}/${this.game.holdCap})`
+            : 'Закрити люк трюму'
         : this.fishing.stationLabel(id);
 
     this.coop = new Coop(this.scene, {
@@ -466,6 +471,9 @@ class Game {
       case 'hullFull':
         g.hull = g.maxHull;
         this.hud.toast(`🔧 ${nick}: ремонт корпусу оплачено`, 'good');
+        break;
+      case 'hatch':
+        this.boat.hatchOpen = act.v === 1;
         break;
       case 'upgrade': {
         const id = act.id as keyof typeof g.upgrades;
@@ -944,7 +952,15 @@ class Game {
       }
     }
     // риба на палубі: б'ється, псується, хвиля може змити
-    this.deckFish.update(dt, t, this.time.gameHourDelta(dt), this.boat.deckWater, g.hold);
+    this.deckFish.update(dt, t, this.time.gameHourDelta(dt), this.boat.deckWater, g.hold, this.boat.hatchOpen);
+    // вода тече у відкритий люк — гучне попередження
+    if (this.boat.hatchOpen && this.boat.deckWater > 8) {
+      this.hatchWarnT -= dt;
+      if (this.hatchWarnT <= 0) {
+        this.hatchWarnT = 6;
+        this.hud.toast(`🌊 Вода заливає відкритий трюм (${Math.round(this.boat.bilge)}%)! Закрий люк на баку й відкачай помпою!`, 'bad', 4500);
+      }
+    }
 
     // свіжість
     g.decayFreshness(this.time.gameHourDelta(dt));
@@ -1134,9 +1150,19 @@ class Game {
     if (!id) return; // climb — оброблено
 
     if (id === 'st:fishbox') {
+      // люк трюму: закритий — відкрити; відкритий і риба в руках — покласти; інакше — закрити
+      if (!this.boat.hatchOpen) {
+        this.boat.hatchOpen = true;
+        if (this.coop.isClient) this.coop.sendAction({ a: 'hatch', v: 1 });
+        this.audio.thump(0.4);
+        if (!this.deckFish.carried) this.hud.toast('Люк трюму відкрито. Не забудь закрити — хвиля заллє трюм!', 'warn', 3000);
+        if (!this.deckFish.carried) return;
+      }
       const f = this.deckFish.takeCarried();
       if (!f) {
-        this.hud.toast(`Рибний ящик: ${g.hold.length}/${g.holdCap}. Неси сюди рибу з палуби.`, 'warn', 2500);
+        this.boat.hatchOpen = false;
+        if (this.coop.isClient) this.coop.sendAction({ a: 'hatch', v: 0 });
+        this.audio.thump(0.5);
         return;
       }
       if (g.storeFish(f)) {
@@ -1403,7 +1429,12 @@ class Game {
     {
       const atSea = Math.hypot(this.boat.pos.x - MOOR.x, this.boat.pos.z - MOOR.z) > 80;
       const risk = g.insurance < 2 && (g.hold.length > 0 || this.deckFish.count > 0 || Object.values(g.upgrades).some((v) => v > g.insurance));
-      this.hud.setInsWarn(atSea && risk ? (g.insurance ? '⚠ Слабка страховка' : '⚠ Без страховки — ризик') : null);
+      const b = this.boat;
+      this.hud.setInsWarn(
+        b.bilge > 2 ? `🌊 Вода в трюмі ${Math.round(b.bilge)}%` :
+        b.hatchOpen && atSea ? '⚠ Люк трюму відкрито' :
+        atSea && risk ? (g.insurance ? '⚠ Слабка страховка' : '⚠ Без страховки — ризик') : null,
+      );
     }
     this.hud.setNight(time.daylight < 0.3);
     this.hud.update(

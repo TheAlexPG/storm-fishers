@@ -94,6 +94,10 @@ export class Boat {
   engineOn = true;
   engineLoad = 0;
   deckWater = 0;
+  /** люк трюму відкрито — вода з палуби тече всередину */
+  hatchOpen = false;
+  /** вода в трюмі 0..100 (100 — човен тоне) */
+  bilge = 0;
   sinking = false;
   sinkTimer = 0;
 
@@ -377,7 +381,7 @@ export class Boat {
     this._f.set(0, -this.mass * 9.81, 0);
     this._t.set(0, 0, 0);
 
-    const buoyEff = 1 - 0.25 * (this.deckWater / 100);
+    const buoyEff = (1 - 0.25 * (this.deckWater / 100)) * (1 - 0.45 * (this.bilge / 100));
     // плечі сил — в осях КОРПУСУ (крен навколо поздовжньої осі, тангаж — поперечної).
     // Раніше бралися світові x/z: на курсі 90° тангаж змішувався з креном,
     // на 180° крен міняв знак — човен сам розгойдувався до ±37° навіть у штиль
@@ -586,6 +590,11 @@ export class Boat {
       }
     }
 
+    // відкритий люк: вода з палуби тече в трюм; повний трюм — човен іде на дно
+    if (this.hatchOpen && this.deckWater > 8) this.bilge = Math.min(100, this.bilge + this.deckWater * 0.05 * dt);
+    if (this.hatchOpen && weather.rain > 0.4) this.bilge = Math.min(100, this.bilge + weather.rain * 0.25 * dt);
+    if (this.bilge >= 100) game.damage(12 * dt);
+
     // шторм + мокра палуба → просочення корпусу
     if (this.deckWater > 85 && weather.intensity > 0.95) {
       game.damage(1.6 * dt);
@@ -641,6 +650,7 @@ export class Boat {
       r(this.pos.x), r(this.pos.y), r(this.pos.z), r(this.heading, 1e4), r(this.pitch, 1e4), r(this.roll, 1e4),
       r(this.vel.x, 100), r(this.vel.y, 100), r(this.vel.z, 100), r(this.throttle, 100), r(this.rudder, 100),
       this.engineOn ? 1 : 0, r(this.deckWater, 10), this.sails.mode, this.sinking ? 1 : 0,
+      this.hatchOpen ? 1 : 0, r(this.bilge, 10),
     ];
   }
 
@@ -657,6 +667,10 @@ export class Boat {
     this.deckWater = b[12];
     this.sails.mode = b[13] as 0 | 1 | 2;
     this.sinking = b[14] === 1;
+    if (b.length > 16) {
+      this.hatchOpen = b[15] >= 0.5;
+      this.bilge = b[16];
+    }
   }
 
   /** сили вітрил → загальні сили/моменти кадру; анімація парусів */
@@ -772,6 +786,7 @@ export class Boat {
 
   /** осушення палуби помпою */
   dryDeck(dt: number) {
+    this.bilge = Math.max(0, this.bilge - 16 * dt);
     this.deckWater = Math.max(0, this.deckWater - 34 * dt);
   }
 
@@ -794,6 +809,8 @@ export class Boat {
     this.sinkTimer = 0;
     this.engineOn = true;
     this.deckWater = 0;
+    this.bilge = 0;
+    this.hatchOpen = false;
     this.sails.reset();
     this.syncTransform();
   }

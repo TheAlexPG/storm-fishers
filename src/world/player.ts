@@ -424,7 +424,7 @@ export class Player {
       case 'fishbox': return this.stationText?.('fishbox') ?? 'Рибний ящик';
       case 'holder0': case 'holder1': case 'holder2': return this.stationText?.(id) ?? 'Стійка для вудки';
       case 'engine': return boat.engineOn ? 'Ремонт двигуна' : 'Запустити двигун!';
-      case 'pump': return boat.deckWater > 5 ? 'Осушити палубу' : 'Помпа (палуба суха)';
+      case 'pump': return boat.bilge > 1 ? `Помпа — відкачати трюм (${Math.round(boat.bilge)}%)` : boat.deckWater > 5 ? 'Осушити палубу' : 'Помпа (сухо)';
       case 'kitchen': return 'Кухня — сварити рибу';
       case 'radio': return 'Радіо — прогноз';
       case 'bed': return 'Койка — спати';
