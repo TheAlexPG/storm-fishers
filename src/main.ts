@@ -83,6 +83,7 @@ class Game {
   private tiltFollow = 0.5;
   private _v = new THREE.Vector3();
   private _v2 = new THREE.Vector3();
+  private _fogGrey = new THREE.Color();
 
   constructor() {
     // рендер
@@ -661,7 +662,7 @@ class Game {
 
     // океан
     this.ocean.setConditions(this.weather.intensity, this.weather.windDir);
-    this.ocean.update(dt, t, this.camera.position, this.time.sunDir, this.time.skyHorizon, this.time.fogColor, this.fogDensity(), this.time.sunStrength, this.weather.flash);
+    this.ocean.update(dt, t, this.camera.position, this.time.sunDir, this.time.skyHorizon, (this.scene.fog as THREE.FogExp2).color, this.fogDensity(), this.time.sunStrength, this.weather.flash);
 
     // паливо
     // повний газ — непропорційно дорожче: економний хід і паруси окупаються
@@ -751,7 +752,7 @@ class Game {
         g.stats.tripsOut++;
         this.hud.toast('У море! Пам\'ятай про паливо і погоду.', 'warn', 4000);
       } else {
-        this.hud.toast('Порт «Шторм». Вбома на місці.', 'good', 3500);
+        this.hud.toast('Порт «Шторм». Вдома.', 'good', 3500);
         if (g.hold.some((f) => f.storm)) g.objectives.stormReturn = true;
       }
     }
@@ -933,6 +934,10 @@ class Game {
     this.hemi.intensity = (0.18 + time.daylight * 0.32) * (1 - this.weather.cloudiness * 0.3);
     this.skyEnv.update(simDt || 0.016, time.skyZenith, time.skyHorizon, time.sunDir, time.sunStrength * (1 - this.weather.cloudiness * 0.6));
     this.hemi.color.copy(time.skyHorizon);
+    // туман — у колір обрію (у шторм сіріє); раніше лишався денним і вночі
+    const fog = this.scene.fog as THREE.FogExp2;
+    fog.color.copy(time.fogColor).lerp(this._fogGrey.setRGB(0.3, 0.33, 0.38).multiplyScalar(0.35 + 0.65 * time.daylight), this.weather.cloudiness * 0.8);
+    fog.density = this.fogDensity();
 
     // порт
     this.port.setNight(1 - time.daylight);
@@ -1018,7 +1023,7 @@ class Game {
   private currentPrompt(): { text: string | null; bite: boolean } {
     // боротьба — перш за все
     if (this.fishing.state === 'fight') return { text: null, bite: false };
-    if (this.fishing.state === 'bite') return { text: 'КЛЕВНЕННЯ! Натисни E!', bite: true };
+    if (this.fishing.state === 'bite') return { text: 'Клює! Тисни E!', bite: true };
     // станція-дія активна
     if (this.stations.active) return { text: this.stations.active.label, bite: false };
     // найближча ціль

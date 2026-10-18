@@ -102,6 +102,9 @@ function makeGullTexture(): THREE.CanvasTexture {
   return tex;
 }
 
+const RAIN_BOX = 44;
+const RAIN_H = 28;
+
 export class Sky {
   group = new THREE.Group();
   private dome: THREE.Mesh;
@@ -112,13 +115,16 @@ export class Sky {
   private starsMat: THREE.PointsMaterial;
   private clouds: THREE.Sprite[] = [];
   private cloudMats: THREE.SpriteMaterial[] = [];
-  private rain: THREE.Points;
-  private rainMat: THREE.PointsMaterial;
+  /** дощ — похилі риски (LineSegments): 2 вершини на краплю */
+  private rain: THREE.LineSegments;
+  private rainMat: THREE.LineBasicMaterial;
   private rainVel: Float32Array;
+  private rainDrop: Float32Array;
   private gulls: THREE.Sprite[] = [];
   private gullState: Array<{ cx: number; cz: number; r: number; a: number; speed: number; y: number }> = [];
 
   private flash = 0;
+  private lastCam = new THREE.Vector3();
   private cloudTarget = 0.3;
 
   constructor(scene: THREE.Scene) {
@@ -191,20 +197,20 @@ export class Sky {
       this.group.add(s);
     }
 
-    // дощ
-    const rainCount = 1400;
-    const rpos = new Float32Array(rainCount * 3);
+    // дощ: риски навколо камери (локальні координати групи = відносно камери)
+    const rainCount = 1600;
+    this.rainDrop = new Float32Array(rainCount * 3);
     this.rainVel = new Float32Array(rainCount);
     for (let i = 0; i < rainCount; i++) {
-      rpos[i * 3] = (Math.random() - 0.5) * 70;
-      rpos[i * 3 + 1] = Math.random() * 34;
-      rpos[i * 3 + 2] = (Math.random() - 0.5) * 70;
-      this.rainVel[i] = 26 + Math.random() * 10;
+      this.rainDrop[i * 3] = (Math.random() - 0.5) * RAIN_BOX;
+      this.rainDrop[i * 3 + 1] = (Math.random() - 0.5) * RAIN_H;
+      this.rainDrop[i * 3 + 2] = (Math.random() - 0.5) * RAIN_BOX;
+      this.rainVel[i] = 18 + Math.random() * 8;
     }
     const rainGeo = new THREE.BufferGeometry();
-    rainGeo.setAttribute('position', new THREE.BufferAttribute(rpos, 3));
-    this.rainMat = new THREE.PointsMaterial({ color: 0xcfe2f0, size: 0.16, transparent: true, opacity: 0, depthWrite: false });
-    this.rain = new THREE.Points(rainGeo, this.rainMat);
+    rainGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(rainCount * 6), 3));
+    this.rainMat = new THREE.LineBasicMaterial({ color: 0xd6e4ee, transparent: true, opacity: 0, depthWrite: false, fog: false });
+    this.rain = new THREE.LineSegments(rainGeo, this.rainMat);
     this.rain.frustumCulled = false;
     this.rain.visible = false;
     this.group.add(this.rain);
@@ -282,19 +288,44 @@ export class Sky {
       c.material.color.setRGB(1 - t * 0.55, 1 - t * 0.55, 1 - t * 0.5);
     }
 
-    // дощ
-    const rainO = clamp(rain * 1.2, 0, 0.75);
+    // дощ: риски, нахилені вітром; камера — центр коробки (group уже в camPos)
+    const rainO = clamp(rain * 0.9, 0, 0.55);
     this.rainMat.opacity = damp(this.rainMat.opacity, rainO, 1.2, dt);
     this.rain.visible = this.rainMat.opacity > 0.01 && !indoor;
+    // зсув камери за кадр — краплі лишаються у світі, а не їдуть разом з човном
+    const mvx = camPos.x - this.lastCam.x, mvy = camPos.y - this.lastCam.y, mvz = camPos.z - this.lastCam.z;
+    this.lastCam.copy(camPos);
     if (this.rain.visible) {
-      this.rain.position.set(camPos.x, 0, camPos.z);
-      const attr = this.rain.geometry.getAttribute('position') as THREE.BufferAttribute;
-      const arr = attr.array as Float32Array;
-      for (let i = 0; i < arr.length / 3; i++) {
-        arr[i * 3 + 1] -= this.rainVel[i] * dt;
-        if (arr[i * 3 + 1] < 0) arr[i * 3 + 1] = 34;
+      const gust = 0.35 + cloudiness * 0.5;
+      const sx = Math.sin(windDir) * gust, sz = -Math.cos(windDir) * gust;
+      const d = this.rainDrop;
+      const arr = (this.rain.geometry.getAttribute('position') as THREE.BufferAttribute).array as Float32Array;
+      const big = Math.abs(mvx) + Math.abs(mvz) > RAIN_BOX * 0.5;
+      const hb = RAIN_BOX / 2, hh = RAIN_H / 2;
+      for (let i = 0; i < this.rainVel.length; i++) {
+        const v = this.rainVel[i];
+        let x = d[i * 3] + sx * v * dt - (big ? 0 : mvx);
+        let y = d[i * 3 + 1] - v * dt - mvy;
+        let z = d[i * 3 + 2] + sz * v * dt - (big ? 0 : mvz);
+        if (y < -hh) y += RAIN_H;
+        else if (y > hh) y -= RAIN_H;
+        if (x < -hb) x += RAIN_BOX;
+        else if (x > hb) x -= RAIN_BOX;
+        if (z < -hb) z += RAIN_BOX;
+        else if (z > hb) z -= RAIN_BOX;
+        d[i * 3] = x;
+        d[i * 3 + 1] = y;
+        d[i * 3 + 2] = z;
+        const len = 0.028 * v;
+        arr[i * 6] = x;
+        arr[i * 6 + 1] = y;
+        arr[i * 6 + 2] = z;
+        arr[i * 6 + 3] = x - sx * len;
+        arr[i * 6 + 4] = y + len;
+        arr[i * 6 + 5] = z - sz * len;
       }
-      attr.needsUpdate = true;
+      this.rain.geometry.getAttribute('position').needsUpdate = true;
+      this.rainMat.color.setRGB(0.75 + daylight * 0.12, 0.82 + daylight * 0.08, 0.9);
     }
 
     // чайки: коло + приховуємо вночі/штормі

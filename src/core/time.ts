@@ -7,19 +7,25 @@ import * as THREE from 'three';
 
 export const DAY_SECONDS = 600; // реальних секунд на добу
 
+// Палітра «теплої листівки»: м'який пастельний день, довга золота година,
+// фіолетово-рожеві сутінки й синя (не чорна) місячна ніч.
+const C = (x: number) => new THREE.Color(x);
 const DAY_NIGHT = [
   // [год, колір неба (горизонт), колір неба (зеніт), колір туману, сила сонця]
-  { h: 0.0, horizon: new THREE.Color(0x0a1030), zenith: new THREE.Color(0x050818), fog: new THREE.Color(0x0a1030), sun: 0.0 },
-  { h: 4.5, horizon: new THREE.Color(0x0a1030), zenith: new THREE.Color(0x050818), fog: new THREE.Color(0x0a1030), sun: 0.0 },
-  { h: 5.5, horizon: new THREE.Color(0xff9a5a), zenith: new THREE.Color(0x2a3a6a), fog: new THREE.Color(0xd98a5a), sun: 0.25 },
-  { h: 6.5, horizon: new THREE.Color(0xffc46a), zenith: new THREE.Color(0x5a8ac0), fog: new THREE.Color(0xe8b488), sun: 0.7 },
-  { h: 8.0, horizon: new THREE.Color(0xbcd8e6), zenith: new THREE.Color(0x4a90d0), fog: new THREE.Color(0xbcd8e6), sun: 1.0 },
-  { h: 12.0, horizon: new THREE.Color(0xc2dcea), zenith: new THREE.Color(0x3a86c8), fog: new THREE.Color(0xbcd8e6), sun: 1.0 },
-  { h: 16.5, horizon: new THREE.Color(0xbcd8e6), zenith: new THREE.Color(0x4a90d0), fog: new THREE.Color(0xbcd8e6), sun: 1.0 },
-  { h: 18.0, horizon: new THREE.Color(0xffa050), zenith: new THREE.Color(0x5468a8), fog: new THREE.Color(0xe89a60), sun: 0.55 },
-  { h: 19.0, horizon: new THREE.Color(0xd86a8a), zenith: new THREE.Color(0x2a2a5a), fog: new THREE.Color(0xa06a80), sun: 0.2 },
-  { h: 20.0, horizon: new THREE.Color(0x2a2a55), zenith: new THREE.Color(0x0a0a28), fog: new THREE.Color(0x2a2a55), sun: 0.0 },
-  { h: 24.0, horizon: new THREE.Color(0x0a1030), zenith: new THREE.Color(0x050818), fog: new THREE.Color(0x0a1030), sun: 0.0 },
+  { h: 0.0, horizon: C(0x1d2c52), zenith: C(0x0a1230), fog: C(0x18264a), sun: 0.0 },
+  { h: 4.3, horizon: C(0x1d2c52), zenith: C(0x0a1230), fog: C(0x18264a), sun: 0.0 },
+  { h: 5.2, horizon: C(0x8a6a9a), zenith: C(0x2a3468), fog: C(0x6a5a86), sun: 0.1 },
+  { h: 6.0, horizon: C(0xffa86e), zenith: C(0x4a6aa8), fog: C(0xe8a07a), sun: 0.35 },
+  { h: 7.0, horizon: C(0xffd29a), zenith: C(0x6a9ad0), fog: C(0xf0c8a0), sun: 0.75 },
+  { h: 8.5, horizon: C(0xd4e6ea), zenith: C(0x5a9ed8), fog: C(0xcfe0e6), sun: 1.0 },
+  { h: 12.0, horizon: C(0xd8eaee), zenith: C(0x4a94d4), fog: C(0xd0e2e8), sun: 1.0 },
+  { h: 16.0, horizon: C(0xe2e4d8), zenith: C(0x5596d0), fog: C(0xdcdcd0), sun: 1.0 },
+  { h: 17.3, horizon: C(0xffcf8a), zenith: C(0x6a8cc4), fog: C(0xf2c890), sun: 0.85 },
+  { h: 18.3, horizon: C(0xff9a5e), zenith: C(0x5a62a6), fog: C(0xe8946a), sun: 0.5 },
+  { h: 19.1, horizon: C(0xd8708e), zenith: C(0x33316a), fog: C(0xa86a86), sun: 0.15 },
+  { h: 20.0, horizon: C(0x4a3e74), zenith: C(0x141a40), fog: C(0x3a3866), sun: 0.0 },
+  { h: 21.0, horizon: C(0x1d2c52), zenith: C(0x0a1230), fog: C(0x18264a), sun: 0.0 },
+  { h: 24.0, horizon: C(0x1d2c52), zenith: C(0x0a1230), fog: C(0x18264a), sun: 0.0 },
 ];
 
 export class TimeCycle {
