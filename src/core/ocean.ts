@@ -217,6 +217,7 @@ uniform vec2  uScreen;
 uniform float uNear;
 uniform float uFar;
 uniform float uRefrOn;
+uniform float uRefrScale;
 varying vec3 vWorldPos;
 varying vec2 vBase;
 varying float vCrest;
@@ -224,6 +225,17 @@ varying float vCrest;
 float viewDist(float d) {
   float z = d * 2.0 - 1.0;
   return 2.0 * uNear * uFar / (uFar + uNear - z * (uFar - uNear));
+}
+// глибина «за водою» без пікселізації: текстура в половинній роздільності, тож на
+// краях корпусу/пірсу один її піксель накриває і предмет над водою, і дно —
+// беремо найдальшу з 4 вибірок (те, що справді під водою)
+float behindDist(vec2 uv) {
+  vec2 t = 1.0 / (uScreen * uRefrScale);
+  float d = texture2D(uRefrDepth, uv + vec2(-0.5, -0.5) * t).r;
+  d = max(d, texture2D(uRefrDepth, uv + vec2(0.5, -0.5) * t).r);
+  d = max(d, texture2D(uRefrDepth, uv + vec2(-0.5, 0.5) * t).r);
+  d = max(d, texture2D(uRefrDepth, uv + vec2(0.5, 0.5) * t).r);
+  return viewDist(d);
 }
 
 // обрис корпусу яхти (дзеркало hullHalfWidth у yachtLayout.ts)
@@ -343,14 +355,17 @@ void main() {
   if (uRefrOn > 0.5) {
     vec2 uv = gl_FragCoord.xy / uScreen;
     float wD = viewDist(gl_FragCoord.z);
-    float sD = viewDist(texture2D(uRefrDepth, uv).r);
+    float sD = behindDist(uv);
     thick = max(sD - wD, 0.0);
     vec2 off = N.xz * min(0.05, 0.9 / max(wD, 1.0)) * smoothstep(0.0, 1.5, thick);
     vec2 uv2 = clamp(uv + off, vec2(0.001), vec2(0.999));
-    float sD2 = viewDist(texture2D(uRefrDepth, uv2).r);
-    // зсув «зачепив» щось над водою — беремо без зсуву
-    if (sD2 < wD) { uv2 = uv; sD2 = sD; }
-    thick = max(sD2 - wD, 0.0);
+    // зсув «зачепив» щось над водою (корпус, пірс) — без зсуву; якщо й там
+    // предмет над водою (край силуету) — не показуємо його крізь воду взагалі
+    float above = 0.0;
+    if (viewDist(texture2D(uRefrDepth, uv2).r) < wD + 0.05) {
+      uv2 = uv;
+      if (viewDist(texture2D(uRefrDepth, uv).r) < wD + 0.05) above = 1.0;
+    }
     vec3 refr = texture2D(uRefr, uv2).rgb;
     #ifdef TONE_MAPPING
       refr = toneMapping(refr);
@@ -360,7 +375,7 @@ void main() {
     float murk = 1.0 + 1.6 * wind;
     float vis = exp(-thick * 0.17 * murk);
     vec3 tint = exp(-thick * vec3(0.38, 0.1, 0.07) * murk);   // червоне гасне першим → бірюза
-    under = mix(body, refr * tint * (0.75 + 0.25 * sunI), vis);
+    under = mix(body, refr * tint * (0.75 + 0.25 * sunI), vis * (1.0 - above));
   }
   vec3 col = mix(under, refl, fres);
 
@@ -368,6 +383,7 @@ void main() {
   if (thick < 0.4) {
     float en = fbm(vBase * 2.6 + uTime * 0.4);
     float edgeF = (1.0 - smoothstep(0.0, 0.4, thick)) * smoothstep(0.4, 0.75, en + 0.3 * (1.0 - thick / 0.4));
+    edgeF *= 1.0 - smoothstep(25.0, 60.0, dist); // вдалині обідок — у кілька пікселів, гасимо
     vec3 ec = vec3(0.93, 0.96, 0.98) * clamp(0.15 + 0.85 * uSunStrength, 0.0, 1.0) + uSkyColor * 0.1;
     col = mix(col, ec, edgeF * 0.65);
   }
@@ -575,6 +591,7 @@ export class Ocean {
         uNear: { value: 0.1 },
         uFar: { value: 1000 },
         uRefrOn: { value: 0 },
+        uRefrScale: { value: 0.5 },
         uTime: { value: 0 },
         uWaveDir: { value: dirs },
         uWaveAmp: { value: amps },
@@ -669,6 +686,9 @@ export class Ocean {
   private refrRT: THREE.WebGLRenderTarget | null = null;
   private _size = new THREE.Vector2();
   private _clear = new THREE.Color();
+  private refrScale = 0.5;
+  /** відсікання: лишаємо y ≤ 0.12 (трохи вище середнього рівня води) */
+  private clipBelow = [new THREE.Plane(new THREE.Vector3(0, -1, 0), 0.12)];
 
   /**
    * Перед головним рендером: малює лише шар UNDERWATER_LAYER (без води й неба)
@@ -676,7 +696,11 @@ export class Ocean {
    */
   renderRefraction(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
     renderer.getDrawingBufferSize(this._size);
-    const w = Math.max(1, Math.floor(this._size.x * 0.5)), h = Math.max(1, Math.floor(this._size.y * 0.5));
+    // роздільність: повна до ~1600 px завширшки, далі пропорційно менша (прохід легкий —
+    // лише підводні речі, — а половинна давала «сходинки» на краях паль і корпусу)
+    const sc = Math.min(1, 1600 / Math.max(1, this._size.x));
+    this.refrScale = sc;
+    const w = Math.max(1, Math.floor(this._size.x * sc)), h = Math.max(1, Math.floor(this._size.y * sc));
     if (!this.refrRT) {
       const depth = new THREE.DepthTexture(w, h);
       depth.type = THREE.UnsignedIntType;
@@ -692,12 +716,17 @@ export class Ocean {
     const alpha = renderer.getClearAlpha();
     camera.layers.set(UNDERWATER_LAYER);
     renderer.shadowMap.autoUpdate = false; // тіні — з головного проходу
+    // лише те, що під водою: верх пірсу й борти над водою відрізаємо — тоді на
+    // краях силуетів вода не «бачить» крізь себе сам предмет (білі облямівки)
+    const clips = renderer.clippingPlanes;
+    renderer.clippingPlanes = this.clipBelow;
     this.mesh.visible = false;
     renderer.setRenderTarget(this.refrRT);
     renderer.setClearColor(0x000000, 1);
     renderer.clear();
     renderer.render(scene, camera);
     renderer.setRenderTarget(prevRT);
+    renderer.clippingPlanes = clips;
     renderer.setClearColor(this._clear, alpha);
     this.mesh.visible = true;
     renderer.shadowMap.autoUpdate = autoShadow;
@@ -706,6 +735,7 @@ export class Ocean {
     u.uRefr.value = this.refrRT.texture;
     u.uRefrDepth.value = this.refrRT.depthTexture;
     (u.uScreen.value as THREE.Vector2).copy(this._size);
+    u.uRefrScale.value = this.refrScale;
     u.uNear.value = camera.near;
     u.uFar.value = camera.far;
     u.uRefrOn.value = 1;
