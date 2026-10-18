@@ -46,6 +46,8 @@ export class Player {
   wheeling = false;
   /** руки зайняті вудкою (закид / боротьба): A/D/Space — для вудки, не для ходьби */
   rodBusy = false;
+  /** подія стрибка (звук) */
+  onJump: (() => void) | null = null;
   /** підписи станцій вудок (залежать від того, що в руках) — задає main */
   stationText: ((id: string) => string) | null = null;
   /** у салоні (внизу або на трапі): затишок + каютні станції */
@@ -77,6 +79,9 @@ export class Player {
     }
   }
   private headBob = 0;
+  /** стрибок: висота над підлогою й вертикальна швидкість */
+  jumpH = 0;
+  private jumpV = 0;
   private railPush = 0;
   private inWaterT = 0;
   private _v = new THREE.Vector3();
@@ -112,7 +117,7 @@ export class Player {
   /** на борту: голова з поточної пози човна (викликати після boat.update) */
   syncHead(boat: Boat) {
     if (this.mode !== 'boat') return;
-    boat.localToWorld(this.localX, this.floorY + EYE, this.localZ, this.head);
+    boat.localToWorld(this.localX, this.floorY + EYE + this.jumpH, this.localZ, this.head);
     this.head.y += this.headBob;
   }
 
@@ -127,6 +132,20 @@ export class Player {
     const inF = busy ? 0 : (input.down('KeyW') ? 1 : 0) - (input.down('KeyS') ? 1 : 0);
     const inL = busy ? 0 : (input.down('KeyD') ? 1 : 0) - (input.down('KeyA') ? 1 : 0);
     const inUp = !busy && input.down('Space') ? 1 : 0;
+    // стрибок (Space) — на палубі й причалі; у салоні низька стеля — ні
+    const canJump = !busy && !this.wheeling && this.jumpH <= 0 && (this.mode === 'port' || (this.mode === 'boat' && this.level === 'deck'));
+    if (canJump && input.pressed('Space')) {
+      this.jumpV = 4.4;
+      this.onJump?.();
+    }
+    if (this.jumpH > 0 || this.jumpV > 0) {
+      this.jumpV -= 13 * dt;
+      this.jumpH = Math.max(0, this.jumpH + this.jumpV * dt);
+      if (this.jumpH <= 0) {
+        this.jumpV = 0;
+        this.onStep?.(this.mode === 'boat' ? 0 : this.wy < 1.35 ? 1 : 2, true);
+      }
+    }
     const inDown = input.down('KeyC') ? 1 : 0;
 
     let moving = false;
@@ -221,7 +240,7 @@ export class Player {
           this.fallIn(boat, nx, nz);
         }
       }
-      this.head.set(this.wx, this.wy + EYE, this.wz);
+      this.head.set(this.wx, this.wy + EYE + this.jumpH, this.wz);
       if (moving) {
         this.bobPhase += dt * (running ? 11 : 7.5);
         this.head.y += Math.sin(this.bobPhase) * 0.03;

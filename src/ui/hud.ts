@@ -142,9 +142,9 @@ export class Hud {
         <div class="dist-row"><span><kbd>Space</kbd> тягти · <kbd>A</kbd>/<kbd>D</kbd> нахил вудки</span><span class="distn">0 м</span></div>
       </div>
       <div class="controls-hint">
-        <kbd>WASD</kbd> рух · <kbd>Миша</kbd> погляд · <kbd>Shift</kbd> біг · <kbd>E</kbd> дія<br>
-        <kbd>M</kbd> карта · <kbd>Esc</kbd> меню · у штурвалі: <kbd>W/S</kbd> газ, <kbd>A/D</kbd> кермо, <kbd>V</kbd> вигляд · паруси — <kbd>E</kbd> біля щогли<br>
-        у воді: <kbd>Space</kbd> спливти, <kbd>C</kbd> пірнути · <kbd>H</kbd> сховати інтерфейс
+        <kbd>WASD</kbd> рух · <kbd>Миша</kbd> погляд · <kbd>Shift</kbd> біг · <kbd>Space</kbd> стрибок · <kbd>E</kbd> дія з тим, що світиться<br>
+        вудка в руках: <kbd>ЛКМ</kbd> закид/підсічка · <kbd>R</kbd> змотати · боротьба: <kbd>Space</kbd> тягти, <kbd>A/D</kbd> нахил<br>
+        <kbd>M</kbd> карта · <kbd>Esc</kbd> меню · штурвал: <kbd>W/S</kbd> газ, <kbd>A/D</kbd> кермо, <kbd>V</kbd> вигляд · <kbd>H</kbd> сховати інтерфейс · <kbd>F1</kbd> підказки
       </div>
       <div class="lock-hint">🖱️ Клікни по екрану, щоб захопити мишу</div>
     `;
@@ -167,6 +167,7 @@ export class Hud {
     this.elHold = root.querySelector('.hold-chip .h')!;
     this.elPrompt = root.querySelector('.prompt')!;
     this.elPromptText = root.querySelector('.prompt .ptext')!;
+    this.elPromptKey = root.querySelector('.prompt kbd')!;
     this.elAction = root.querySelector('.action-progress')!;
     this.elActionLabel = this.elAction.querySelector('.ap-label')!;
     this.elActionFill = this.elAction.querySelector('.bar > i')!;
@@ -278,6 +279,7 @@ export class Hud {
 
   private _day!: HTMLElement;
   private elPromptText!: HTMLElement;
+  private elPromptKey!: HTMLElement;
   private elLockHint!: HTMLElement;
   private lastMoney = -1;
   private lastClock = '';
@@ -297,6 +299,7 @@ export class Hud {
 
   update(game: GameState, time: TimeCycle, weather: Weather, boatPos: { x: number; z: number }, extra: {
     prompt?: string | null;
+    promptKey?: string;
     promptBite?: boolean;
     actionLabel?: string | null;
     actionProgress?: number;
@@ -367,6 +370,8 @@ export class Hud {
       this.elPrompt.classList.add('show');
       this.elPrompt.classList.toggle('bite', !!extra.promptBite);
       this.elPromptText.textContent = extra.prompt;
+      const k = extra.promptKey ?? 'E';
+      if (this.elPromptKey.textContent !== k) this.elPromptKey.textContent = k;
     } else {
       this.elPrompt.classList.remove('show', 'bite');
     }

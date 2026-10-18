@@ -393,7 +393,7 @@ export class Coop {
       const st: NetPlayer = {
         m: onBoat ? 0 : player.mode === 'port' ? 1 : 2,
         x: r(onBoat ? player.localX : player.wx),
-        y: r(onBoat ? player.floorY : player.wy),
+        y: r((onBoat ? player.floorY : player.wy) + player.jumpH),
         z: r(onBoat ? player.localZ : player.wz),
         yaw: r(player.yaw, 1000),
         pitch: r(player.pitch, 100),

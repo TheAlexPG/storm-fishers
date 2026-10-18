@@ -26,8 +26,8 @@ const TUTORIAL = [
   'Підійди до штурвала на кормі й натисни E',
   'Виведи яхту з гавані: W — газ, A/D — кермо',
   'Підніми паруси: біля щогли натисни E. Найкраще йти, коли вітер збоку',
-  'Стань на носі біля вудки й натисни E — закинь',
-  'Клює — тисни E, далі тягни рибу пробілом, але не перетягни волосінь',
+  'Візьми вудку з носової стійки (E). Тримай ЛКМ і відпусти в зеленій зоні — закид',
+  'Чекай, поки поплавок піде під воду, — клікни ЛКМ. Тягни Space у зеленій зоні, A/D — проти ривка. Рибу з палуби неси в трюм на баку',
   'Повертайся в порт і продай улов у магазині',
 ];
 
@@ -216,6 +216,7 @@ class Game {
     this.deckFish = new DeckFish(this.scene, this.boat);
     this.radio = new RadioSet(this.boat.group);
     this.deckFish.onWashed = (f) => this.hud.toast(`🌊 Хвиля змила за борт: ${this.game.speciesName(f.speciesId)}! Клади рибу в ящик одразу.`, 'bad', 4000);
+    this.player.onJump = () => this.audio.step(this.player.mode === 'boat' ? 0 : 2, true);
     this.player.stationText = (id) =>
       id === 'radio'
         ? `Радіо — крутити ручку (${RADIO_CHANNELS[this.radio.channel].name.toLowerCase()})`
@@ -852,6 +853,7 @@ class Game {
     if (this.photo && this.phase !== 'play') this.setPhoto(false);
     // H — сховати / показати інтерфейс (фото, кіно)
     if (input.pressed('KeyH') && this.phase === 'play' && !this.dialogs.isOpen) this.hud.setHidden(!this.hud.hidden);
+    if (input.pressed('F1') || input.pressed('Slash')) this.hud.flashHints(12);
     const wheelSteps = input.consumeWheel();
     if (wheelSteps && this.rig.mode === 'chase') this.rig.zoom(wheelSteps);
     if (this.photo) {
@@ -1546,6 +1548,7 @@ class Game {
       {
         prompt: prompt.text,
         promptBite: prompt.bite,
+        promptKey: prompt.key ?? 'E',
         actionLabel: this.stations.active ? this.stations.active.label : null,
         actionProgress: this.stations.progress,
         fight,
@@ -1688,14 +1691,14 @@ class Game {
     const atWheel = p.wheeling || this.phase === 'intro';
     const w = STATION_POS.wheel;
     if (p.mode !== 'boat') {
-      this.selfAvatar.state = { m: p.mode === 'port' ? 1 : 2, x: p.wx, y: p.wy, z: p.wz, yaw: p.yaw, pitch: 0, wh: 0, mv: 0 };
+      this.selfAvatar.state = { m: p.mode === 'port' ? 1 : 2, x: p.wx, y: p.wy + p.jumpH, z: p.wz, yaw: p.yaw, pitch: 0, wh: 0, mv: 0 };
       this.selfAvatar.update(this.clockDelta, this.boat, this.ocean, this.simTime);
       return;
     }
     this.selfAvatar.state = {
       m: 0,
       x: atWheel ? w.x : p.localX,
-      y: atWheel ? BOAT.deckY : p.floorY,
+      y: atWheel ? BOAT.deckY : p.floorY + p.jumpH,
       z: atWheel ? w.z : p.localZ,
       yaw: atWheel ? this.boat.heading + Math.PI : p.yaw,
       pitch: 0,
@@ -1705,10 +1708,10 @@ class Game {
     this.selfAvatar.update(this.clockDelta, this.boat, this.ocean, this.simTime);
   }
 
-  private currentPrompt(): { text: string | null; bite: boolean } {
+  private currentPrompt(): { text: string | null; bite: boolean; key?: string } {
     // боротьба — перш за все
     if (this.fishing.state === 'fight' || this.fishing.state === 'charge') return { text: null, bite: false };
-    if (this.fishing.state === 'bite') return { text: 'Клює! Клікни ЛКМ!', bite: true };
+    if (this.fishing.state === 'bite') return { text: 'Клює! Підсікай!', bite: true, key: 'ЛКМ' };
     // станція-дія активна
     if (this.stations.active) return { text: this.stations.active.label, bite: false };
     // риба на палубі / в руках
@@ -1723,7 +1726,7 @@ class Game {
       return { text: n.label, bite: false };
     }
     const fp = this.fishing.prompt();
-    if (fp) return { text: fp, bite: false };
+    if (fp) return { text: fp, bite: false, key: 'ЛКМ' };
     return { text: null, bite: false };
   }
 }
