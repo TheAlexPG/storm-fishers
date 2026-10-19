@@ -372,7 +372,8 @@ export class Dialogs {
   private shopSel: { id: UpgradeId; lvl: number } | null = null;
   private shopNote = '';
 
-  shop(game: GameState) {
+  shop(game: GameState, openTab?: 'vitrine' | 'fish' | 'service' | 'insurance') {
+    if (openTab) this.shopTab = openTab;
     this.escAllowed = true;
     // паливо: рейс у прибережну зону на моторі ≈ 40–50 ₴ — дешевше за трюм риби,
     // але вітрила все одно вигідніші (20 ₴/л робили моторні рейси збитковими)

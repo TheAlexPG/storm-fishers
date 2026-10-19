@@ -4,7 +4,9 @@ import { TimeCycle } from './core/time';
 import { offshore, seaFactor, Weather } from './core/weather';
 import { Ocean, UNDERWATER_LAYER } from './core/ocean';
 import { AudioEngine } from './core/audio';
-import { clamp, rand } from './core/math';
+import { clamp, rand, formatMoney } from './core/math';
+import type { UpgradeId } from './core/types';
+import { UPGRADE_BY_ID, MAX_LEVEL, upgradeCost } from './game/upgrades';
 import { GameState } from './game/state';
 import { Boat, BOAT, MOOR, MOOR_HEADING, STATION_POS } from './world/boat';
 import { Port } from './world/port';
@@ -42,6 +44,7 @@ import { DeckFish } from './world/deckFish';
 import { RadioSet, RADIO_CHANNELS } from './world/radioSet';
 import { CabinDoor } from './world/cabinDoor';
 import { ChartTable, CHART_CENTER } from './world/chartTable';
+import { ShopCounter, type CounterTarget } from './world/shopCounter';
 import { describeSave } from './game/saveTransfer';
 import { Highlighter } from './world/highlight';
 import { HOLDER_MOUNTS } from './world/upgradeParts';
@@ -135,6 +138,7 @@ class Game {
   private leapJump: FishJump;
   private deckFish: DeckFish;
   private radio!: RadioSet;
+  private shopCounter!: ShopCounter;
   private cabinDoor!: CabinDoor;
   private chart!: ChartTable;
   /** гравець схилився над штурманським столом */
@@ -217,6 +221,7 @@ class Game {
     this.ocean = new Ocean(this.scene);
     this.sky = new Sky(this.scene);
     this.port = new Port(this.scene);
+    this.shopCounter = new ShopCounter(this.scene, this.port.solids);
     // прибій уздовж берега бухти
     this.ocean.setShore(terrainHeight, -520, -780, 1040, 860, 2);
     this.particles = new ParticlePool(this.scene, 1100);
@@ -721,8 +726,49 @@ class Game {
         objs = near('bed', 0, Y_SOLE + 0.45, 3.2, 0.8, 2.2);
       }
     }
+    if (this.phase === 'play' && !this.dialogs.isOpen && p.mode === 'port' && p.nearest?.id.startsWith('shop:')) {
+      key = p.nearest.id + ':' + (this.game.upgrades[p.nearest.id.slice(8) as keyof typeof this.game.upgrades] ?? '');
+      const o = this.shopCounter.objectOf(p.nearest.id.slice(5) as CounterTarget);
+      objs = o ? [o] : null;
+    }
     this.hl.set(key, objs && objs.length ? objs : null);
     this.hl.update(t);
+  }
+
+  /** крамниця-прилавок: на що дивиться гравець у порту */
+  private pickCounter() {
+    const g = this.game;
+    this.shopCounter.refresh(g.upgrades, g.money);
+    const p = this.player;
+    if (p.mode !== 'port') return;
+    const t = this.shopCounter.pick(p.head, p.yaw, p.pitch);
+    if (t) p.nearest = { id: 'shop:' + t, label: this.shopCounter.label(t, g.upgrades, g.money) };
+  }
+
+  /** E біля прилавка: купити річ з полиці / каса / страховка */
+  private useCounter(t: CounterTarget) {
+    const g = this.game;
+    if (t === 'register' || t === 'insurance') {
+      this.openDialog('shop', t === 'register' ? 'fish' : 'insurance');
+      return;
+    }
+    const id = t.slice(3) as UpgradeId;
+    const u = UPGRADE_BY_ID[id];
+    if (g.upgrades[id] >= MAX_LEVEL) {
+      this.hud.toast(`${u.name}: усе вже стоїть на човні`, 'warn', 2200);
+      return;
+    }
+    const cost = upgradeCost(id, g.upgrades[id]) ?? 0;
+    if (!g.buyUpgrade(id)) {
+      this.hud.toast(`Не вистачає ${formatMoney(cost - g.money)} на «${u.parts[g.upgrades[id]].name}»`, 'warn', 2600);
+      return;
+    }
+    // гість купує для спільного човна — капітан ставить річ (як у вікні крамниці)
+    this.dialogs.onBoatPurchase?.({ upgrade: id });
+    this.syncUpgrades();
+    this.audio.catchJingle();
+    this.hud.toast(`🔧 «${u.parts[g.upgrades[id] - 1].name}» — вже на човні (−${formatMoney(cost)})`, 'good', 3200);
+    this.saveGame();
   }
 
   /** що говорить станція, на яку налаштоване радіо */
@@ -793,12 +839,12 @@ class Game {
     });
   }
 
-  private openDialog(kind: 'shop' | 'radio') {
+  private openDialog(kind: 'shop' | 'radio', tab?: 'fish' | 'insurance') {
     this.phase = 'dialog';
     this.expectUnlock = true;
     document.exitPointerLock();
     this.saveTimer = 30;
-    if (kind === 'shop') this.dialogs.shop(this.game);
+    if (kind === 'shop') this.dialogs.shop(this.game, tab ?? 'vitrine');
     else this.dialogs.radio(this.game, this.weather, this.time);
   }
 
@@ -1051,6 +1097,7 @@ class Game {
         this.boat.rudder = this.coop.myHelm[1];
       }
       this.player.update(dt, input, this.boat, this.port, this.ocean, t);
+      this.pickCounter();
       if (crewHelm) this.coop.myHelm = [this.boat.throttle, this.boat.rudder];
     } else {
       // навіть без лока тримаємо голову на місці
@@ -1428,6 +1475,10 @@ class Game {
     }
     if (id === 'st:bed' || id === 'port:house') {
       this.doSleep(id === 'port:house');
+      return;
+    }
+    if (id.startsWith('shop:')) {
+      this.useCounter(id.slice(5) as CounterTarget);
       return;
     }
     if (id === 'port:shop' || id === 'port:fuel' || id === 'port:repair') {
