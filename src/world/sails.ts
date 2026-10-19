@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { clamp, damp } from '../core/math';
 import { RIG, DECK_Y, sheerY } from './yachtLayout';
+import { sailPerf, type SailPerf } from '../game/upgrades';
+import { SPRIT } from './upgradeParts';
 
 // ─────────────────────────────────────────────────────────────
 // Вітрила: грот на гіку + стаксель на штагу (ролик-рифінг).
@@ -23,39 +25,75 @@ export function trueWindSpeed(wind01: number): number {
   return 1.5 + wind01 * 19;
 }
 
-/** поляра тяги за курсовим кутом (градуси, 0 = в ніс) */
-function driveCoef(awa: number): number {
-  if (awa < NO_GO) return 0;
-  if (awa < 50) return ((awa - NO_GO) / (50 - NO_GO)) * 0.85;
+/** поляра тяги за курсовим кутом (градуси, 0 = в ніс); noGo — мертвий кут (апгрейд парусів) */
+function driveCoef(awa: number, noGo = NO_GO): number {
+  if (awa < noGo) return 0;
+  if (awa < 50) return ((awa - noGo) / (50 - noGo)) * 0.85;
   if (awa < 100) return 0.85 + ((awa - 50) / 50) * 0.15;
   if (awa < 150) return 1.0 - ((awa - 100) / 50) * 0.15;
   return 0.85 - ((awa - 150) / 30) * 0.2;
 }
-function sideCoef(awa: number): number {
-  if (awa < NO_GO) return 0.15;
+function sideCoef(awa: number, noGo = NO_GO): number {
+  if (awa < noGo) return 0.15;
   return clamp(1.15 - (awa - 40) / 110, 0.08, 1);
 }
 
-function clothTexture(): THREE.CanvasTexture {
+/**
+ * Тканина за рівнем апгрейду парусів:
+ *  0 — старий кремовий дакрон; 1–2 — новий білий дакрон із синьою смугою по задній
+ *  шкаторині; 3–4 — ламінат (срібно-золотий, волокна по лініях навантаження);
+ *  5 — чорний карбон із червоною смугою.
+ */
+type ClothStyle = 'old' | 'dacron' | 'laminate' | 'carbon' | 'genn';
+function clothTexture(style: ClothStyle = 'old'): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = 256;
   c.height = 256;
   const ctx = c.getContext('2d')!;
-  ctx.fillStyle = '#f4f1e8';
+  const base = { old: '#f4f1e8', dacron: '#fdfdfb', laminate: '#c9bd94', carbon: '#1d1f22', genn: '#2f5fb3' }[style];
+  ctx.fillStyle = base;
   ctx.fillRect(0, 0, 256, 256);
-  // горизонтальні полотнища зі швами
+  if (style === 'genn') {
+    // синьо-жовтий генакер: верх синій, низ жовтий (низ полотна — нижня половина канви)
+    ctx.fillStyle = '#f2c12e';
+    ctx.fillRect(0, 128, 256, 128);
+  }
+  if (style === 'laminate' || style === 'carbon') {
+    // волокна віялом від кутів (лінії навантаження)
+    ctx.strokeStyle = style === 'carbon' ? 'rgba(160,165,175,0.35)' : 'rgba(70,60,40,0.35)';
+    ctx.lineWidth = 1.2;
+    for (let i = 0; i < 22; i++) {
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(256, i * 14);
+      ctx.moveTo(256, 256);
+      ctx.lineTo(i * 14, 0);
+      ctx.stroke();
+    }
+  }
+  // полотнища зі швами
   for (let i = 1; i < 8; i++) {
-    ctx.fillStyle = 'rgba(120,110,90,0.25)';
+    ctx.fillStyle = style === 'carbon' ? 'rgba(255,255,255,0.12)' : 'rgba(120,110,90,0.25)';
     ctx.fillRect(0, i * 32 - 1, 256, 2);
   }
-  // легка фактура
+  // смуга вздовж задньої шкаторини (u = 1 — правий край текстури)
+  if (style === 'dacron') {
+    ctx.fillStyle = '#24375a';
+    ctx.fillRect(240, 0, 16, 256);
+  } else if (style === 'carbon') {
+    ctx.fillStyle = '#d0342c';
+    ctx.fillRect(244, 0, 12, 256);
+  }
   for (let k = 0; k < 1800; k++) {
-    ctx.fillStyle = `rgba(140,130,110,${Math.random() * 0.05})`;
+    ctx.fillStyle = style === 'carbon' ? `rgba(255,255,255,${Math.random() * 0.04})` : `rgba(140,130,110,${Math.random() * 0.05})`;
     ctx.fillRect(Math.random() * 256, Math.random() * 256, 2, 1);
   }
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
+}
+function styleFor(l: number): ClothStyle {
+  return l >= 5 ? 'carbon' : l >= 3 ? 'laminate' : l >= 1 ? 'dacron' : 'old';
 }
 
 /** сітка вітрила NU×NV (u — по хорді, v — по висоті) з UV та індексами */
@@ -100,6 +138,19 @@ export class SailRig {
   /** кооп-клієнт: режим приходить від капітана — без розривів/попереджень тут */
   passive = false;
 
+  /** рівень апгрейду «Паруси» 0..5 */
+  level = 0;
+  private perf: SailPerf = sailPerf(0);
+  private cloth!: THREE.MeshStandardMaterial;
+  private boomMat!: THREE.MeshStandardMaterial;
+  private styleShown: ClothStyle | null = null;
+  /** генакер: 0..1 — наскільки розкритий (сам — на повних курсах) */
+  gennaker = 0;
+  private genn!: THREE.Mesh;
+  private gennRoll!: THREE.Mesh;
+  private gennTack = new THREE.Vector3(0, sheerY(4.6) + 0.12, SPRIT.z1 - 0.04);
+  private gennHead = new THREE.Vector3(0, RIG.top - 0.7, RIG.mastZ + 0.08);
+
   private boomAngle = 0;
   private side = 1; // +1 — гік на +X
   private boomPivot = new THREE.Group();
@@ -120,7 +171,9 @@ export class SailRig {
 
   constructor(parent: THREE.Group, furledJib: THREE.Object3D[]) {
     const cloth = new THREE.MeshStandardMaterial({ color: 0xffffff, map: clothTexture(), roughness: 0.92, side: THREE.DoubleSide });
+    this.cloth = cloth;
     const alu = new THREE.MeshStandardMaterial({ color: 0xd7dade, roughness: 0.35, metalness: 0.7 });
+    this.boomMat = alu;
     const navy = new THREE.MeshStandardMaterial({ color: 0x24375a, roughness: 0.9 });
 
     // гік + лейзі-бег на шарнірі біля щогли
@@ -178,7 +231,47 @@ export class SailRig {
     this.windex.add(vane, tip);
     parent.add(this.windex);
 
+    // генакер (з рівня 4): вільний парус від бушприта до топу, видно на повних курсах
+    this.genn = new THREE.Mesh(sailGrid(this.NU, this.NV), new THREE.MeshStandardMaterial({ color: 0xffffff, map: clothTexture('genn'), roughness: 0.85, side: THREE.DoubleSide }));
+    this.genn.castShadow = true;
+    this.genn.frustumCulled = false;
+    this.genn.visible = false;
+    parent.add(this.genn);
+    // згорнутий генакер — «ковбаса» від бушприта до топу
+    {
+      const a = this.gennTack, b = this.gennHead;
+      const len = a.distanceTo(b);
+      const roll = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, len * 0.92, 8), new THREE.MeshStandardMaterial({ color: 0x2f5fb3, roughness: 0.85 }));
+      roll.position.copy(a).lerp(b, 0.5);
+      roll.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+      roll.visible = false;
+      roll.castShadow = true;
+      parent.add(roll);
+      this.gennRoll = roll;
+    }
+
     this.updateMeshes(0, 0);
+  }
+
+  /** рівень апгрейду «Паруси»: тканина, гік, генакер і фізика */
+  setLevel(l: number) {
+    if (l === this.level && this.styleShown) return;
+    this.level = l;
+    this.perf = sailPerf(l);
+    const st = styleFor(l);
+    if (st !== this.styleShown) {
+      this.styleShown = st;
+      this.cloth.map?.dispose();
+      this.cloth.map = clothTexture(st);
+      this.cloth.roughness = st === 'carbon' ? 0.55 : st === 'laminate' ? 0.6 : 0.92;
+      this.cloth.metalness = st === 'laminate' ? 0.15 : 0;
+      this.cloth.needsUpdate = true;
+    }
+    // карбоновий гік у гоночному пакеті
+    this.boomMat.color.set(l >= 5 ? 0x1d1f22 : 0xd7dade);
+    this.boomMat.roughness = l >= 5 ? 0.3 : 0.35;
+    this.boomMat.metalness = l >= 5 ? 0.3 : 0.7;
+    if (!this.perf.genn) this.gennaker = 0;
   }
 
   /** наступний режим: спущені → повні → риф → спущені */
@@ -196,8 +289,9 @@ export class SailRig {
    * windDir — куди дме вітер (погода: вектор (sin, −cos)), wind01 — сила 0..1.
    */
   compute(dt: number, heading: number, vel: THREE.Vector3, windDir: number, wind01: number): SailForce {
+    const p = this.perf;
     const target = AREA[this.mode];
-    this.hoist = damp(this.hoist, target, 1.2, dt);
+    this.hoist = damp(this.hoist, target, p.hoist, dt);
     if (Math.abs(this.hoist - target) < 0.002) this.hoist = target;
 
     this.tws = trueWindSpeed(wind01);
@@ -213,11 +307,20 @@ export class SailRig {
     this.awa = (Math.atan2(Math.abs(lx), -lz) * 180) / Math.PI;
     // дме в +X (на лівий борт) — отже приходить з правого
     this.windFromStarboard = lx > 0;
-    this.luffing = this.hoist > 0.05 && this.awa < NO_GO;
+    this.luffing = this.hoist > 0.05 && this.awa < p.noGo;
 
     const q = this.hoist * this.aws * this.aws;
-    const drive = K_SAIL * q * driveCoef(this.awa);
-    const sideF = K_SAIL * q * sideCoef(this.awa) * Math.sign(lx || 1); // на підвітряний борт (локальний x)
+    let drive = K_SAIL * q * driveCoef(this.awa, p.noGo) * p.drive;
+    let sideF = K_SAIL * q * sideCoef(this.awa, p.noGo) * Math.sign(lx || 1); // на підвітряний борт (локальний x)
+    // генакер: сам розкривається на повних курсах при повних парусах, якщо не перевантажено
+    const gennWant = p.genn && this.mode === 2 && this.hoist > 0.9 && this.awa > 100 && this.overload < 0.7 ? 1 : 0;
+    this.gennaker = damp(this.gennaker, gennWant, gennWant ? 0.8 : 2.0, dt);
+    if (this.gennaker > 0.01) {
+      const gc = clamp((this.awa - 95) / 30, 0, 1) * (this.awa > 165 ? 0.8 : 1);
+      const gq = 0.55 * this.gennaker * this.aws * this.aws;
+      drive += K_SAIL * gq * gc;
+      sideF += K_SAIL * gq * 0.25 * Math.sign(lx || 1);
+    }
     this.drive = drive;
 
     // автотрим гіка: кут ≈ (awa − 20°)/2 на підвітряний борт
@@ -231,7 +334,7 @@ export class SailRig {
 
     // перевантаження: шторм з повними парусами → розрив
     // (рахуємо й від справжнього вітру: шквали б'ють і на швидкому ходу)
-    this.overload = (this.hoist * (0.5 * this.aws * this.aws + 0.5 * this.tws * this.tws)) / OVERPOWER_Q;
+    this.overload = ((this.hoist + 0.4 * this.gennaker) * (0.5 * this.aws * this.aws + 0.5 * this.tws * this.tws)) / (OVERPOWER_Q * p.over);
     this.warnT -= dt;
     if (this.passive) return { fx: 0, fz: 0, torqueRoll: 0 };
     if (this.overload > 0.85 && this.warnT <= 0 && this.mode !== 0) {
@@ -253,7 +356,7 @@ export class SailRig {
     const fx = drive * sh + sideF * 0.35 * ch;
     const fz = drive * ch - sideF * 0.35 * sh;
     // крен: бокова сила в +X кладе човен на правий борт (roll < 0)
-    const torqueRoll = -sideF * HEEL_LEVER;
+    const torqueRoll = -sideF * HEEL_LEVER * p.heel;
     return { fx, fz, torqueRoll };
   }
 
@@ -321,6 +424,41 @@ export class SailRig {
       this.jib.geometry.computeVertexNormals();
       this.jib.geometry.computeBoundingSphere();
     }
+
+    // ── генакер ──
+    {
+      const g = this.gennaker;
+      this.gennRoll.visible = this.perf.genn && g < 0.15;
+      this.genn.visible = this.perf.genn && g > 0.03;
+      if (this.genn.visible) {
+        // шкотовий кут — далеко на підвітряний борт, біля кокпіту
+        const side = -Math.sign(this.boomAngle || 1);
+        const clew = this._c.set(side * (0.6 + 2.2 * g), DECK_Y + 1.0, 0.2 + (1 - g) * 3.5);
+        const pos = this.genn.geometry.attributes.position as THREE.BufferAttribute;
+        for (let j = 0; j <= this.NV; j++) {
+          const v = j / this.NV;
+          const luff = this._a.copy(this.gennTack).lerp(this.gennHead, v);
+          const leech = this._b.copy(clew).lerp(this.gennHead, v);
+          const chord = luff.distanceTo(leech);
+          for (let i = 0; i <= this.NU; i++) {
+            const u = (i / this.NU) * g;
+            const k = j * (this.NU + 1) + i;
+            // пузатий асиметричний парус: велике черево вперед і на підвітряний борт
+            const bell = Math.sin(Math.PI * (i / this.NU)) * Math.sin(Math.PI * Math.min(1, v * 1.15 + 0.05));
+            const wob = Math.sin(t * 6 + u * 5 + v * 4) * 0.04 * g;
+            pos.setXYZ(
+              k,
+              luff.x + (leech.x - luff.x) * u + side * bell * chord * 0.28 * g + wob,
+              luff.y + (leech.y - luff.y) * u,
+              luff.z + (leech.z - luff.z) * u + bell * chord * 0.22 * g,
+            );
+          }
+        }
+        pos.needsUpdate = true;
+        this.genn.geometry.computeVertexNormals();
+        this.genn.geometry.computeBoundingSphere();
+      }
+    }
   }
 
   /** флюгер: курс вимпельного вітру в локалі човна */
@@ -339,12 +477,13 @@ export class SailRig {
     this.hoist = 0;
     this.boomAngle = 0;
     this.stressT = 0;
+    this.gennaker = 0;
   }
 
   /** телеметрія для HUD */
   hudText(): string {
     const side = this.windFromStarboard ? 'ПрБ' : 'ЛБ';
-    const state = this.mode === 0 ? 'спущені' : this.luffing ? 'полощуть (мертвий кут)' : this.label();
+    const state = this.mode === 0 ? 'спущені' : this.luffing ? 'полощуть (мертвий кут)' : this.gennaker > 0.5 ? `${this.label()} + генакер` : this.label();
     return `⛵ ${state} · вітер ${this.tws.toFixed(0)} м/с, ${Math.round(this.awa)}° ${side}`;
   }
 }

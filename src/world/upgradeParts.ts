@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { UpgradeId } from '../core/types';
-import { HALF_LEN, DECK_Y, WATERLINE_Y, HOUSE, COCKPIT, sheerY, hullBottomY, hullHalfWidth, hullXAt } from './yachtLayout';
+import { HALF_LEN, DECK_Y, WATERLINE_Y, HOUSE, COCKPIT, RIG, sheerY, hullBottomY, hullHalfWidth, hullXAt } from './yachtLayout';
 
 // ─────────────────────────────────────────────────────────────
 // Фізичні речі апгрейдів: та сама модель стоїть на полиці крамниці
@@ -585,6 +585,71 @@ export const HOLDER_MOUNTS: Array<{ base: [number, number, number]; rod: [number
   { base: [0, DECK_Y, -4.62], rod: [0, DECK_Y + 0.26, -4.62], r: [-0.95, 0, 0], stand: [0, -4.2] },
 ];
 
+// ── паруси ──
+/** згорнутий парус у мішку/рулоні (для полиці): довжина вздовж x */
+function sailRoll(k: PartKit, cloth: number, band: number, len = 0.4): THREE.Group {
+  const g = new THREE.Group();
+  cylX(g, k.mat(cloth, 0.85), 0.07, len, 0, 0.07, 0, 18);
+  for (const x of [-len * 0.32, len * 0.32]) cylX(g, k.mat(band, 0.8), 0.074, 0.05, x, 0.07, 0, 18);
+  cylX(g, k.mat(DARK, 0.7), 0.075, 0.015, 0, 0.07, 0, 18);
+  return g;
+}
+/** самостопорна лебідка (основа y = 0) */
+function winch(k: PartKit): THREE.Group {
+  const g = new THREE.Group();
+  const chrome = k.mat(0xe4e8ec, 0.15, 0.95);
+  cyl(g, k.mat(DARK, 0.5, 0.3), 0.075, 0.085, 0.03, 0, 0.015, 0, 20);
+  cyl(g, chrome, 0.06, 0.07, 0.1, 0, 0.08, 0, 20);
+  cyl(g, k.mat(0x1c1f23, 0.6, 0.2), 0.065, 0.06, 0.035, 0, 0.145, 0, 20);
+  cyl(g, chrome, 0.03, 0.035, 0.03, 0, 0.175, 0, 14);
+  return g;
+}
+/** барабан ролика-рифінгу (вісь y) */
+function furlerDrum(k: PartKit): THREE.Group {
+  const g = new THREE.Group();
+  cyl(g, k.mat(0x2b2f35, 0.45, 0.4), 0.13, 0.13, 0.05, 0, 0.025, 0, 22);
+  cyl(g, k.mat(0xb08a3c, 0.3, 0.85), 0.1, 0.1, 0.07, 0, 0.085, 0, 22);
+  cyl(g, k.mat(0x2b2f35, 0.45, 0.4), 0.13, 0.13, 0.03, 0, 0.135, 0, 22);
+  // лінь ролика, що йде в кокпіт
+  box(g, k.mat(0xd0342c, 0.7), 0.012, 0.012, 0.3, 0.1, 0.06, -0.15);
+  return g;
+}
+/** бушприт: карбонова труба вперед від форштевня (основа — кріплення на палубі) */
+export const SPRIT = { z0: 4.15, z1: 5.45 };
+function bowsprit(k: PartKit, shelf: boolean): THREE.Group {
+  const g = new THREE.Group();
+  const carbon = k.mat(0x1d1f22, 0.35, 0.3);
+  const len = SPRIT.z1 - SPRIT.z0;
+  cylZ(g, carbon, 0.045, len, 0, 0.09, len / 2, 12);
+  box(g, k.mat(STEEL, 0.25, 0.9), 0.16, 0.08, 0.22, 0, 0.04, 0.1);
+  cylZ(g, k.mat(STEEL, 0.25, 0.9), 0.055, 0.05, 0, 0.09, len - 0.02, 12);
+  if (shelf) {
+    // на полиці: разом зі згорнутим синьо-жовтим генакером
+    const roll = sailRoll(k, 0x2f5fb3, 0xf2c12e, 0.5);
+    roll.rotation.y = Math.PI / 2;
+    roll.position.set(0.16, 0, len / 2);
+    g.add(roll);
+  }
+  return g;
+}
+/** вітромір на топі щогли (чашки на виносі) */
+function windVane(k: PartKit): THREE.Group {
+  const g = new THREE.Group();
+  const carbon = k.mat(0x1d1f22, 0.35, 0.3);
+  cylZ(g, carbon, 0.012, 0.45, 0, 0.02, 0.22, 8);
+  cyl(g, carbon, 0.008, 0.008, 0.12, 0, 0.08, 0.42, 6);
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2;
+    const arm = box(g, carbon, 0.1, 0.006, 0.006, Math.cos(a) * 0.05, 0.14, 0.42 - Math.sin(a) * 0.05);
+    arm.rotation.y = a;
+    const cup = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 6), k.mat(0xd0342c, 0.5));
+    cup.position.set(Math.cos(a) * 0.1, 0.14, 0.42 - Math.sin(a) * 0.1);
+    g.add(cup);
+  }
+  return g;
+}
+const WINCH_Z = HOUSE.z0 + 0.28;
+
 export const PART_SPECS: Record<UpgradeId, PartSpec[]> = {
   engine: [
     { model: exhaust, view: 2.1, mounts: [{ p: [0.75, WATERLINE_Y + 0.45, AFT + 0.02] }] },
@@ -720,6 +785,55 @@ export const PART_SPECS: Record<UpgradeId, PartSpec[]> = {
     },
     { model: (k) => fin(k, 1.1), mounts: [{ p: [finX(finY), finY, finZ] }, { p: [-finX(finY), finY, finZ], mirror: true }] },
     { model: gyroDome, mounts: [{ p: [-0.45, DECK_Y, -4.5] }] },
+  ],
+  // паруси: тканина, гік і генакер змінюються в SailRig (setLevel), тут — «залізо»
+  sails: [
+    // 1: новий дакрон — видно на самих парусах
+    { model: (k) => sailRoll(k, 0xfbfbf8, 0x24375a), view: -0.3, onBoat: () => new THREE.Group() },
+    {
+      model: (k) => {
+        const g = new THREE.Group();
+        const w = winch(k);
+        w.position.x = -0.12;
+        const d = furlerDrum(k);
+        d.position.x = 0.12;
+        g.add(w, d);
+        return g;
+      },
+      onBoat: (k) => {
+        const g = new THREE.Group();
+        const d = furlerDrum(k);
+        d.position.set(0, sheerY(4.6) + 0.02, 4.58);
+        g.add(d);
+        for (const s of [-1, 1]) {
+          const w = winch(k);
+          w.position.set(s * 0.62, HOUSE.top, WINCH_Z);
+          g.add(w);
+        }
+        return g;
+      },
+    },
+    { model: (k) => sailRoll(k, 0xb9ab82, 0x3a3a3a), view: -0.3, onBoat: () => new THREE.Group() },
+    { model: (k) => bowsprit(k, true), view: -1.2, onBoat: (k) => {
+      const b = bowsprit(k, false);
+      b.position.set(0, sheerY(SPRIT.z0) - 0.02, SPRIT.z0);
+      return b;
+    } },
+    {
+      model: (k) => {
+        const g = sailRoll(k, 0x1d1f22, 0xd0342c);
+        const v = windVane(k);
+        v.position.set(0.05, 0.14, -0.22);
+        g.add(v);
+        return g;
+      },
+      view: -0.3,
+      onBoat: (k) => {
+        const v = windVane(k);
+        v.position.set(0, RIG.top + 0.02, RIG.mastZ + 0.02);
+        return v;
+      },
+    },
   ],
 };
 

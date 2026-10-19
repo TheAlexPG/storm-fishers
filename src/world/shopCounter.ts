@@ -59,11 +59,12 @@ export class ShopCounter {
   constructor(scene: THREE.Scene, solids: Solid[]) {
     scene.add(this.group);
     this.buildFurniture();
-    // 8 дерев: 2 полиці × 4
+    // дерева апгрейдів: 2 полиці, колонок — скільки треба (8 → 4, 9–10 → 5)
+    const cols = Math.max(4, Math.ceil(UPGRADES.length / 2));
     UPGRADES.forEach((u, i) => {
-      const col = i % 4;
-      const row = Math.floor(i / 4);
-      const x = SHELF.x0 + 0.5 + col * ((SHELF.x1 - SHELF.x0 - 1.0) / 3);
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = SHELF.x0 + 0.5 + col * ((SHELF.x1 - SHELF.x0 - 1.0) / (cols - 1));
       const y = TIERS[1 - row];
       const holder = new THREE.Group();
       holder.position.set(x, y, SHELF.z + 0.02);
@@ -309,7 +310,8 @@ export class ShopCounter {
     if (lvl >= MAX_LEVEL) return `${u.name}: усе вже на човні (макс.)`;
     const part = u.parts[lvl];
     const cost = upgradeCost(id, lvl) ?? 0;
-    const st = u.stats[0];
+    // перша характеристика, що справді змінюється на цьому рівні
+    const st = u.stats.find((s) => s.value(lvl) !== s.value(lvl + 1)) ?? u.stats[0];
     const stat = st ? ` · ${st.label.toLowerCase()} ${st.fmt(st.value(lvl))} → ${st.fmt(st.value(lvl + 1))}` : '';
     const lack = money < cost ? ` (бракує ${formatMoney(cost - money)})` : '';
     return `Купити «${part.name}» — ${formatMoney(cost)}${lack}${stat}`;

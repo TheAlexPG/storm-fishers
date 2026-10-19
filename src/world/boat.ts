@@ -287,6 +287,7 @@ export class Boat {
 
   applyUpgrades(levels: Record<string, number>, timeDaylight: number) {
     this.holderSlots = holderCount(levels.holders ?? 0);
+    this.sails.setLevel(levels.sails ?? 0);
     for (const m of this.stationMarkers.children) m.visible = this.stationOn(m.userData.station as string);
     for (const [id, arr] of Object.entries(this.upg)) {
       const lvl = levels[id] ?? 0;
