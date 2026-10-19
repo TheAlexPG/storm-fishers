@@ -824,9 +824,8 @@ export class Port {
       // ящики з товаром біля входу
       this.crate(-4.9, G, -47.6, 0.7, 0.2);
       this.barrel(-14.3, G, -47.9, 0.3);
-      this.bench(-12.6, G, -48.0, 0);
+      this.bench(-16.2, G, -47.6, 0);
       this.planter(-6.2, -48.0);
-      this.planter(-13.7, -48.2);
     }
     this.sign('МАГАЗИН', -10.1, G + 3.95, -48.42, 3.0, '#1f4f7c');
 
