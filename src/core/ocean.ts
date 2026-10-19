@@ -14,6 +14,12 @@ export interface WaveDef {
   swell: boolean;        // довгий штормовий вал (росте лише в шторм)
   len: number;           // довжина хвилі (м)
   q: number;             // крутість (steepness) 0..~0.2
+  /**
+   * зсув фази (рад): коли вітер повертає хвилі, фаза біля камери лишається
+   * неперервною. Без нього поворот напрямку навколо (0,0) світу далеко від
+   * порту «проганяв» хвилі в десятки разів швидше (k·|p|·dθ/dt).
+   */
+  shift: number;
 }
 
 const G = 9.81;
@@ -106,7 +112,7 @@ export function updateWaveSet(defs: WaveDef[], intensity: number, windDir: numbe
 export function waveSet(intensity: number, windDir = 0): WaveDef[] {
   // intensity ~0 (тиша) .. 1+ (шторм).
   // Конвенція: напрямок кута a → (sin a, −cos a); a=0 — хвиля іде на −Z («північ»).
-  const defs: WaveDef[] = Array.from({ length: WAVE_COUNT }, () => ({ dir: norm2(0, 0), amp: 0, len: 1, q: 0, swell: false }));
+  const defs: WaveDef[] = Array.from({ length: WAVE_COUNT }, () => ({ dir: norm2(0, 0), amp: 0, len: 1, q: 0, swell: false, shift: 0 }));
   updateWaveSet(defs, intensity, windDir);
   return defs;
 }
@@ -129,7 +135,7 @@ function surfaceHeight(x: number, z: number, t: number, waves: WaveDef[], lodSte
       const lod = lodStep == null ? 1 : waveLod(w.len, lodStep);
       if (lod <= 0) continue;
       const k = (Math.PI * 2) / w.len;
-      const ph = k * (w.dir[0] * px + w.dir[1] * pz) - Math.sqrt(G * k) * t;
+      const ph = k * (w.dir[0] * px + w.dir[1] * pz) - Math.sqrt(G * k) * t + w.shift;
       const hx = w.q * CHOP * (w.swell ? 1 : stormChop(li)) * w.amp * gainOf(w, li) * lod * damp * Math.cos(ph);
       dx += hx * w.dir[0];
       dz += hx * w.dir[1];
@@ -143,7 +149,7 @@ function surfaceHeight(x: number, z: number, t: number, waves: WaveDef[], lodSte
     const lod = lodStep == null ? 1 : waveLod(w.len, lodStep);
     if (lod <= 0) continue;
     const k = (Math.PI * 2) / w.len;
-    h += w.amp * gainOf(w, li) * lod * damp * Math.sin(k * (w.dir[0] * px + w.dir[1] * pz) - Math.sqrt(G * k) * t);
+    h += w.amp * gainOf(w, li) * lod * damp * Math.sin(k * (w.dir[0] * px + w.dir[1] * pz) - Math.sqrt(G * k) * t + w.shift);
   }
   return h;
 }
@@ -159,7 +165,7 @@ export function waveNormal(x: number, z: number, t: number, waves: WaveDef[], ou
     const w = waves[i];
     const k = (Math.PI * 2) / w.len;
     const omega = Math.sqrt(G * k);
-    const phase = k * (w.dir[0] * x + w.dir[1] * z) - omega * t;
+    const phase = k * (w.dir[0] * x + w.dir[1] * z) - omega * t + w.shift;
     const c = w.amp * gainOf(w, li) * k * Math.cos(phase);
     dx += c * w.dir[0];
     dz += c * w.dir[1];
@@ -173,7 +179,7 @@ uniform float uTime;
 uniform vec2  uWaveDir[NW];
 uniform float uWaveAmp[NW];
 uniform float uWaveK[NW];
-uniform float uWaveOmega[NW];
+uniform float uWavePh[NW];
 uniform float uWaveQ[NW];
 uniform float uWaveLen[NW];
 uniform float uWaveSwell[NW];
@@ -215,7 +221,7 @@ void main() {
     float lod = clamp((uWaveLen[i] / step - 3.0) / 3.0, 0.0, 1.0);
     vec2 D = uWaveDir[i];
     float A = uWaveAmp[i] * (uWaveSwell[i] > 0.5 ? gSwell : gChop) * lod * damp;
-    float ph = uWaveK[i] * dot(D, p) - uWaveOmega[i] * uTime;
+    float ph = uWaveK[i] * dot(D, p) + uWavePh[i];
     float c = cos(ph), s = sin(ph);
     float hx = uWaveQ[i] * ${CHOP.toFixed(1)} * (uWaveSwell[i] > 0.5 ? 1.0 : 1.0 + 0.8 * smoothstep(0.6, 1.4, li)) * A * c;
     disp += vec3(hx * D.x, A * s, hx * D.y);
@@ -245,7 +251,7 @@ uniform vec2  uWindDir;
 uniform vec2  uWaveDir[NW];
 uniform float uWaveAmp[NW];
 uniform float uWaveK[NW];
-uniform float uWaveOmega[NW];
+uniform float uWavePh[NW];
 uniform float uWaveQ[NW];
 uniform float uWaveLen[NW];
 uniform float uWaveSwell[NW];
@@ -361,7 +367,7 @@ void main() {
   for (int i = 0; i < NW; i++) {
     float w = clamp(uWaveLen[i] / (fp * 8.0) - 1.0, 0.0, 1.0);
     vec2 D = uWaveDir[i];
-    float ph = uWaveK[i] * dot(D, vBase) - uWaveOmega[i] * uTime;
+    float ph = uWaveK[i] * dot(D, vBase) + uWavePh[i];
     float sl = uWaveAmp[i] * (uWaveSwell[i] > 0.5 ? swellGainF(vLocalI) : chopGainF(vLocalI)) * uWaveK[i];
     slope += D * (sl * cos(ph) * w);
     kept += sl * sl * w;
@@ -670,7 +676,7 @@ export class Ocean {
         uWaveDir: { value: dirs },
         uWaveAmp: { value: amps },
         uWaveK: { value: ks },
-        uWaveOmega: { value: omegas },
+        uWavePh: { value: omegas.map(() => 0) },
         uWaveQ: { value: qs },
         uWaveLen: { value: lens },
         uWaveSwell: { value: init.map((w) => (w.swell ? 1 : 0)) },
@@ -823,6 +829,14 @@ export class Ocean {
 
   /** центр сітки (камера) — для «як намальовано» */
   private center = new THREE.Vector2();
+  private _oldDirs = new Float64Array(WAVE_COUNT * 2);
+  /** кооп-гість: [windDir, shift×N] від капітана */
+  net: number[] | null = null;
+
+  /** кооп-капітан: стан хвиль для гостей */
+  netState(): number[] {
+    return [Math.round(this.windDir * 1e5) / 1e5, ...this.waves.map((w) => Math.round(w.shift * 1e4) / 1e4)];
+  }
 
   update(dt: number, t: number, cam: THREE.Vector3, sunDir: THREE.Vector3, skyColor: THREE.Color, fogColor: THREE.Color, fogDensity: number, sunStrength: number, flash: number, zenith?: THREE.Color) {
     // сітка їде за камерою (лише по горизонталі)
@@ -830,8 +844,27 @@ export class Ocean {
     this.center.set(cam.x, cam.z);
     // м'яко доганяємо цільові умови (без дрифу, без alloc)
     this.intensity += (this.targetIntensity - this.intensity) * (1 - Math.exp(-0.8 * dt));
-    this.windDir += wrapAngle(this.targetWindDir - this.windDir) * (1 - Math.exp(-0.6 * dt));
-    updateWaveSet(this.waves, this.intensity, this.windDir);
+    if (this.net) {
+      // кооп-гість: напрямок і фази хвиль — точно як у капітана
+      this.windDir = this.net[0];
+      updateWaveSet(this.waves, this.intensity, this.windDir);
+      for (let i = 0; i < WAVE_COUNT; i++) this.waves[i].shift = this.net[1 + i] ?? 0;
+    } else {
+      this.windDir += wrapAngle(this.targetWindDir - this.windDir) * (1 - Math.exp(-0.6 * dt));
+      // поворот хвиль навколо камери, а не (0,0) світу: фаза тут не стрибає
+      const old = this._oldDirs;
+      for (let i = 0; i < WAVE_COUNT; i++) {
+        old[i * 2] = this.waves[i].dir[0];
+        old[i * 2 + 1] = this.waves[i].dir[1];
+      }
+      updateWaveSet(this.waves, this.intensity, this.windDir);
+      for (let i = 0; i < WAVE_COUNT; i++) {
+        const w = this.waves[i];
+        const k = (Math.PI * 2) / w.len;
+        const d = k * ((old[i * 2] - w.dir[0]) * cam.x + (old[i * 2 + 1] - w.dir[1]) * cam.z);
+        w.shift = (w.shift + d) % (Math.PI * 2);
+      }
+    }
 
     const u = this.material.uniforms;
     u.uTime.value = t;
@@ -849,7 +882,7 @@ export class Ocean {
     const dirs = u.uWaveDir.value as THREE.Vector2[];
     const amps = u.uWaveAmp.value as number[];
     const ks = u.uWaveK.value as number[];
-    const omegas = u.uWaveOmega.value as number[];
+    const phs = u.uWavePh.value as number[];
     const qs = u.uWaveQ.value as number[];
     const lens = u.uWaveLen.value as number[];
     for (let i = 0; i < WAVE_COUNT; i++) {
@@ -858,7 +891,8 @@ export class Ocean {
       amps[i] = w.amp;
       const k = (Math.PI * 2) / w.len;
       ks[i] = k;
-      omegas[i] = Math.sqrt(G * k);
+      // фаза в подвійній точності, згорнута в 0..2π — без втрати точності float32 за години гри
+      phs[i] = (w.shift - ((Math.sqrt(G * k) * t) % (Math.PI * 2))) % (Math.PI * 2);
       qs[i] = w.q;
       lens[i] = w.len;
     }

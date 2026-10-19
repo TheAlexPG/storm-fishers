@@ -265,6 +265,14 @@ class Game {
 
     // події
     window.addEventListener('resize', () => this.onResize());
+    // закрили вкладку / перемкнулись — зберегти одразу (автозбереження раз на 30 с)
+    const saveNow = () => {
+      if (this.phase !== 'intro') this.saveGame();
+    };
+    window.addEventListener('pagehide', saveNow);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') saveNow();
+    });
     document.addEventListener('pointerlockchange', () => {
       const locked = document.pointerLockElement != null;
       if (locked) {
@@ -390,6 +398,7 @@ class Game {
           this.startCrew();
         },
       },
+      this.saveSummary(),
     );
   }
 
@@ -770,6 +779,14 @@ class Game {
     this.requestLock();
   }
 
+  /** коротко про соло-сейв для стартового екрана */
+  private saveSummary(): string | undefined {
+    const d = GameState.load();
+    if (!d) return undefined;
+    const up = Object.values(d.upgrades ?? {}).reduce((a, v) => a + (v ?? 0), 0);
+    return `день ${d.dayCount ?? 1}, ${Math.round(d.money ?? 0)} ₴, апгрейдів ${up}, улов ${d.hold?.length ?? 0}`;
+  }
+
   private saveGame() {
     const data = this.game.buildSave();
     this.game.fillWorldSave(
@@ -949,6 +966,7 @@ class Game {
 
     // океан
     this.ocean.setConditions(this.weather.base, this.weather.windDir);
+    this.ocean.net = this.coop.oceanNet();
     // небо, яке відбиває вода: хмари роблять його сірішим (як туман)
     const cl = this.weather.cloudiness;
     this._reflGrey.setRGB(0.3, 0.33, 0.38).multiplyScalar(0.35 + 0.65 * this.time.daylight);
@@ -1015,7 +1033,7 @@ class Game {
     this.stations.update(dt, this.time.hours);
 
     // кооп: знімок світу (капітан), свій гравець і аватари екіпажу
-    this.coop.hostSend(dt, t, this.boat, this.weather, this.time, g);
+    this.coop.hostSend(dt, t, this.boat, this.weather, this.time, g, this.coop.isHost ? this.ocean.netState() : undefined);
     this.coop.tick(dt, this.boat, this.player, this.stations.active?.id === 'pump', this.fishing, this.ocean, t);
 
     // ловля

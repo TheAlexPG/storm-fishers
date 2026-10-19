@@ -94,7 +94,7 @@ export class Dialogs {
 
   // ── ВСТУП ──
 
-  intro(hasSave: boolean, onNew: () => void, onContinue: () => void, coop?: CoopLobby) {
+  intro(hasSave: boolean, onNew: () => void, onContinue: () => void, coop?: CoopLobby, saveInfo?: string) {
     this.escAllowed = false;
     this.show(`
       <h1 class="intro-title">Грозова<span>рибалка</span></h1>
@@ -104,6 +104,7 @@ export class Dialogs {
         ${hasSave ? '<button class="btn primary" data-act="continue">Продовжити</button>' : ''}
         <button class="btn ${hasSave ? '' : 'primary'}" data-act="new">${hasSave ? 'Нова гра' : 'Вийти в море'}</button>
       </div>
+      <div class="intro-save">${hasSave && saveInfo ? `💾 Збережено: ${esc(saveInfo)}. ` : ''}Прогрес зберігається автоматично в цьому браузері — і в соло, і в коопі.</div>
       <details class="intro-more">
         <summary>Керування</summary>
         <div class="intro-keys">
@@ -177,9 +178,18 @@ export class Dialogs {
         if (e.key === 'Enter') void run(true);
       });
     }
-    this.panel.querySelector('[data-act="new"]')!.addEventListener('click', () => {
+    const newBtn = this.panel.querySelector('[data-act="new"]') as HTMLButtonElement;
+    let armed = false;
+    newBtn.addEventListener('click', () => {
       this.audio.resume();
       this.audio.click();
+      // є сейв — перепитуємо, щоб випадково не стерти прогрес
+      if (hasSave && !armed) {
+        armed = true;
+        newBtn.textContent = 'Стерти прогрес? Клікни ще раз';
+        newBtn.classList.add('danger');
+        return;
+      }
       this.close();
       onNew();
     });
