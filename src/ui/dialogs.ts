@@ -22,7 +22,7 @@ export interface CoopLobby {
   nick: string;
   code: string;
   onHost: (nick: string) => Promise<void>;
-  onJoin: (nick: string, code: string) => Promise<void>;
+  onJoin: (nick: string, code: string, ownBoat: boolean) => Promise<void>;
 }
 
 export interface CoopPause {
@@ -31,6 +31,9 @@ export interface CoopPause {
   host: boolean;
   players: Array<{ nick: string; color: string; host: boolean; me: boolean }>;
   onLeave: () => void;
+  /** яхти кімнати: перейти на борт */
+  boats?: Array<{ owner: number; nick: string; crew: string[]; mine: boolean; here: boolean }>;
+  onBoard?: (owner: number) => void;
 }
 
 function esc(v: string): string {
@@ -132,7 +135,11 @@ export class Dialogs {
           <input id="coop-code" maxlength="4" autocomplete="off" spellcheck="false" placeholder="КОД" value="${esc(coop.code)}">
           <button class="btn" data-act="join">Приєднатися</button>
         </div>
-        <div class="coop-msg" id="coop-msg">Одна яхта на всіх: хто створив кімнату — капітан, друзі вводять код. Гаманець і улов у кожного свій.</div>
+        <div class="coop-boat">
+          <label><input type="radio" name="coop-boat" value="own" checked> на своїй яхті</label>
+          <label><input type="radio" name="coop-boat" value="crew"> в екіпаж до капітана</label>
+        </div>
+        <div class="coop-msg" id="coop-msg">Хто створив кімнату — капітан: світ, погода й час — його. Друзі вводять код і приходять на своїх яхтах (зі своїм прогресом) або в екіпаж. Пересісти на іншу яхту можна будь-коли в меню (Esc).</div>
       </div>` : ''}
     `, false, 'intro');
     document.body.classList.add('intro-mode');
@@ -165,7 +172,8 @@ export class Dialogs {
         msgEl.textContent = join ? 'Під\'єднуємось…' : 'Створюємо кімнату…';
         msgEl.className = 'coop-msg';
         try {
-          if (join) await coop.onJoin(nick, code);
+          const own = (this.panel.querySelector('input[name="coop-boat"]:checked') as HTMLInputElement | null)?.value !== 'crew';
+          if (join) await coop.onJoin(nick, code, own);
           else await coop.onHost(nick);
           this.close();
         } catch (e) {
@@ -270,6 +278,14 @@ export class Dialogs {
       <p class="sub">${opts.coop.host ? 'Ти — капітан. Друзі: відкрити гру за адресою нижче й ввести код (або просто перейти за посиланням).' : 'Ти в екіпажі. Човном і світом керує капітан.'}</p>
       <div class="coop-link"><input readonly value="${esc(opts.coop.link)}"><button class="btn" data-act="copy">Копіювати</button></div>
       <div class="coop-players">${opts.coop.players.map((p) => `<span class="coop-chip" style="--c:${p.color}">${esc(p.nick)}${p.host ? ' ⚓' : ''}${p.me ? ' (ти)' : ''}</span>`).join('')}</div>
+      ${opts.coop.boats?.length ? `<h2>Яхти</h2><div class="fleet">${opts.coop.boats.map((b) => `
+        <div class="fleet-row${b.here ? ' here' : ''}">
+          <span class="fleet-name">⛵ ${b.mine ? 'Моя яхта' : `Яхта ${esc(b.nick)}`}</span>
+          <span class="fleet-crew">${b.crew.length ? 'екіпаж: ' + b.crew.map(esc).join(', ') : 'без екіпажу'}</span>
+          ${b.here ? '<span class="fleet-here">ти тут</span>' : `<button class="btn small" data-board="${b.owner}">${b.mine ? 'На свою яхту' : 'На борт'}</button>`}
+        </div>`).join('')}
+        ${opts.coop.boats.some((b) => b.mine) ? '' : '<div class="fleet-row"><span class="fleet-name">⛵ Моя яхта</span><span class="fleet-crew">стоїть біля причалу</span><button class="btn small" data-board="me">Вийти на своїй</button></div>'}
+      </div>` : ''}
       <div class="btn-row"><button class="btn danger" data-act="leave">${opts.coop.host ? 'Закрити кімнату' : 'Покинути кімнату'}</button></div>` : ''}
       ${opts.places ? `
       <h2>Місця · ${opts.places.filter((p) => p.found).length}/${opts.places.length}</h2>
@@ -305,6 +321,13 @@ export class Dialogs {
         (this.panel.querySelector('.coop-link input') as HTMLInputElement).select();
         (e.target as HTMLElement).textContent = 'Скопійовано ✓';
       });
+      this.panel.querySelectorAll<HTMLElement>('[data-board]').forEach((b) =>
+        b.addEventListener('click', () => {
+          const v = b.dataset.board!;
+          this.close();
+          c.onBoard?.(v === 'me' ? -1 : Number(v));
+        }),
+      );
       this.panel.querySelector('[data-act="leave"]')!.addEventListener('click', () => {
         this.close();
         c.onLeave();

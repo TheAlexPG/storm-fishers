@@ -34,7 +34,8 @@ export function zoneFromDist(d: number): ZoneId {
   return 'open';
 }
 
-let uidCounter = 1;
+// випадкова база: uid не повторюються між перезапусками й гравцями (спільний трюм у коопі)
+let uidCounter = Math.floor(Math.random() * 2 ** 40);
 export function makeFish(speciesId: string, kg: number, storm: boolean): FishItem {
   return {
     uid: uidCounter++,

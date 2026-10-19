@@ -82,6 +82,7 @@ export class Stations {
         if (!this.game.spendEnergy(5)) return { ok: false, msg: 'Занадто втомлений' };
         return this.startTimed('kitchen', 'Варимо рибу…', 2.5, () => {
           raw.cooked = true;
+          this.game.holdHook?.('cook', raw);
           this.audio.click();
         });
       }

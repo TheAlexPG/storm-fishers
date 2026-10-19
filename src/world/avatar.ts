@@ -25,6 +25,8 @@ export interface NetPlayer {
   mv: 0 | 1;
   /** риболовля: [1 чекає / 2 клює / 3 боротьба, x, z, натяг] */
   f?: [number, number, number, number];
+  /** чия яхта (id власника), на якій цей гравець */
+  bo?: number;
 }
 
 const JACKETS = [0xf2c12e, 0xe0522f, 0x2f7fd0, 0x3fae5a, 0xa04bc0, 0xf08a24, 0x1fb3b0, 0xd23c6e];
@@ -164,9 +166,14 @@ export class Avatar {
     return this.root.position;
   }
 
-  update(dt: number, boat: Boat, ocean: Ocean, t: number) {
+  update(dt: number, boat: Boat | null, ocean: Ocean, t: number) {
     const s = this.state;
     if (!s) return;
+    // на яхті, якої в нас (ще) немає — не показуємо
+    if (s.m === 0 && !boat) {
+      this.root.visible = false;
+      return;
+    }
     this.root.visible = true;
     // зміна режиму (зійшов на причал, впав у воду) — без «польоту» через світ
     const snap = this.smode !== s.m;
@@ -179,7 +186,7 @@ export class Avatar {
     dy = Math.atan2(Math.sin(dy), Math.cos(dy));
     this.syaw += dy * (snap ? 1 : 1 - Math.exp(-12 * dt));
 
-    if (s.m === 0) {
+    if (s.m === 0 && boat) {
       boat.localToWorld(this.sx, this.sy, this.sz, this._v);
       this.root.position.copy(this._v);
     } else {

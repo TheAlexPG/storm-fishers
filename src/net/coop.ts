@@ -18,29 +18,35 @@ async function relayAvailable(): Promise<boolean> {
   }
 }
 import { Avatar, colorForId, type NetPlayer } from '../world/avatar';
-import type { Boat } from '../world/boat';
+import { Boat } from '../world/boat';
 import type { Ocean } from '../core/ocean';
 import type { Fishing } from '../game/fishing';
 import type { Player } from '../world/player';
 import type { Weather } from '../core/weather';
 import type { TimeCycle } from '../core/time';
 import type { GameState } from '../game/state';
-import type { UpgradeId } from '../core/types';
+import type { FishItem, UpgradeId } from '../core/types';
+import type { ParticlePool } from '../world/particles';
 
 // ─────────────────────────────────────────────────────────────
-// Кооп «одна яхта на всіх».
-//   Капітан (хост): симулює човен, погоду, час; 20 Гц шле знімок світу.
-//   Екіпаж (гості): човен не симулюють — інтерполюють знімки з затримкою
-//   ~120 мс (той самий час хвиль, що й у капітана → корпус сидить у воді
-//   однаково). Свого гравця кожен рухає сам і шле 15 Гц.
-//   Дії гостей над спільним човном (штурвал, фали, двигун, помпа,
-//   покупки) — повідомленнями капітану. Гаманець/улов — у кожного свій.
+// Кооп «флотилія».
+//   Капітан кімнати (хост): погода, час — 10 Гц знімок світу ('w').
+//   Кожна яхта має власника: він симулює її фізику й 20 Гц шле знімок ('b')
+//   разом із ресурсами, модулями, трюмом і фазами хвиль. Хто на чужій яхті
+//   (екіпаж) — інтерполює її знімки з затримкою; дії над яхтою (штурвал,
+//   фали, люк, трюм, покупки) — повідомленнями власнику.
+//   Трюм — спільний для яхти: класти може будь-хто з екіпажу, гроші
+//   отримує той, хто продав. Гаманець — у кожного свій.
+//   Чужі яхти, на яких тебе немає, — лише картинка (поза + модулі).
 // ─────────────────────────────────────────────────────────────
 
 const SNAP_HZ = 20;
+const WORLD_HZ = 10;
 const PLAYER_HZ = 15;
 /** затримка відтворення знімків: 2.4 пакети — переживає джитер Wi‑Fi */
 const INTERP_DELAY = 0.12;
+/** місця швартування вздовж причалу (x), z — як у MOOR */
+export const MOOR_SLOTS = [0, 11.5, -11.5, 21];
 
 interface Snap {
   t: number;
@@ -55,6 +61,18 @@ interface RemotePeer {
   pump: boolean;
 }
 
+/** яхта іншого власника */
+interface FleetBoat {
+  snaps: Snap[];
+  last: GameMsg | null;
+  fresh: boolean;
+  /** коли востаннє чули (с, performance) */
+  rx: number;
+  /** картинка (якщо ми не на ній) */
+  visual: Boat | null;
+  upKey: string;
+}
+
 export type BoatAction =
   | { a: 'sails' }
   | { a: 'engine' }
@@ -63,7 +81,10 @@ export type BoatAction =
   | { a: 'hullFull' }
   | { a: 'upgrade'; id: string }
   | { a: 'hatch'; v: number }
-  | { a: 'door'; v: number };
+  | { a: 'door'; v: number }
+  | { a: 'store'; f: FishItem }
+  | { a: 'take'; uid: number }
+  | { a: 'cook'; uid: number };
 
 export interface FriendMarker {
   x: number;
@@ -74,30 +95,50 @@ export interface FriendMarker {
   fishing: boolean;
 }
 
+export interface FleetEntry {
+  owner: number;
+  nick: string;
+  crew: string[];
+  mine: boolean;
+  here: boolean;
+}
+
 export interface CoopHandlers {
-  /** капітан: гість зробив дію над човном */
+  /** власник яхти: хтось з екіпажу зробив дію над нею */
   onAction(from: string, act: BoatAction): void;
-  /** гість: подія від капітана (удар, затоплення, тост…) */
+  /** подія від власника своєї яхти (удар, затоплення…) або світу (блискавка, сон) */
   onEvent(e: string, v: unknown): void;
   onChat(nick: string, text: string, color: string): void;
   onPeer(nick: string, joined: boolean): void;
   onClosed(reason: string): void;
 }
 
+/** місце швартування для яхти власника */
+export function moorSlotX(owner: number): number {
+  return MOOR_SLOTS[(Math.max(1, owner) - 1) % MOOR_SLOTS.length];
+}
+
 export class Coop {
   session: NetSession | P2PSession | null = null;
   readonly peers = new Map<number, RemotePeer>();
-  /** хто за штурвалом (id) — від капітана */
+  /** хто за штурвалом моєї яхти (id) — від власника */
   helmOwner: number | null = null;
-  /** гість: свій газ/кермо, поки тримає штурвал (знімки його не перетирають) */
+  /** екіпаж: свій газ/кермо, поки тримає штурвал (знімки його не перетирають) */
   myHelm: [number, number] = [0, 0];
+  /** чия яхта — моя поточна (id власника) */
+  myBoat = 0;
 
-  private snaps: Snap[] = [];
+  private fleet = new Map<number, FleetBoat>();
   /** гість: оцінка (час капітана − локальний годинник) */
   private clockOffset: number | null = null;
   private snapTimer = 0;
+  private worldTimer = 0;
   private playerTimer = 0;
+  private holdKey = '';
+  private holdT = 0;
   private _b: number[] = [];
+  private lastWorld: GameMsg | null = null;
+  private worldFresh = false;
 
   constructor(private scene: THREE.Scene, private h: CoopHandlers) {}
 
@@ -110,11 +151,18 @@ export class Coop {
   get isClient(): boolean {
     return this.active && !this.session!.isHost;
   }
+  /** я в екіпажі чужої яхти (її фізику веде власник) */
+  get crewing(): boolean {
+    return this.active && this.myBoat !== this.myId;
+  }
   get room(): string {
     return this.session?.room ?? '';
   }
   get myId(): number {
     return this.session?.id ?? 0;
+  }
+  get hostId(): number {
+    return this.session?.hostId ?? 1;
   }
 
   /** LAN-IP сервера (якщо гру відкрито на localhost — друзям він не підійде) */
@@ -142,7 +190,8 @@ export class Coop {
     }
   }
 
-  async start(nick: string, room: string | null) {
+  /** ownBoat — гість приходить на своїй яхті (інакше — в екіпаж капітана) */
+  async start(nick: string, room: string | null, ownBoat = true) {
     this.leave();
     const s = (await relayAvailable()) ? new NetSession() : new P2PSession();
     s.onJoin = (p) => {
@@ -160,8 +209,23 @@ export class Coop {
     };
     await s.connect(nick, room);
     this.session = s;
+    this.myBoat = s.isHost || ownBoat ? s.id : s.hostId;
     if (s.isHost) void this.fetchLan();
     for (const p of s.peers.values()) this.ensurePeer(p);
+  }
+
+  /** перейти на іншу яхту (owner = myId — своя) */
+  setMyBoat(owner: number) {
+    this.myBoat = owner;
+    this.helmOwner = null;
+    this.myHelm = [0, 0];
+    const f = this.fleet.get(owner);
+    if (f?.visual) {
+      f.visual.dispose(this.scene);
+      f.visual = null;
+    }
+    if (f) f.fresh = true;
+    this.holdKey = '';
   }
 
   leave() {
@@ -172,9 +236,11 @@ export class Coop {
   private cleanup() {
     this.session = null;
     for (const id of [...this.peers.keys()]) this.dropPeer(id);
-    this.snaps = [];
+    for (const f of this.fleet.values()) f.visual?.dispose(this.scene);
+    this.fleet.clear();
     this.clockOffset = null;
     this.helmOwner = null;
+    this.myBoat = 0;
   }
 
   private ensurePeer(p: PeerInfo): RemotePeer {
@@ -192,6 +258,11 @@ export class Coop {
     r.avatar.dispose(this.scene);
     this.peers.delete(id);
     if (this.helmOwner === id) this.helmOwner = null;
+    const f = this.fleet.get(id);
+    if (f) {
+      f.visual?.dispose(this.scene);
+      this.fleet.delete(id);
+    }
   }
 
   nickOf(id: number): string {
@@ -215,6 +286,24 @@ export class Coop {
     return ids.map((id) => ({ id, nick: s.nickOf(id), color: this.colorOf(id), host: id === s.hostId, me: id === s.id }));
   }
 
+  /** яхти в кімнаті: власник, екіпаж, чи моя, чи я на ній */
+  fleetList(): FleetEntry[] {
+    const s = this.session;
+    if (!s) return [];
+    const boatOf = new Map<number, number>([[s.id, this.myBoat]]);
+    for (const [id, r] of this.peers) boatOf.set(id, r.state?.bo ?? s.hostId);
+    const owners = new Set<number>();
+    for (const [id, b] of boatOf) if (b === id) owners.add(id);
+    owners.add(this.myBoat);
+    return [...owners].sort((a, b) => a - b).map((o) => ({
+      owner: o,
+      nick: s.nickOf(o),
+      crew: [...boatOf].filter(([id, b]) => b === o && id !== o).map(([id]) => s.nickOf(id)),
+      mine: o === s.id,
+      here: o === this.myBoat,
+    }));
+  }
+
   // ── повідомлення ──
 
   private onMsg(from: number, d: GameMsg) {
@@ -230,32 +319,49 @@ export class Coop {
         r.pump = d.pump === 1;
         break;
       }
-      case 's': {
+      case 'w': {
         if (s.isHost || from !== s.hostId) return;
         const t = d.t as number;
-        const now = performance.now() / 1000;
-        const off = t - now;
+        const off = t - performance.now() / 1000;
         // орієнтир — найшвидші пакети (найбільший off): до них підтягуємось
         // швидко, а від запізнілих відступаємо повільно — джитер мережі не «смикає» годинник
         if (this.clockOffset == null || Math.abs(off - this.clockOffset) > 2) this.clockOffset = off;
         else this.clockOffset += (off - this.clockOffset) * (off > this.clockOffset ? 0.3 : 0.02);
-        // телепорт (затоплення, перезапуск) — без інтерполяції через пів моря
-        const last = this.snaps[this.snaps.length - 1];
-        if (last && Math.hypot((d.b as number[])[0] - last.b[0], (d.b as number[])[2] - last.b[2]) > 25) this.snaps = [];
-        if (last && t <= last.t) return;
-        this.snaps.push({ t, b: d.b as number[] });
-        if (this.snaps.length > 40) this.snaps.splice(0, this.snaps.length - 40);
         this.lastWorld = d;
         this.worldFresh = true;
         break;
       }
+      case 'b': {
+        if (from === s.id) return;
+        let f = this.fleet.get(from);
+        if (!f) {
+          f = { snaps: [], last: null, fresh: false, rx: 0, visual: null, upKey: '' };
+          this.fleet.set(from, f);
+        }
+        const t = d.t as number;
+        const b = d.b as number[];
+        f.rx = performance.now() / 1000;
+        // телепорт (затоплення, перезапуск) — без інтерполяції через пів моря
+        const last = f.snaps[f.snaps.length - 1];
+        if (last && Math.hypot(b[0] - last.b[0], b[2] - last.b[2]) > 25) f.snaps = [];
+        // трюм приходить не в кожному пакеті — зберігаємо останній
+        const hold = d.hold ?? f.last?.hold;
+        f.last = { ...d, hold };
+        f.fresh = true;
+        if (last && t <= last.t) return;
+        f.snaps.push({ t, b });
+        if (f.snaps.length > 40) f.snaps.splice(0, f.snaps.length - 40);
+        break;
+      }
       case 'a': {
-        if (!s.isHost) return;
+        // дії приймає лише власник яхти, на якій зараз відправник
+        if (this.myBoat !== s.id) return;
         this.h.onAction(s.nickOf(from), d.act as BoatAction);
         break;
       }
       case 'e': {
-        if (s.isHost || from !== s.hostId) return;
+        const world = d.w === 1;
+        if (world ? from !== s.hostId || s.isHost : from !== this.myBoat) return;
         this.h.onEvent(d.e as string, d.v);
         break;
       }
@@ -267,23 +373,27 @@ export class Coop {
     }
   }
 
-  /** останній знімок світу (погода/час/ресурси) — гість застосовує в applyWorld */
-  private lastWorld: GameMsg | null = null;
-
-  /** гість: напрям і фази хвиль від капітана (старий капітан — null) */
+  /** екіпаж: напрям і фази хвиль від власника яхти (щоб корпус сидів у тій самій воді) */
   oceanNet(): number[] | null {
-    if (!this.isClient) return null;
-    const oc = this.lastWorld?.oc;
+    if (!this.crewing) return null;
+    const oc = this.fleet.get(this.myBoat)?.last?.oc;
     return Array.isArray(oc) ? (oc as number[]) : null;
   }
-  private worldFresh = false;
 
+  /** дія над моєю яхтою — її власнику */
   sendAction(act: BoatAction) {
-    this.session?.send({ k: 'a', act }, this.session.hostId);
+    if (!this.session || !this.crewing) return;
+    this.session.send({ k: 'a', act }, this.myBoat);
   }
 
+  /** подія моєї яхти — її екіпажу (лише власник) */
   sendEvent(e: string, v?: unknown) {
-    if (this.isHost) this.session!.send({ k: 'e', e, v });
+    if (this.active && !this.crewing) this.session!.send({ k: 'e', e, v });
+  }
+
+  /** подія світу (блискавка, сон) — від капітана кімнати всім */
+  sendWorldEvent(e: string, v?: unknown) {
+    if (this.isHost) this.session!.send({ k: 'e', e, v, w: 1 });
   }
 
   sendChat(text: string) {
@@ -293,25 +403,27 @@ export class Coop {
     this.h.onChat(this.session.nick, t, this.colorOf(this.session.id));
   }
 
-  /** чи вільний штурвал для мене (ніхто інший його не тримає) */
+  /** чи вільний штурвал моєї яхти (ніхто інший його не тримає) */
   wheelTakenBy(): string | null {
     for (const [id, r] of this.peers) {
+      if ((r.state?.bo ?? this.hostId) !== this.myBoat) continue;
       if (r.state?.wh) return r.info.nick;
-      if (this.isClient && this.helmOwner === id) return r.info.nick;
+      if (this.crewing && this.helmOwner === id) return r.info.nick;
     }
     return null;
   }
 
-  // ── капітан ──
+  // ── власник яхти ──
 
-  /** перед кроком фізики: штурвал/помпа гостей */
-  hostApply(dt: number, boat: Boat, player: Player) {
-    if (!this.isHost) return;
+  /** перед кроком фізики: штурвал/помпа екіпажу моєї яхти */
+  ownerApply(dt: number, boat: Boat, player: Player) {
+    if (!this.active || this.crewing) return;
     if (player.wheeling) {
       this.helmOwner = this.myId;
     } else {
       let owner: number | null = null;
       for (const [id, r] of this.peers) {
+        if (r.state?.bo !== this.myId) continue;
         if (r.state?.wh && r.helm) {
           owner = id;
           boat.throttle = r.helm[0];
@@ -323,65 +435,71 @@ export class Coop {
       if (owner == null && this.helmOwner != null && this.helmOwner !== this.myId) boat.rudder = 0;
       this.helmOwner = owner;
     }
-    for (const r of this.peers.values()) if (r.pump) boat.dryDeck(dt);
+    for (const r of this.peers.values()) if (r.pump && r.state?.bo === this.myId) boat.dryDeck(dt);
   }
 
-  /** після кроку фізики: знімок світу всім */
-  hostSend(dt: number, simTime: number, boat: Boat, weather: Weather, time: TimeCycle, g: GameState, ocean?: number[]) {
-    if (!this.isHost || this.peers.size === 0) return;
+  /** після кроку фізики: знімок моєї яхти всім (і світу — від капітана) */
+  ownerSend(dt: number, simTime: number, boat: Boat, weather: Weather, time: TimeCycle, g: GameState, ocean?: number[]) {
+    if (!this.active || this.peers.size === 0) return;
+    const r = (v: number, k = 1000) => Math.round(v * k) / k;
+    if (this.isHost) {
+      this.worldTimer -= dt;
+      if (this.worldTimer <= 0) {
+        this.worldTimer = Math.max(0, this.worldTimer + 1 / WORLD_HZ);
+        this.session!.send({
+          k: 'w',
+          t: r(simTime),
+          w: [r(weather.base, 1e4), r(weather.snapshot().forecast, 1e3), r(weather.windDir, 1e4), r(weather.flash, 100)],
+          tm: [r(time.hours, 1e4), time.dayCount],
+        });
+      }
+    }
+    if (this.crewing) return;
     this.snapTimer -= dt;
     if (this.snapTimer > 0) return;
-    this.snapTimer += 1 / SNAP_HZ;
-    if (this.snapTimer < 0) this.snapTimer = 0;
-    const r = (v: number, k = 1000) => Math.round(v * k) / k;
-    this.session!.send({
-      k: 's',
+    this.snapTimer = Math.max(0, this.snapTimer + 1 / SNAP_HZ);
+    const msg: GameMsg = {
+      k: 'b',
       t: r(simTime),
       b: boat.netState(),
-      w: [r(weather.base, 1e4), r(weather.snapshot().forecast, 1e3), r(weather.windDir, 1e4), r(weather.flash, 100)],
       oc: ocean,
-      tm: [r(time.hours, 1e4), time.dayCount],
       res: [r(g.fuel, 100), r(g.hull, 10)],
       up: g.upgrades,
       helm: this.helmOwner,
-    });
+    };
+    // трюм — коли змінився (або раз на 2 с для тих, хто щойно прийшов)
+    const key = g.hold.map((f) => f.uid + (f.cooked ? 'c' : '')).join(',');
+    this.holdT -= dt;
+    if (key !== this.holdKey || this.holdT <= 0) {
+      this.holdKey = key;
+      this.holdT = 2;
+      msg.hold = g.hold.map((f) => ({ ...f, freshness: Math.round(f.freshness * 10) / 10 }));
+    }
+    this.session!.send(msg);
   }
 
-  // ── гість ──
+  // ── годинник, моя чужа яхта, чужі яхти ──
+
+  /** час капітана зараз (для гостя — оцінка), null — ще невідомо */
+  private clock(simTime: number): number | null {
+    if (this.isHost) return simTime;
+    if (this.clockOffset == null) return null;
+    return performance.now() / 1000 + this.clockOffset;
+  }
+
+  /** затримка відтворення знімків яхти власника */
+  private delayOf(owner: number): number {
+    return owner === this.hostId ? INTERP_DELAY : INTERP_DELAY * 2;
+  }
 
   /**
-   * Перед кадром: поза човна з буфера знімків, погода, час, ресурси човна.
-   * Повертає час симуляції (хвиль), узгоджений з капітаном, або null, якщо
-   * знімків ще немає.
+   * Перед кадром (гість): погода й час від капітана; якщо я в екіпажі —
+   * поза яхти з буфера знімків. Повертає час симуляції (хвиль) або null.
    */
   clientApply(boat: Boat, weather: Weather, time: TimeCycle, g: GameState): number | null {
-    if (!this.isClient || this.clockOffset == null || this.snaps.length === 0) return null;
-    const renderT = performance.now() / 1000 + this.clockOffset - INTERP_DELAY;
-    const sn = this.snaps;
-    // відкидаємо застарілі (лишаємо одну до renderT)
-    while (sn.length > 2 && sn[1].t <= renderT) sn.shift();
-    const a = sn[0];
-    const b = sn.length > 1 ? sn[1] : null;
-    const out = this._b;
-    if (!b || renderT <= a.t) {
-      // немає наступного — коротка екстраполяція за швидкістю (до 0.25 с)
-      for (let i = 0; i < a.b.length; i++) out[i] = a.b[i];
-      const ex = Math.min(0.25, Math.max(0, renderT - a.t));
-      out[0] += a.b[6] * ex;
-      out[2] += a.b[8] * ex;
-    } else {
-      const f = Math.min(1, (renderT - a.t) / Math.max(1e-4, b.t - a.t));
-      for (let i = 0; i < a.b.length; i++) out[i] = a.b[i] + (b.b[i] - a.b[i]) * f;
-      // кути — найкоротшою дугою
-      const dh = Math.atan2(Math.sin(b.b[3] - a.b[3]), Math.cos(b.b[3] - a.b[3]));
-      out[3] = a.b[3] + dh * f;
-      // дискретні — від новішого
-      out[11] = b.b[11];
-      out[13] = b.b[13];
-      out[14] = b.b[14];
-    }
-    boat.applyNet(out);
-
+    if (!this.isClient && !this.crewing) return null;
+    const clock = this.clock(0);
+    if (clock == null) return null;
     const w = this.lastWorld;
     if (w && this.worldFresh) {
       this.worldFresh = false;
@@ -398,13 +516,91 @@ export class Coop {
       } else {
         time.hours += dh * 0.2;
       }
-      const res = w.res as number[];
+    }
+    if (!this.crewing) return clock - INTERP_DELAY;
+    const renderT = clock - this.delayOf(this.myBoat);
+    const f = this.fleet.get(this.myBoat);
+    if (!f || f.snaps.length === 0) return renderT;
+    this.interp(f.snaps, renderT, this._b);
+    boat.applyNet(this._b);
+    const last = f.last;
+    if (last && f.fresh) {
+      f.fresh = false;
+      const res = last.res as number[];
       g.fuel = res[0];
       g.hull = res[1];
-      g.upgrades = { ...g.upgrades, ...(w.up as Record<UpgradeId, number>) };
-      this.helmOwner = (w.helm as number | null) ?? null;
+      g.upgrades = { ...g.upgrades, ...(last.up as Record<UpgradeId, number>) };
+      this.helmOwner = (last.helm as number | null) ?? null;
+      if (Array.isArray(last.hold)) g.hold = (last.hold as FishItem[]).map((x) => ({ ...x }));
     }
     return renderT;
+  }
+
+  private interp(sn: Snap[], renderT: number, out: number[]) {
+    // відкидаємо застарілі (лишаємо одну до renderT)
+    while (sn.length > 2 && sn[1].t <= renderT) sn.shift();
+    const a = sn[0];
+    const b = sn.length > 1 ? sn[1] : null;
+    out.length = a.b.length;
+    if (!b || renderT <= a.t) {
+      // немає наступного — коротка екстраполяція за швидкістю (до 0.25 с)
+      for (let i = 0; i < a.b.length; i++) out[i] = a.b[i];
+      const ex = Math.min(0.25, Math.max(0, renderT - a.t));
+      out[0] += a.b[6] * ex;
+      out[2] += a.b[8] * ex;
+    } else {
+      const f = Math.min(1, (renderT - a.t) / Math.max(1e-4, b.t - a.t));
+      for (let i = 0; i < a.b.length; i++) out[i] = a.b[i] + (b.b[i] - a.b[i]) * f;
+      // кути — найкоротшою дугою
+      const dh = Math.atan2(Math.sin(b.b[3] - a.b[3]), Math.cos(b.b[3] - a.b[3]));
+      out[3] = a.b[3] + dh * f;
+      // дискретні — від новішого
+      for (const i of [11, 13, 14, 15, 17]) if (i < b.b.length) out[i] = b.b[i];
+    }
+  }
+
+  /** чужі яхти, на яких мене немає: картинка за знімками */
+  updateFleet(dt: number, simTime: number, ocean: Ocean, weather: Weather, g: GameState, particles: ParticlePool, daylight: number) {
+    if (!this.active) return;
+    const now = performance.now() / 1000;
+    const clock = this.clock(simTime);
+    for (const [owner, f] of this.fleet) {
+      if (owner === this.myBoat) continue;
+      // власник перейшов на чужу яхту / пішов — яхта зникає
+      if (now - f.rx > 3) {
+        f.visual?.dispose(this.scene);
+        this.fleet.delete(owner);
+        continue;
+      }
+      if (clock == null || f.snaps.length === 0) continue;
+      if (!f.visual) {
+        f.visual = new Boat(this.scene, true);
+        f.visual.sails.passive = true;
+        f.upKey = '';
+      }
+      const v = f.visual;
+      this.interp(f.snaps, clock - this.delayOf(owner), this._b);
+      v.applyNet(this._b);
+      // хвилі в кожного свої (фази) — висоту чужої яхти беремо з нашої води
+      v.pos.y = ocean.heightAt(v.pos.x, v.pos.z, simTime) - 0.5;
+      const up = f.last?.up as Record<UpgradeId, number> | undefined;
+      const key = up ? JSON.stringify(up) : '';
+      if (up && key !== f.upKey) {
+        f.upKey = key;
+        v.applyUpgrades(up, daylight);
+      }
+      v.updateRemote(dt, simTime, ocean, weather, g, particles, null);
+    }
+  }
+
+  /** чужі яхти як перешкоди для фізики своєї (зіткнення) */
+  fleetObstacles(): Array<{ x: number; z: number; r: number; kind: 'mark' }> {
+    const out: Array<{ x: number; z: number; r: number; kind: 'mark' }> = [];
+    for (const [owner, f] of this.fleet) {
+      if (owner === this.myBoat || !f.visual) continue;
+      out.push({ x: f.visual.pos.x, z: f.visual.pos.z, r: 2.4, kind: 'mark' });
+    }
+    return out;
   }
 
   /** кожен кадр: свій стан іншим + анімація аватарів */
@@ -425,15 +621,20 @@ export class Coop {
         pitch: r(player.pitch, 100),
         wh: player.wheeling ? 1 : 0,
         mv: player.moving ? 1 : 0,
+        bo: this.myBoat,
       };
       const fs = fishing.netState();
       if (fs) st.f = fs;
       const msg: GameMsg = { k: 'p', s: st };
-      if (this.isClient && player.wheeling) msg.helm = [r(this.myHelm[0]), r(this.myHelm[1])];
+      if (this.crewing && player.wheeling) msg.helm = [r(this.myHelm[0]), r(this.myHelm[1])];
       if (pumping) msg.pump = 1;
       this.session!.send(msg);
     }
-    for (const r of this.peers.values()) r.avatar.update(dt, boat, ocean, t);
+    for (const r of this.peers.values()) {
+      const bo = r.state?.bo ?? this.hostId;
+      const b = bo === this.myBoat ? boat : this.fleet.get(bo)?.visual ?? null;
+      r.avatar.update(dt, b, ocean, t);
+    }
   }
 
   /** друзі для мапи/мінімапи: світова позиція, колір, нік, чи на борту, чи рибалить */

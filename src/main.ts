@@ -9,6 +9,7 @@ import type { UpgradeId } from './core/types';
 import { UPGRADE_BY_ID, MAX_LEVEL, upgradeCost } from './game/upgrades';
 import { GameState } from './game/state';
 import { Boat, BOAT, MOOR, MOOR_HEADING, STATION_POS } from './world/boat';
+import { moorSlotX, MOOR_SLOTS } from './net/coop';
 import { Port } from './world/port';
 import { terrainHeight } from './world/portTerrain';
 import { Player } from './world/player';
@@ -427,27 +428,44 @@ class Game {
           else this.startNew();
           this.hud.toast(`👥 Кімната ${this.coop.room} відкрита. Код і посилання — у меню (Esc).`, 'good', 9000);
         },
-        onJoin: async (n, c) => {
+        onJoin: async (n, c, own) => {
           remember(n);
-          await this.coop.start(n, c);
-          this.startCrew();
+          await this.coop.start(n, c, own);
+          if (own) this.enterOwnBoat(false);
+          else this.startCrew(this.coop.hostId);
         },
       },
       this.saveSummary(),
     );
   }
 
-  /** гість кооп-кімнати: свій гаманець/улов (окремий слот), човен і світ — капітана */
-  private startCrew() {
+  /**
+   * Кооп-екіпаж чужої яхти: свій гаманець (окремий слот), яхта, її модулі
+   * й трюм — власника. Покупки для яхти й зміни трюму йдуть власнику.
+   */
+  private startCrew(owner: number, keepWorld = false) {
     GameState.saveKey = GameState.COOP_KEY;
     const data = GameState.load();
     this.game = new GameState();
     if (data) this.game.applySave(data);
+    // трюм — яхти (прийде зі знімком власника), свій старий не тягнемо
+    this.game.hold = [];
+    this.game.holdHook = (op, f) => {
+      if (op === 'add') this.coop.sendAction({ a: 'store', f: { ...f } });
+      else if (op === 'remove') this.coop.sendAction({ a: 'take', uid: f.uid });
+      else this.coop.sendAction({ a: 'cook', uid: f.uid });
+    };
     this.player.attachGame(this.game);
-    this.time = new TimeCycle(8.0);
-    this.weather = new Weather();
-    this.boat.reset(MOOR.x, MOOR.z, MOOR_HEADING);
+    if (!keepWorld) {
+      this.time = new TimeCycle(8.0);
+      this.weather = new Weather();
+    }
+    this.coop.setMyBoat(owner);
+    this.boat.moor.x = moorSlotX(owner);
+    this.boat.reset(this.boat.moor.x, this.boat.moor.z, MOOR_HEADING);
     this.boat.sails.passive = true;
+    this.deckFish.clear();
+    this.fishing.reelIn();
     this.player.resetToBoat();
     // поруч зі штурвалом стоїть капітан — гість з'являється біля трапа
     this.player.localZ = -1.2;
@@ -465,9 +483,50 @@ class Game {
     this.phase = 'play';
     this.requestLock();
     this.hud.flashHints();
-    const cap = this.coop.roster().find((p) => p.host)?.nick ?? 'капітан';
-    this.hud.toast(`👥 Ти на борту «Шторму» в екіпажі ${cap}. Гроші й улов — твої, човен — спільний.`, 'good', 7000);
-    this.hud.toast('Enter — чат з екіпажем', 'warn', 6000);
+    const cap = this.coop.nickOf(owner);
+    this.hud.toast(`👥 Ти на яхті ${cap} в екіпажі. Трюм спільний: хто продав рибу — тому й гроші.`, 'good', 7000);
+    if (!keepWorld) this.hud.toast('Enter — чат з екіпажем', 'warn', 6000);
+  }
+
+  /** кооп: на своїй яхті (свій соло-сейв: гроші, модулі, трюм) */
+  private enterOwnBoat(keepWorld: boolean) {
+    this.endCrew();
+    this.coop.setMyBoat(this.coop.myId);
+    const data = GameState.load();
+    this.game = new GameState();
+    if (data) this.game.applySave(data);
+    this.player.attachGame(this.game);
+    if (!keepWorld) {
+      this.time = new TimeCycle(data?.timeHours ?? 8.0);
+      this.time.dayCount = data?.dayCount ?? 1;
+      this.weather = new Weather();
+      this.weather.restore(data?.weatherSeed ?? 10);
+    }
+    this.boat.moor.x = moorSlotX(this.coop.myId);
+    this.boat.reset(this.boat.moor.x, this.boat.moor.z, MOOR_HEADING);
+    this.deckFish.clear();
+    this.fishing.reelIn();
+    this.player.resetToBoat();
+    this.stations.dispose();
+    this.stations = new Stations(this.boat, this.game, this.audio);
+    this.syncUpgrades();
+    this.playTime = data?.totalPlayTime ?? this.playTime;
+    this.prevObjectives = { ...this.game.objectives };
+    this.lastDay = this.time.dayCount;
+    this.lastWeather = this.weather.state();
+    this.phase = 'play';
+    this.requestLock();
+    this.hud.flashHints();
+    this.hud.toast(`⛵ Ти на своїй яхті — місце ${MOOR_SLOTS.indexOf(this.boat.moor.x) + 1} біля причалу. Друзі можуть піднятися на борт через меню (Esc).`, 'good', 7000);
+  }
+
+  /** пересісти на іншу яхту флотилії (з меню паузи) */
+  private switchBoat(owner: number) {
+    if (owner === this.coop.myBoat) return;
+    this.saveGame();
+    if (owner === this.coop.myId) this.enterOwnBoat(true);
+    else this.startCrew(owner, true);
+    this.syncUpgrades();
   }
 
   /** вихід з кооп-режиму гостя назад у соло */
@@ -475,6 +534,7 @@ class Game {
     this.boat.sails.passive = false;
     this.stations.onBoatAction = null;
     this.dialogs.onBoatPurchase = null;
+    this.game.holdHook = null;
     GameState.saveKey = GameState.SOLO_KEY;
   }
 
@@ -539,6 +599,20 @@ class Game {
       case 'door':
         this.boat.doorOpen = act.v === 1;
         break;
+      // спільний трюм: екіпаж кладе / продає / варить рибу
+      case 'store':
+        if (act.f && g.hold.length < g.holdCap && !g.hold.some((f) => f.uid === act.f.uid)) g.hold.push({ ...act.f });
+        break;
+      case 'take': {
+        const i = g.hold.findIndex((f) => f.uid === act.uid);
+        if (i >= 0) g.hold.splice(i, 1);
+        break;
+      }
+      case 'cook': {
+        const f = g.hold.find((x) => x.uid === act.uid);
+        if (f) f.cooked = true;
+        break;
+      }
       case 'upgrade': {
         const id = act.id as keyof typeof g.upgrades;
         if (id in g.upgrades && g.upgrades[id] < 5) {
@@ -582,8 +656,8 @@ class Game {
         this.audio.thunder(Number(v) || 0.7);
         break;
       case 'sunk': {
-        // гість: човен капітана — його модулі; гине лише свій улов (за своїм полісом)
-        const r = this.applySink(false);
+        // екіпаж: яхта, модулі й трюм — власника (за його полісом); у мене — лише риба з палуби
+        const r = this.applySink(false, true);
         this.fishing.reelIn();
         this.player.resetToBoat();
         this.player.localZ = -1.2;
@@ -602,7 +676,7 @@ class Game {
     this.player.attachGame(this.game);
     this.time = new TimeCycle(8.0);
     this.weather = new Weather();
-    this.boat.reset(MOOR.x, MOOR.z, MOOR_HEADING);
+    this.boat.reset(this.boat.moor.x, this.boat.moor.z, MOOR_HEADING);
     this.player.resetToBoat();
     this.stations.dispose();
     this.stations = new Stations(this.boat, this.game, this.audio);
@@ -627,10 +701,10 @@ class Game {
     this.time.dayCount = data.dayCount ?? 1;
     this.weather.restore(data.weatherSeed ?? 10);
     // старі сейви: човен стояв на (0,-26) — під причалом; виносимо на шварт
-    let bx = data.boatX ?? MOOR.x, bz = data.boatZ ?? MOOR.z, bh = data.boatHeading ?? MOOR_HEADING;
+    let bx = data.boatX ?? this.boat.moor.x, bz = data.boatZ ?? this.boat.moor.z, bh = data.boatHeading ?? MOOR_HEADING;
     const dock = this.port.platforms[0];
     if (bx > dock.x0 && bx < dock.x1 && bz > dock.z0 && bz < dock.z1) {
-      bx = MOOR.x; bz = MOOR.z; bh = MOOR_HEADING;
+      bx = this.boat.moor.x; bz = this.boat.moor.z; bh = MOOR_HEADING;
     }
     this.boat.reset(bx, bz, bh);
     this.player.resetToBoat();
@@ -656,7 +730,7 @@ class Game {
   private handleSunk() {
     const g = this.game;
     const r = this.applySink(true);
-    this.boat.reset(MOOR.x, MOOR.z, MOOR_HEADING);
+    this.boat.reset(this.boat.moor.x, this.boat.moor.z, MOOR_HEADING);
     this.player.resetToBoat();
     this.fishing.reelIn();
     // новий човен від страхової — цілий; без страховки — латаний корпус
@@ -793,10 +867,10 @@ class Game {
   }
 
   /** затоплення: улов на борту (трюм + палуба + руки) і модулі за полісом */
-  private applySink(withModules: boolean): SinkReport {
+  private applySink(withModules: boolean, crew = false): SinkReport {
     const g = this.game;
     const plan = PLANS[g.insurance] ?? PLANS[0];
-    const lost = [...g.hold, ...this.deckFish.clear()];
+    const lost = [...(crew ? [] : g.hold), ...this.deckFish.clear()];
     const cargoValue = lost.reduce((a, f) => a + g.sellPrice(f), 0);
     g.hold.length = 0;
     const payout = Math.round(cargoValue * plan.cargo);
@@ -834,6 +908,18 @@ class Game {
             host: this.coop.isHost,
             players: this.coop.roster(),
             onLeave: () => this.leaveCoop(),
+            boats: this.coop.fleetList(),
+            onBoard: (owner) => {
+              const to = owner < 0 ? this.coop.myId : owner;
+              if (this.coop.isHost && to !== this.coop.myId) {
+                // світ (час, погоду) веде капітан кімнати — він завжди на своїй яхті
+                this.hud.toast('Капітан кімнати плаває на своїй яхті — друзі можуть прийти до тебе в екіпаж', 'warn', 4500);
+                this.phase = 'play';
+                this.requestLock();
+                return;
+              }
+              this.switchBoat(to);
+            },
           }
         : undefined,
     });
@@ -1023,7 +1109,7 @@ class Game {
     this.weather.onLightning = (p) => {
       this.sky.setFlash(p);
       this.audio.thunder(p);
-      this.coop.sendEvent('bolt', p);
+      this.coop.sendWorldEvent('bolt', p);
     };
 
     // амб'єнс: вітер/дощ/набій хвиль (тихіше, коли гравець далеко від води; під дахом — у каюті чи кокпіті)
@@ -1061,7 +1147,7 @@ class Game {
 
     // паливо
     // повний газ — непропорційно дорожче: економний хід і паруси окупаються
-    const fuelUse = this.coop.isClient ? 0 : Math.pow(Math.abs(this.boat.throttle), 1.4) * 0.07 * dt;
+    const fuelUse = this.coop.crewing ? 0 : Math.pow(Math.abs(this.boat.throttle), 1.4) * 0.07 * dt;
     if (fuelUse > 0) {
       if (g.spendFuel(fuelUse)) {
         if (g.fuel <= 0.01 && !this.outOfFuelWarned) {
@@ -1090,7 +1176,7 @@ class Game {
       }
       this.boat.localToWorld(this.player.localX, this.player.floorY + 1.62, this.player.localZ, this.player.head);
     } else if (locked && this.phase === 'play' && !this.photo) {
-      const crewHelm = this.coop.isClient && this.player.wheeling;
+      const crewHelm = this.coop.crewing && this.player.wheeling;
       if (crewHelm) {
         // свій газ/кермо (знімок капітана ще не встиг їх побачити)
         this.boat.throttle = this.coop.myHelm[0];
@@ -1107,16 +1193,19 @@ class Game {
 
     // човен
     this.boat.night = this.time.isNight;
-    if (this.coop.isClient) {
+    if (this.coop.crewing) {
       if (this.player.wheeling) {
         this.boat.throttle = this.coop.myHelm[0];
         this.boat.rudder = this.coop.myHelm[1];
       }
       this.boat.updateRemote(dt, t, this.ocean, this.weather, g, this.particles, this.audio);
     } else {
-      this.coop.hostApply(dt, this.boat, this.player);
-      this.boat.update(dt, t, this.ocean, this.weather, g, this.particles, this.audio, this.port.rocks, this.port.platforms[0]);
+      this.coop.ownerApply(dt, this.boat, this.player);
+      // інші яхти флотилії — теж перешкоди (зіткнення бортами)
+      const others = this.coop.active ? this.coop.fleetObstacles() : [];
+      this.boat.update(dt, t, this.ocean, this.weather, g, this.particles, this.audio, others.length ? [...this.port.rocks, ...others] : this.port.rocks, this.port.platforms[0]);
     }
+    this.boat.updateGangway(dt, this.port.platforms[0]);
     // камера й маска води в корпусі — від пози човна саме цього кадру
     this.player.syncHead(this.boat);
     this.ocean.setHull(this.boat.group, this.boat.vel.length());
@@ -1132,7 +1221,8 @@ class Game {
     this.stations.update(dt, this.time.hours);
 
     // кооп: знімок світу (капітан), свій гравець і аватари екіпажу
-    this.coop.hostSend(dt, t, this.boat, this.weather, this.time, g, this.coop.isHost ? this.ocean.netState() : undefined);
+    this.coop.ownerSend(dt, t, this.boat, this.weather, this.time, g, this.coop.crewing ? undefined : this.ocean.netState());
+    this.coop.updateFleet(dt, t, this.ocean, this.weather, g, this.particles, this.time.daylight);
     this.coop.tick(dt, this.boat, this.player, this.stations.active?.id === 'pump', this.fishing, this.ocean, t);
 
     // ловля
@@ -1209,13 +1299,13 @@ class Game {
 
     // орієнтир шварту: світний обрис місця біля причалу, коли повертаєшся
     {
-      const dm = Math.hypot(this.boat.pos.x - MOOR.x, this.boat.pos.z - MOOR.z);
+      const dm = Math.hypot(this.boat.pos.x - this.boat.moor.x, this.boat.pos.z - this.boat.moor.z);
       const want = dm < 220 && dm > 4 && !this.boat.mooredNow ? 1 : 0;
       const m = this.moorMark;
       const mat = m.material as THREE.MeshBasicMaterial;
       mat.opacity += (want * (0.5 + 0.25 * Math.sin(t * 3)) - mat.opacity) * (1 - Math.exp(-3 * dt));
       m.visible = mat.opacity > 0.01;
-      m.position.y = this.ocean.renderedHeightAt(MOOR.x, MOOR.z, t) + 0.08;
+      m.position.set(this.boat.moor.x, this.ocean.renderedHeightAt(this.boat.moor.x, this.boat.moor.z, t) + 0.08, this.boat.moor.z);
       if (this.boat.mooredNow && !this.wasMoored && this.leftHarbour) {
         this.hud.toast('⚓ Пришвартовано', 'good', 2500);
         this.audio.click();
@@ -1226,10 +1316,10 @@ class Game {
     }
 
     // маршрут для лоції (лише капітан/соло — човен його)
-    if (!this.coop.isClient) g.addTrack(this.boat.pos.x, this.boat.pos.z);
+    if (!this.coop.crewing) g.addTrack(this.boat.pos.x, this.boat.pos.z);
 
     // кранці — лише біля причалу
-    this.boat.setFenders(Math.hypot(this.boat.pos.x - MOOR.x, this.boat.pos.z - MOOR.z) < 30);
+    this.boat.setFenders(Math.hypot(this.boat.pos.x - this.boat.moor.x, this.boat.pos.z - this.boat.moor.z) < 30);
 
     // порт / поїздка
     const d = Math.hypot(this.boat.pos.x, this.boat.pos.z);
@@ -1321,7 +1411,7 @@ class Game {
     }
     const done = [
       () => this.player.wheeling,
-      () => Math.hypot(this.boat.pos.x - MOOR.x, this.boat.pos.z - MOOR.z) > 60,
+      () => Math.hypot(this.boat.pos.x - this.boat.moor.x, this.boat.pos.z - this.boat.moor.z) > 60,
       () => this.boat.sails.mode > 0,
       () => this.fishing.anyCast,
       () => g.stats.totalCaught > 0,
@@ -1402,7 +1492,7 @@ class Game {
 
     if (id === 'st:door') {
       this.boat.doorOpen = !this.boat.doorOpen;
-      if (this.coop.isClient) this.coop.sendAction({ a: 'door', v: this.boat.doorOpen ? 1 : 0 });
+      if (this.coop.crewing) this.coop.sendAction({ a: 'door', v: this.boat.doorOpen ? 1 : 0 });
       this.audio.thump(this.boat.doorOpen ? 0.35 : 0.55);
       return;
     }
@@ -1411,7 +1501,7 @@ class Game {
       // люк трюму: закритий — відкрити; відкритий і риба в руках — покласти; інакше — закрити
       if (!this.boat.hatchOpen) {
         this.boat.hatchOpen = true;
-        if (this.coop.isClient) this.coop.sendAction({ a: 'hatch', v: 1 });
+        if (this.coop.crewing) this.coop.sendAction({ a: 'hatch', v: 1 });
         this.audio.thump(0.4);
         if (!this.deckFish.carried) this.hud.toast('Люк трюму відкрито. Не забудь закрити — хвиля заллє трюм!', 'warn', 3000);
         if (!this.deckFish.carried) return;
@@ -1419,7 +1509,7 @@ class Game {
       const f = this.deckFish.takeCarried();
       if (!f) {
         this.boat.hatchOpen = false;
-        if (this.coop.isClient) this.coop.sendAction({ a: 'hatch', v: 0 });
+        if (this.coop.crewing) this.coop.sendAction({ a: 'hatch', v: 0 });
         this.audio.thump(0.5);
         return;
       }
@@ -1494,7 +1584,7 @@ class Game {
   }
 
   private cycleSails() {
-    if (this.coop.isClient) this.coop.sendAction({ a: 'sails' });
+    if (this.coop.crewing) this.coop.sendAction({ a: 'sails' });
     const m = this.boat.sails.cycle();
     this.audio.click();
     const txt = m === 2 ? '⛵ Паруси підняті — повні' : m === 1 ? '⛵ Взято риф (≈60 % площі)' : '⛵ Паруси спущено';
@@ -1511,7 +1601,7 @@ class Game {
     }
     if (this.sleeping) return;
     this.sleeping = true;
-    this.coop.sendEvent('sleep');
+    this.coop.sendWorldEvent('sleep');
     this.audio.click();
     // затемнення → ніч минає → світанок проявляється
     this.fade.classList.add('on');
@@ -1705,7 +1795,7 @@ class Game {
     this.hud.setCast(this.fishing.state === 'charge' ? this.fishing.castPower : null, this.fishing.status);
     this.hud.setRoster(this.coop.active ? this.coop.roster() : []);
     {
-      const atSea = Math.hypot(this.boat.pos.x - MOOR.x, this.boat.pos.z - MOOR.z) > 80;
+      const atSea = Math.hypot(this.boat.pos.x - this.boat.moor.x, this.boat.pos.z - this.boat.moor.z) > 80;
       const risk = g.insurance < 2 && (g.hold.length > 0 || this.deckFish.count > 0 || Object.values(g.upgrades).some((v) => v > g.insurance));
       const b = this.boat;
       this.hud.setInsWarn(

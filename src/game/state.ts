@@ -20,6 +20,8 @@ export class GameState {
   hull = 100;
   energy = 100;
   hold: FishItem[] = [];
+  /** кооп-екіпаж: трюм належить яхті власника — зміни йдуть йому */
+  holdHook: ((op: 'add' | 'remove' | 'cook', f: FishItem) => void) | null = null;
   /** страховка човна: 0 — немає, 1..4 — рівні (insurance.ts) */
   insurance = 0;
   upgrades = defaultUpgrades();
@@ -100,6 +102,7 @@ export class GameState {
   addFish(item: FishItem): boolean {
     if (this.hold.length >= this.holdCap) return false;
     this.hold.push(item);
+    this.holdHook?.('add', item);
     this.recordCatch(item);
     return true;
   }
@@ -115,13 +118,16 @@ export class GameState {
   storeFish(item: FishItem): boolean {
     if (this.hold.length >= this.holdCap) return false;
     this.hold.push(item);
+    this.holdHook?.('add', item);
     return true;
   }
 
   removeFish(uid: number): FishItem | undefined {
     const i = this.hold.findIndex((f) => f.uid === uid);
     if (i < 0) return undefined;
-    return this.hold.splice(i, 1)[0];
+    const f = this.hold.splice(i, 1)[0];
+    this.holdHook?.('remove', f);
+    return f;
   }
 
   /** ціна цієї риби, якщо продати її зараз (тренд × біржа × свіжість) */

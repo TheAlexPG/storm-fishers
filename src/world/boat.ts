@@ -12,7 +12,7 @@ import { trueWindSpeed } from './sails';
 import { SailRig } from './sails';
 import type { HelmDisplay } from './helmDisplay';
 import { ZONE_NAMES, zoneFromDist } from '../game/fish';
-import { DECK_Y, SOLE_Y, RIG, HOUSE } from './yachtLayout';
+import { DECK_Y, SOLE_Y, RIG, HOUSE, deckLimitX } from './yachtLayout';
 import { HOLDER_MOUNTS } from './upgradeParts';
 import { FISH_BOX } from './deckFish';
 import { holderCount } from '../game/upgrades';
@@ -92,6 +92,16 @@ export class Boat {
   angVel = new THREE.Vector3();
   /** зараз тримається на шварті (для HUD) */
   mooredNow = false;
+  /** сходня на причал: борт (−1/1), 0 — прибрана; z — де на палубі */
+  gangSide: -1 | 0 | 1 = 0;
+  static readonly GANG_Z = -2.9;
+  /** довжина сходні до причалу (м) */
+  gangLen = 1.2;
+  private gang: THREE.Group | null = null;
+  private gangA = 0;
+  private gangTilt = 0;
+  /** своє місце біля причалу (у коопі в кожної яхти — своє) */
+  moor = { x: MOOR.x, z: MOOR.z };
   throttle = 0;
   rudder = 0;
   engineOn = true;
@@ -189,7 +199,8 @@ export class Boat {
   /** вітрила (грот + стаксель), сили — у applySails */
   sails!: SailRig;
 
-  constructor(private scene: THREE.Scene) {
+  /** visual — чужа яхта в коопі: лише картинка, без власних ламп-джерел світла */
+  constructor(private scene: THREE.Scene, visual = false) {
     // 3-шарова сітка (об'єм корпусу): глибокі шари лишаються у воді
     // навіть при тангажі, тож буївність змінюється плавно, без різких
     // «вкл/викл», які раніше розганяли крен/тангаж наспіх
@@ -207,6 +218,15 @@ export class Boat {
     }
     this.buildMesh();
     this.scene.add(this.group);
+    if (visual) {
+      // зайві джерела світла перекомпілювали б усі шейдери й важчали б кадр
+      const lights: THREE.Object3D[] = [];
+      this.group.traverse((o) => {
+        if ((o as THREE.Light).isLight) lights.push(o);
+      });
+      for (const l of lights) l.parent?.remove(l);
+      this.stationMarkers.visible = false;
+    }
     this.syncTransform();
   }
 
@@ -446,8 +466,8 @@ export class Boat {
 
     // швартування: біля причалу без газу — м'яка пружина до точки шварту.
     // тримає човен на місці від вітру/хвиль, але не заважає відійти з повним газом.
-    const dMx = this.pos.x - MOOR.x;
-    const dMz = this.pos.z - MOOR.z;
+    const dMx = this.pos.x - this.moor.x;
+    const dMz = this.pos.z - this.moor.z;
     const dMoor = Math.hypot(dMx, dMz);
     this.mooredNow = dMoor < MOOR_CAPTURE && Math.abs(this.throttle) < 0.15 && speed < 3;
     if (this.mooredNow) {
@@ -636,7 +656,94 @@ export class Boat {
    * Кооп-клієнт: поза приходить від капітана (applyNet), тут — лише візуал:
    * паруси, бризки, вихлоп, прилади, звук. Фізики й пошкоджень немає.
    */
-  updateRemote(dt: number, t: number, ocean: Ocean, weather: Weather, game: GameState, particles: ParticlePool, audio: AudioEngine) {
+  /**
+   * Швартовна сходня: коли яхта стоїть біля причалу, з борту, що до нього,
+   * опускається дошка з поручнями — по ній ходять на причал і назад без
+   * перелазіння через леєри.
+   */
+  updateGangway(dt: number, dock: Platform) {
+    let side: -1 | 0 | 1 = 0;
+    const speed = Math.hypot(this.vel.x, this.vel.z);
+    if (speed < 1.2 && Math.hypot(this.pos.x - this.moor.x, this.pos.z - this.moor.z) < 6) {
+      for (const s of [-1, 1] as const) {
+        const edge = deckLimitX(Boat.GANG_Z, 0) + 0.15;
+        const p = this.localToWorld(s * (edge + 0.7), DECK_Y, Boat.GANG_Z, this._v);
+        if (p.x > dock.x0 - 0.2 && p.x < dock.x1 + 0.2 && p.z > dock.z0 - 0.2 && p.z < dock.z1 + 0.2) {
+          side = s;
+          break;
+        }
+      }
+    }
+    if (side) {
+      // довжина — до краю причалу (по світу), з запасом на ліжко дошки
+      const edge = deckLimitX(Boat.GANG_Z, 0) + 0.15;
+      const a = this.localToWorld(side * edge, DECK_Y, Boat.GANG_Z, this._v);
+      const dz = a.z > dock.z1 ? a.z - dock.z1 : a.z < dock.z0 ? dock.z0 - a.z : 0;
+      const dx = a.x > dock.x1 ? a.x - dock.x1 : a.x < dock.x0 ? dock.x0 - a.x : 0;
+      const reach = Math.hypot(dx, dz);
+      this.gangLen = clamp(reach + 0.6, 0.8, 2.4);
+      // причал вищий за палубу (човен сидить у воді) — дошка йде вгору
+      this.gangTilt = Math.atan2(dock.y - a.y, Math.max(0.3, reach + 0.4));
+      this.gangSide = side;
+    }
+    const want = side ? 1 : 0;
+    this.gangA += (want - this.gangA) * (1 - Math.exp(-dt * 4));
+    if (!side && this.gangA < 0.05) this.gangSide = 0;
+    if (!this.gang) {
+      if (!this.gangSide) return;
+      this.gang = this.buildGangway();
+    }
+    const g = this.gang;
+    g.visible = this.gangA > 0.03;
+    if (!g.visible) return;
+    const s = this.gangSide || 1;
+    const edge = deckLimitX(Boat.GANG_Z, 0) + 0.15;
+    g.position.set(s * edge, DECK_Y + 0.02, Boat.GANG_Z);
+    g.rotation.set(0, s > 0 ? 0 : Math.PI, 0);
+    // розкладається з борту: від вертикалі (прибрана) до майже горизонталі
+    const plank = g.children[0] as THREE.Object3D;
+    plank.scale.set(this.gangLen, 1, 1);
+    // прибрана — стоїть вертикально біля леєрів, опущена — лягає на причал
+    plank.rotation.z = (1 - this.gangA) * 1.35 + this.gangA * this.gangTilt;
+  }
+
+  private buildGangway(): THREE.Group {
+    const g = new THREE.Group();
+    const wood = new THREE.MeshStandardMaterial({ color: 0x9a6a3e, roughness: 0.75 });
+    const steel = new THREE.MeshStandardMaterial({ color: 0xc8cdd2, roughness: 0.3, metalness: 0.85 });
+    // дошка (довжина 1 м по +x, масштабується) з поперечними планками
+    const plank = new THREE.Group();
+    const board = new THREE.Mesh(new THREE.BoxGeometry(1, 0.04, 0.5), wood);
+    board.position.x = 0.5;
+    board.castShadow = true;
+    board.receiveShadow = true;
+    plank.add(board);
+    for (let i = 0; i < 5; i++) {
+      const c = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.025, 0.48), wood);
+      c.position.set(0.1 + i * 0.2, 0.03, 0);
+      plank.add(c);
+    }
+    for (const z of [-0.24, 0.24]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(1, 0.02, 0.02), steel);
+      rail.position.set(0.5, 0.55, z);
+      plank.add(rail);
+      for (const x of [0.05, 0.95]) {
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.55, 6), steel);
+        post.position.set(x, 0.28, z);
+        plank.add(post);
+      }
+    }
+    g.add(plank);
+    this.group.add(g);
+    return g;
+  }
+
+  /** прибрати зі сцени (чужа яхта покинула кімнату) */
+  dispose(scene: THREE.Scene) {
+    scene.remove(this.group);
+  }
+
+  updateRemote(dt: number, t: number, ocean: Ocean, weather: Weather, game: GameState, particles: ParticlePool, audio: AudioEngine | null) {
     this.sails.compute(dt, this.heading, this.vel, weather.windDir, weather.wind);
     this.sails.updateMeshes(dt, performance.now() / 1000);
     this.sails.updateWindex(this.heading, this.vel, weather.windDir);
@@ -655,8 +762,9 @@ export class Boat {
       particles.exhaust(this._t, Math.abs(this.throttle), dt);
     }
     this.engineLoad = clamp(speed / 10, 0, 1) * Math.abs(this.throttle);
-    this.updatePanel(dt, game, weather, this.night);
     this.updateFlag(dt, t, weather);
+    if (!audio) return;
+    this.updatePanel(dt, game, weather, this.night);
     audio.setEngine(Math.abs(this.throttle), this.engineOn, this.engineLoad);
   }
 

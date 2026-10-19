@@ -70,6 +70,9 @@ export class Player {
   nearest: Interactable | null = null;
   /** двері каюти зачинені (блокують трап) */
   private doorShut = false;
+  /** сходня на причал (борт −1/1, 0 — немає) */
+  private gang: -1 | 0 | 1 = 0;
+  private toGang = false;
   /** позиція голови (для камери) */
   head = new THREE.Vector3();
   /** йде цього кадру (для аватара в коопі) */
@@ -136,6 +139,7 @@ export class Player {
   /** свіжий кадр: миша + рух + переходи */
   update(dt: number, input: Input, boat: Boat, port: Port, ocean: Ocean, t: number) {
     this.doorShut = !boat.doorOpen;
+    this.gang = boat.gangSide;
     const [mdx, mdy] = input.consumeMouse();
     this.yaw -= mdx * 0.0021;
     this.pitch = clamp(this.pitch - mdy * 0.0021, -1.35, 1.35);
@@ -200,7 +204,11 @@ export class Player {
           moving = true;
           if (this.moveOnBoat(nx, nz, dt)) {
             // вихід за борт: поруч платформа (зазор до ~0.9 м) — зійти на неї, інакше — у воду
-            const world = boat.localToWorld(this.localX, BOAT.deckY, this.localZ, this._v);
+            const gangOut = this.toGang ? deckLimitX(Boat.GANG_Z, 0) + boat.gangLen + 0.15 : 0;
+            const world = this.toGang
+              ? boat.localToWorld(this.gang * gangOut, BOAT.deckY, Boat.GANG_Z, this._v)
+              : boat.localToWorld(this.localX, BOAT.deckY, this.localZ, this._v);
+            this.toGang = false;
             const plat = this.platformNear(world.x, world.z, port, 0.9);
             if (plat) {
               this.mode = 'port';
@@ -242,7 +250,24 @@ export class Player {
         // будинки й реквізит — тверді
         const [nx, nz] = port.resolveSolids(this.wx + dx * speed * dt, this.wz + dz * speed * dt, PLAYER_R);
         const plat = this.platformNear(nx, nz, port, 0);
-        if (plat) {
+        // сходня: підійшов до її кінця й ідеш до яхти — на борт
+        let boarded = false;
+        if (boat.gangSide) {
+          const s = boat.gangSide;
+          const edge = deckLimitX(Boat.GANG_Z, 0) + 0.15;
+          const end = boat.localToWorld(s * (edge + boat.gangLen - 0.2), BOAT.deckY, Boat.GANG_Z, this._v);
+          const toBoatX = boat.pos.x - nx, toBoatZ = boat.pos.z - nz;
+          const towards = (dx * toBoatX + dz * toBoatZ) / (Math.hypot(toBoatX, toBoatZ) || 1);
+          if (Math.hypot(nx - end.x, nz - end.z) < 0.7 && towards > 0.3) {
+            this.placeOnDeck(s * (edge - 0.45), Boat.GANG_Z);
+            this.mode = 'boat';
+            boarded = true;
+            moving = true;
+          }
+        }
+        if (boarded) {
+          /* на борту */
+        } else if (plat) {
           this.wx = nx;
           // плавний ступінь по висоті (причал 1.1 ↔ земля 1.6), без «попапу»
           this.wy = damp(this.wy, plat.y, 14, dt);
@@ -310,6 +335,11 @@ export class Player {
       // за борт: через корму (купальна платформа) одразу; через леєри — якщо
       // тиснути на них ~0.6 с (перелазимо), щоб не випасти випадково
       // (носовий пульпіт суцільний — через ніс не випасти)
+      // сходня: дійшов до борту біля неї — одразу на причал
+      if (this.gang && Math.abs(nz - Boat.GANG_Z) < 0.45 && this.gang * nx > deckLimitX(nz, r) - 0.02) {
+        this.toGang = true;
+        return true;
+      }
       const atRail = Math.abs(nx) > deckLimitX(nz, r) + 0.02 && nz < HALF_LEN - 1.0;
       this.railPush = atRail ? this.railPush + dt : 0;
       const overboard = nz < -(HALF_LEN - 0.32) || this.railPush > 0.6;
