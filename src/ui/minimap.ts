@@ -16,6 +16,8 @@ export class Minimap {
   private readonly size = 160;
   /** кооп: друзі (світові координати) */
   friends: Array<{ x: number; z: number; color: string; onBoat: boolean }> = [];
+  /** сітки (буї): кінці ліній */
+  buoys: Array<{ x0: number; z0: number; x1: number; z1: number }> = [];
   private readonly scale = 0.42; // px/м → радіус ~190 м
   private land: HTMLCanvasElement | null = null;
 
@@ -110,6 +112,20 @@ export class Minimap {
       c.moveTo(px - 3, pz); c.lineTo(px + 3, pz);
       c.moveTo(px, pz - 3); c.lineTo(px, pz + 3);
       c.stroke();
+    }
+
+    // буї сіток (за межею кола — притиснуті до краю, видно напрямок)
+    for (const b of this.buoys) {
+      for (const [x, z] of [[b.x0, b.z0], [b.x1, b.z1]]) {
+        const [px, pz] = toMap(x, z);
+        const dx = px - cx, dz = pz - cx;
+        const d = Math.hypot(dx, dz);
+        const k = d > R - 6 ? (R - 6) / d : 1;
+        c.beginPath();
+        c.arc(cx + dx * k, cx + dz * k, 2.8, 0, Math.PI * 2);
+        c.fillStyle = '#e9592f';
+        c.fill();
+      }
     }
 
     // друзі поза човном (на борту вони й так у центрі)

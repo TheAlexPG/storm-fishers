@@ -84,7 +84,8 @@ export type BoatAction =
   | { a: 'door'; v: number }
   | { a: 'store'; f: FishItem }
   | { a: 'take'; uid: number }
-  | { a: 'cook'; uid: number };
+  | { a: 'cook'; uid: number }
+  | { a: 'nets' };
 
 export interface FriendMarker {
   x: number;

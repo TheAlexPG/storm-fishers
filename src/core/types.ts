@@ -39,7 +39,8 @@ export type UpgradeId =
   | 'lights'
   | 'stab'
   | 'holders'
-  | 'sails';
+  | 'sails'
+  | 'nets';
 
 export type UpgradeLevels = Record<UpgradeId, number>;
 
@@ -104,6 +105,8 @@ export interface SaveData {
   boatHeading: number;
   totalPlayTime: number;
   waypoint: { x: number; z: number } | null;
+  /** поставлені сітки (world/nets.ts) */
+  nets?: unknown;
 }
 
 export interface PlayerStats {

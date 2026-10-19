@@ -29,6 +29,8 @@ export interface UpgradeDef {
   costs: number[]; // вартість рівнів 1..5
   parts: UpgradePart[]; // речі рівнів 1..5
   stats: UpgradeStat[];
+  /** відкривається лише після іншого апгрейду (мід-гейм) */
+  requires?: { id: UpgradeId; lvl: number };
 }
 
 /** топова швидкість під мотором (стенд фізики: опір ~ v², тож швидкість росте повільніше за потужність) */
@@ -194,6 +196,26 @@ export const UPGRADES: UpgradeDef[] = [
       { label: 'Постановка / риф', value: (l) => 3 / sailPerf(l).hoist, fmt: (v) => `${v.toFixed(1).replace('.', ',')} с`, lowerBetter: true },
     ],
   },
+  {
+    id: 'nets',
+    name: 'Сітки',
+    role: 'промисловий лов: сітки з буями',
+    desc: (l) => `${netCount(l)} ${netCount(l) === 1 ? 'сітка' : 'сітки'} по ${netLength(l)} м`,
+    costs: [2400, 4200, 6800, 9800, 14500],
+    requires: { id: 'hold', lvl: 2 },
+    parts: [
+      { name: 'Ставна сітка й буї', blurb: 'Ящик зі сіткою на кормовій платформі й два буї з прапорцями. Постав сітку на ходу — і повертайся за уловом через кілька годин.' },
+      { name: 'Сіткопідйомник', blurb: 'Сталевий ролик на транці: сітку вибирати втричі легше, а на борту — друга сітка.' },
+      { name: 'Довгі сітки', blurb: 'Сітки по 70 м і високі буї-віхи з прапорами — видно здалеку, ловлять удвічі більше.' },
+      { name: 'Сітковий барабан', blurb: 'Гідравлічний барабан над платформою: сітка йде за борт і вертається сама. Третя сітка в комплекті.' },
+      { name: 'Глибоководний дрифтер', blurb: 'Корма-рама зі шківом і 110-метрові глибоководні сітки — у відкритому морі приносять палтуса й тунця.' },
+    ],
+    stats: [
+      { label: 'Сіток', value: (l) => netCount(l), fmt: (v) => `${Math.round(v)}` },
+      { label: 'Довжина сітки', value: (l) => netLength(l), fmt: (v) => `${Math.round(v)} м` },
+      { label: 'Швидкість вибирання', value: (l) => (netHaulSpeed(l) - 1) * 100, fmt: pct },
+    ],
+  },
 ];
 
 /**
@@ -222,6 +244,26 @@ export function sailPerf(l: number): SailPerf {
   return SAIL_PERF[Math.max(0, Math.min(5, Math.round(l)))];
 }
 
+/** сітки: скільки можна поставити одночасно */
+export function netCount(l: number): number {
+  return [0, 1, 2, 2, 3, 4][Math.max(0, Math.min(5, l))];
+}
+/** довжина однієї сітки, м */
+export function netLength(l: number): number {
+  return l >= 5 ? 110 : l >= 3 ? 70 : l >= 1 ? 40 : 0;
+}
+/** множник швидкості вибирання сітки */
+export function netHaulSpeed(l: number): number {
+  return l >= 4 ? 2.6 : l >= 2 ? 1.7 : 1;
+}
+
+/** чому апгрейд ще не можна купити (null — можна) */
+export function upgradeLock(id: UpgradeId, levels: UpgradeLevels): string | null {
+  const r = UPGRADE_BY_ID[id]?.requires;
+  if (!r || (levels[r.id] ?? 0) >= r.lvl) return null;
+  return `спершу ${UPGRADE_BY_ID[r.id].name.toLowerCase()} рів. ${r.lvl}`;
+}
+
 /** скільки вудок у стійках на рівні */
 export function holderCount(l: number): number {
   return l >= 5 ? 3 : l >= 2 ? 2 : l >= 1 ? 1 : 0;
@@ -238,7 +280,7 @@ export const UPGRADE_BY_ID: Record<string, UpgradeDef> = Object.fromEntries(UPGR
 export const MAX_LEVEL = 5;
 
 export function defaultUpgrades(): UpgradeLevels {
-  return { engine: 0, hull: 0, hold: 0, rod: 0, fuel: 0, lights: 0, stab: 0, holders: 0, sails: 0 };
+  return { engine: 0, hull: 0, hold: 0, rod: 0, fuel: 0, lights: 0, stab: 0, holders: 0, sails: 0, nets: 0 };
 }
 
 export function upgradeCost(id: UpgradeId, currentLevel: number): number | null {

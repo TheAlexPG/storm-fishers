@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { UpgradeId, UpgradeLevels } from '../core/types';
-import { UPGRADES, UPGRADE_BY_ID, MAX_LEVEL, upgradeCost } from '../game/upgrades';
+import { UPGRADES, UPGRADE_BY_ID, MAX_LEVEL, upgradeCost, upgradeLock } from '../game/upgrades';
 import { buildPartModel, partViewYaw, type PartKit } from './upgradeParts';
 import { GROUND_Y } from './portTerrain';
 import { formatMoney } from '../core/math';
@@ -59,12 +59,12 @@ export class ShopCounter {
   constructor(scene: THREE.Scene, solids: Solid[]) {
     scene.add(this.group);
     this.buildFurniture();
-    // дерева апгрейдів: 2 полиці, колонок — скільки треба (8 → 4, 9–10 → 5)
+    // дерева апгрейдів: 2 полиці, у ряд скільки влізе (8 → по 4, 9–10 → по 5)
     const cols = Math.max(4, Math.ceil(UPGRADES.length / 2));
     UPGRADES.forEach((u, i) => {
       const col = i % cols;
       const row = Math.floor(i / cols);
-      const x = SHELF.x0 + 0.5 + col * ((SHELF.x1 - SHELF.x0 - 1.0) / (cols - 1));
+      const x = SHELF.x0 + (cols > 4 ? 0.4 : 0.5) + col * ((SHELF.x1 - SHELF.x0 - (cols > 4 ? 0.8 : 1.0)) / (cols - 1));
       const y = TIERS[1 - row];
       const holder = new THREE.Group();
       holder.position.set(x, y, SHELF.z + 0.02);
@@ -212,11 +212,12 @@ export class ShopCounter {
         if (next) s.holder.add(this.placeModel(s.id, next));
       }
       const cost = next ? upgradeCost(s.id, lvl) ?? 0 : 0;
-      const ok = next > 0 && money >= cost;
-      const key = `${next}|${ok}`;
+      const lock = next ? upgradeLock(s.id, up) : null;
+      const ok = next > 0 && money >= cost && !lock;
+      const key = `${next}|${ok}|${lock}`;
       if (key !== s.tagKey) {
         s.tagKey = key;
-        this.drawTag(s, next, cost, ok);
+        this.drawTag(s, next, cost, ok, lock);
       }
     }
   }
@@ -240,7 +241,7 @@ export class ShopCounter {
     return out;
   }
 
-  private drawTag(s: Slot, next: number, cost: number, ok: boolean) {
+  private drawTag(s: Slot, next: number, cost: number, ok: boolean, lock: string | null = null) {
     const x = s.tagCtx;
     const u = UPGRADE_BY_ID[s.id];
     x.fillStyle = '#f7f1df';
@@ -253,7 +254,11 @@ export class ShopCounter {
     x.fillStyle = '#3a2a1c';
     x.font = 'bold 24px sans-serif';
     x.fillText(next ? `${u.name} · рів. ${next}` : u.name, 128, 30, 236);
-    if (next) {
+    if (next && lock) {
+      x.fillStyle = '#7a6a50';
+      x.font = 'bold 22px sans-serif';
+      x.fillText(`🔒 ${lock}`, 128, 76, 236);
+    } else if (next) {
       x.fillStyle = ok ? '#1e7a46' : '#b03a2e';
       x.font = 'bold 40px sans-serif';
       x.fillText(formatMoney(cost), 128, 76, 236);
@@ -313,6 +318,8 @@ export class ShopCounter {
     // перша характеристика, що справді змінюється на цьому рівні
     const st = u.stats.find((s) => s.value(lvl) !== s.value(lvl + 1)) ?? u.stats[0];
     const stat = st ? ` · ${st.label.toLowerCase()} ${st.fmt(st.value(lvl))} → ${st.fmt(st.value(lvl + 1))}` : '';
+    const lock = upgradeLock(id, up);
+    if (lock) return `«${part.name}» — ${formatMoney(cost)} · 🔒 ${lock}`;
     const lack = money < cost ? ` (бракує ${formatMoney(cost - money)})` : '';
     return `Купити «${part.name}» — ${formatMoney(cost)}${lack}${stat}`;
   }

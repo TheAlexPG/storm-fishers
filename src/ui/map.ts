@@ -86,6 +86,8 @@ export class MapView {
 
   /** кооп: друзі (світові координати) */
   friends: Array<{ x: number; z: number; nick: string; color: string; onBoat: boolean; fishing: boolean }> = [];
+  /** поставлені сітки: лінія між двома буями, номер і скільки стоїть */
+  buoys: Array<{ x0: number; z0: number; x1: number; z1: number; id: number; h: number }> = [];
 
   show(boatX: number, boatZ: number, heading: number, rocks: RockObstacle[], game: GameState) {
     this.el.classList.add('open');
@@ -335,6 +337,37 @@ export class MapView {
       c.strokeStyle = 'rgba(226,103,74,0.6)';
       c.lineWidth = 1.5;
       c.stroke();
+    }
+
+    // ── сітки: жовта поплавцева лінія, помаранчеві буї, «№ · год» ──
+    for (const b of this.buoys) {
+      const ax = mx(b.x0), az = my(b.z0), bx = mx(b.x1), bz = my(b.z1);
+      c.strokeStyle = '#d9a514';
+      c.lineWidth = 3;
+      c.setLineDash([3, 3]);
+      c.beginPath(); c.moveTo(ax, az); c.lineTo(bx, bz); c.stroke();
+      c.setLineDash([]);
+      for (const [px, pz] of [[ax, az], [bx, bz]]) {
+        c.beginPath();
+        c.arc(px, pz, 4.5, 0, Math.PI * 2);
+        c.fillStyle = '#e9592f';
+        c.fill();
+        c.strokeStyle = '#fffaf0';
+        c.lineWidth = 1.5;
+        c.stroke();
+      }
+      const ready = b.h >= 3;
+      const txt = `🛟${b.id} · ${b.h < 1 ? Math.round(b.h * 60) + ' хв' : Math.round(b.h) + ' год'}`;
+      c.font = `800 11px ${FONT}`;
+      c.textAlign = 'center';
+      const tw = c.measureText(txt).width;
+      const lx = (ax + bx) / 2, lz = (az + bz) / 2 - 12;
+      c.fillStyle = ready ? 'rgba(46,139,87,0.92)' : 'rgba(255,250,240,0.92)';
+      c.beginPath();
+      c.roundRect(lx - tw / 2 - 6, lz - 9, tw + 12, 18, 9);
+      c.fill();
+      c.fillStyle = ready ? '#fff' : INK;
+      c.fillText(txt, lx, lz + 4);
     }
 
     // ── друзі (кооп) ──

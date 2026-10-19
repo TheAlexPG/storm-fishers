@@ -28,9 +28,10 @@ const CABIN_STATIONS = new Set(['kitchen', 'radio', 'bed', 'chart']);
 const LOOK_AT: Record<string, [number, number, number]> = {
   radio: [1.04, SOLE_Y + 1.02, 1.2],
   chart: [0.83, SOLE_Y + 0.79, 0.95],
+  nets: [0.6, 1.0, -4.95],
 };
 /** ближча досяжність: до щогли треба реально підійти бічною палубою */
-const STATION_REACH: Record<string, number> = { sails: 1.7, door: 2.4 };
+const STATION_REACH: Record<string, number> = { sails: 1.7, door: 2.4, nets: 2.4 };
 /** станції, доступні і з палуби, і з каюти */
 /** колайдери палуби з зачиненими дверима каюти (проріз трапа закрито) */
 const DECK_COLLIDERS_SHUT: Box2[] = [...DECK_COLLIDERS, { x0: -STAIR.x, x1: STAIR.x, z0: STAIR.zTop - 0.07, z1: STAIR.zTop + 0.3 }];
@@ -446,7 +447,8 @@ export class Player {
         const hl = Math.hypot(hx, hy, hz);
         const cp = la ? Math.cos(this.pitch) : 1;
         const look = hl > 0.05 ? (-Math.sin(this.yaw) * cp * hx + (la ? Math.sin(this.pitch) : 0) * hy - Math.cos(this.yaw) * cp * hz) / hl : 1;
-        const score = d * (1.4 - 0.4 * look);
+        // прилад, на який дивишся прямо (є точка LOOK_AT), — ще пріоритетніший
+        const score = d * (1.4 - 0.4 * look) * (la && look > 0.9 ? 0.6 : 1);
         if (score < bestD) {
           bestD = score;
           best = { id: 'st:' + id, label: this.stationLabel(id, boat) };
@@ -499,6 +501,7 @@ export class Player {
       case 'engine': return boat.engineOn ? 'Ремонт двигуна' : 'Запустити двигун!';
       case 'pump': return boat.bilge > 1 ? `Помпа — відкачати трюм (${Math.round(boat.bilge)}%)` : boat.deckWater > 5 ? 'Осушити палубу' : 'Помпа (сухо)';
       case 'door': return boat.doorOpen ? 'Двері каюти — зачинити (у шторм вода ллється в салон)' : 'Двері каюти — відчинити';
+      case 'nets': return this.stationText?.('nets') ?? 'Сітки';
       case 'chart': return 'Штурманський стіл — прокласти маршрут на карті';
       case 'kitchen': return 'Кухня — сварити рибу';
       case 'radio': return this.stationText?.('radio') ?? 'Радіо';
