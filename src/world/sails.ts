@@ -160,6 +160,7 @@ export class SailRig {
   private bag: THREE.Mesh;
   private windex = new THREE.Group();
   private warnT = 0;
+  private gybeT = 0;
   private stressT = 0;
   private readonly NU = 10;
   private readonly NV = 14;
@@ -326,10 +327,16 @@ export class SailRig {
     // автотрим гіка: кут ≈ (awa − 20°)/2 на підвітряний борт
     const want = clamp(((this.awa - 20) / 2) * (Math.PI / 180), 0.08, 1.45);
     const newSide = lx >= 0 ? -1 : 1; // вітер дме в +X → гік іде на +X (θ < 0)
-    if (newSide !== this.side && this.hoist > 0.3 && this.awa > 150 && !this.passive) {
-      this.onEvent?.('Поворот фордевінд — гік перекинувся!', 'warn');
+    // гістерезис: строго в корму (±6°) гік лишається, де був — інакше на
+    // шварті чи фордевінді він смикався б туди-сюди щокадру
+    this.gybeT -= dt;
+    if (newSide !== this.side && this.awa < 174) {
+      if (this.hoist > 0.3 && this.awa > 150 && !this.passive && this.gybeT <= 0) {
+        this.onEvent?.('Поворот фордевінд — гік перекинувся!', 'warn');
+        this.gybeT = 8;
+      }
+      this.side = newSide;
     }
-    this.side = newSide;
     this.boomAngle = damp(this.boomAngle, this.side * want, this.hoist > 0.05 ? 2.2 : 0.6, dt);
 
     // перевантаження: шторм з повними парусами → розрив
