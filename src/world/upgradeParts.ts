@@ -562,6 +562,114 @@ function servoHousing(k: PartKit): THREE.Object3D {
   return g;
 }
 
+// ── сітки (промисловий лов) ──
+const NET_GREEN = 0x3f6e4c;
+const BUOY = 0xe9592f;
+
+/** буй-віха: поплавок, жердина й прапорець (h — висота жердини) */
+function highFlyer(k: PartKit, h: number): THREE.Group {
+  const g = new THREE.Group();
+  cyl(g, k.mat(0xdfe3e8, 0.4, 0.6), 0.012, 0.012, h, 0, h / 2, 0, 6);
+  const f = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), k.mat(BUOY, 0.55));
+  f.scale.y = 1.25;
+  f.position.y = 0.16;
+  g.add(f);
+  box(g, k.mat(0xf2c12e, 0.7), 0.004, 0.12, 0.18, 0, h - 0.07, 0.09);
+  return g;
+}
+
+/** дерев'яний ящик зі складеною сіткою, поплавцевою лінією й двома буями */
+function netCrate(k: PartKit): THREE.Object3D {
+  const g = new THREE.Group();
+  const wood = k.mat(0x8a6242, 0.85);
+  box(g, wood, 0.56, 0.03, 0.4, 0, 0.015, 0);
+  for (const s of [-1, 1]) {
+    box(g, wood, 0.56, 0.24, 0.025, 0, 0.12, s * 0.19);
+    box(g, wood, 0.025, 0.24, 0.4, s * 0.27, 0.12, 0);
+  }
+  const net = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), k.mat(NET_GREEN, 0.95));
+  net.scale.set(0.25, 0.1, 0.17);
+  net.position.y = 0.22;
+  g.add(net);
+  // поплавці на верхній підборі
+  const fl = k.mat(0xf2c12e, 0.6);
+  for (let i = 0; i < 7; i++) {
+    const f = new THREE.Mesh(new THREE.SphereGeometry(0.026, 8, 6), fl);
+    f.position.set(-0.2 + i * 0.065, 0.27 + Math.sin(i * 1.7) * 0.015, Math.cos(i * 1.3) * 0.08);
+    g.add(f);
+  }
+  for (const s of [-1, 1]) {
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.075, 10, 8), k.mat(BUOY, 0.55));
+    b.position.set(s * 0.36, 0.075, 0.1);
+    g.add(b);
+  }
+  return g;
+}
+
+/** сіткопідйомник: обгумований ролик на кронштейнах */
+function netHauler(k: PartKit): THREE.Object3D {
+  const g = new THREE.Group();
+  const steel = k.mat(STEEL, 0.3, 0.85);
+  for (const s of [-1, 1]) box(g, steel, 0.025, 0.16, 0.08, s * 0.22, 0.08, 0);
+  box(g, steel, 0.48, 0.025, 0.1, 0, 0.012, 0);
+  cylX(g, k.mat(RUBBER, 0.8), 0.06, 0.42, 0, 0.14, 0, 16);
+  for (const s of [-1, 1]) cylX(g, steel, 0.075, 0.015, s * 0.2, 0.14, 0, 16);
+  cylX(g, k.mat(0xd0342c, 0.5, 0.2), 0.05, 0.08, 0.3, 0.14, 0, 12);
+  return g;
+}
+
+/** пара буїв-віх на кормовій платформі */
+function highFlyers(k: PartKit): THREE.Object3D {
+  const g = new THREE.Group();
+  for (const [x, z] of [[0, 0], [0.16, 0.05]]) {
+    const f = highFlyer(k, 1.25);
+    f.position.set(x, 0, z);
+    g.add(f);
+  }
+  return g;
+}
+
+/** сітковий барабан: червоні щоки, зелена сітка на осі, рама */
+function netDrum(k: PartKit): THREE.Object3D {
+  const g = new THREE.Group();
+  const steel = k.mat(STEEL, 0.3, 0.85);
+  for (const s of [-1, 1]) {
+    box(g, steel, 0.04, 0.42, 0.05, s * 0.4, 0.21, 0.12);
+    box(g, steel, 0.04, 0.42, 0.05, s * 0.4, 0.21, -0.12);
+    box(g, steel, 0.04, 0.04, 0.3, s * 0.4, 0.42, 0);
+    cylX(g, k.mat(0xc8431c, 0.5, 0.3), 0.27, 0.03, s * 0.35, 0.42, 0, 22);
+  }
+  cylX(g, k.mat(NET_GREEN, 0.95), 0.2, 0.67, 0, 0.42, 0, 22);
+  // поплавці на намотаній сітці
+  const fl = k.mat(0xf2c12e, 0.6);
+  for (let i = 0; i < 8; i++) {
+    const a = i * 0.8;
+    const f = new THREE.Mesh(new THREE.SphereGeometry(0.022, 6, 5), fl);
+    f.position.set(-0.28 + i * 0.08, 0.42 + Math.sin(a) * 0.205, Math.cos(a) * 0.205);
+    g.add(f);
+  }
+  cylX(g, k.mat(0x30343a, 0.5, 0.5), 0.07, 0.12, 0.49, 0.42, 0, 12); // гідромотор
+  return g;
+}
+
+/** корма-рама (A-frame) над платформою зі шківом і гідроциліндрами */
+function aFrame(k: PartKit): THREE.Object3D {
+  const g = new THREE.Group();
+  const steel = k.mat(0xe8ecef, 0.35, 0.7);
+  const top = new THREE.Vector3(0, 2.45, -5.45);
+  for (const s of [-1, 1]) {
+    tube(g, steel, [new THREE.Vector3(s * 1.15, 0.76, -5.0), new THREE.Vector3(s * 1.0, 2.45, -5.45)], 0.045, 4, 8);
+    tube(g, k.mat(0xf2c12e, 0.5, 0.3), [new THREE.Vector3(s * 1.1, 1.0, -4.75), new THREE.Vector3(s * 1.05, 1.9, -5.3)], 0.025, 4, 8);
+  }
+  tube(g, steel, [new THREE.Vector3(-1.0, 2.45, -5.45), new THREE.Vector3(1.0, 2.45, -5.45)], 0.05, 4, 8);
+  const block = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.035, 8, 18), k.mat(0xd0342c, 0.5, 0.3));
+  block.position.set(top.x, top.y - 0.22, top.z);
+  block.rotation.y = Math.PI / 2;
+  g.add(block);
+  box(g, steel, 0.04, 0.12, 0.04, 0, 2.38, -5.45);
+  return g;
+}
+
 // ── розкладка на яхті ──
 const AFT = -HALF_LEN; // транець
 const ROOF = COCKPIT.roofY;
@@ -707,6 +815,23 @@ export const PART_SPECS: Record<UpgradeId, PartSpec[]> = {
     { model: lantern, lamp: 'glow', mounts: [{ p: [-0.78, HOUSE.top, 0.2] }] },
     { model: lantern, lamp: 'light', mounts: [{ p: [-0.8, ROOF + 0.02, COCKPIT.z0 + 0.12] }] },
     { model: searchlight, spot: true, mounts: [{ p: [0, ROOF + 0.02, COCKPIT.z1 - 0.3] }] },
+  ],
+  nets: [
+    { model: netCrate, until: 4, view: 2.6, mounts: [{ p: [0.6, WATERLINE_Y + 0.26, -HALF_LEN - 0.24] }] },
+    { model: netHauler, view: 2.6, mounts: [{ p: [0.6, DECK_Y + 0.02, -HALF_LEN + 0.05] }] },
+    { model: highFlyers, mounts: [{ p: [1.12, WATERLINE_Y + 0.26, -HALF_LEN - 0.36] }] },
+    { model: netDrum, view: 2.6, mounts: [{ p: [0.6, WATERLINE_Y + 0.26, -HALF_LEN - 0.24] }] },
+    {
+      view: 2.4,
+      model: (k) => {
+        const g = aFrame(k);
+        g.position.set(0, -0.76, 5.2);
+        const w = new THREE.Group();
+        w.add(g);
+        return w;
+      },
+      onBoat: aFrame,
+    },
   ],
   stab: [
     { model: gyroDome, mounts: [{ p: [0.45, DECK_Y, -4.5] }] },

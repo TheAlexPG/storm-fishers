@@ -59,6 +59,8 @@ export const STATION_POS: Record<string, { x: number; z: number; y?: number }> =
   holder0: { x: HOLDER_MOUNTS[0].stand[0], z: HOLDER_MOUNTS[0].stand[1] },
   holder1: { x: HOLDER_MOUNTS[1].stand[0], z: HOLDER_MOUNTS[1].stand[1] },
   holder2: { x: HOLDER_MOUNTS[2].stand[0], z: HOLDER_MOUNTS[2].stand[1] },
+  // сітковий ящик/барабан на кормовій платформі (апгрейд «Сітки»)
+  nets: { x: 0.55, z: -4.3 },
 };
 
 export interface RockObstacle {
@@ -98,6 +100,8 @@ export class Boat {
   engineLoad = 0;
   deckWater = 0;
   /** люк трюму відкрито — вода з палуби тече всередину */
+  /** рівень апгрейду «Сітки» (0 — немає станції біля барабана) */
+  netLevel = 0;
   hatchOpen = false;
   /** двері каюти (компаньйон) відчинені — у шторм вода з палуби ллється в салон */
   doorOpen = true;
@@ -262,11 +266,13 @@ export class Boat {
   /** станція доступна (стійки — лише куплені) */
   stationOn(id: string): boolean {
     if (id.startsWith('holder')) return Number(id.slice(6)) < this.holderSlots;
+    if (id === 'nets') return this.netLevel > 0;
     return true;
   }
 
   applyUpgrades(levels: Record<string, number>, timeDaylight: number) {
     this.holderSlots = holderCount(levels.holders ?? 0);
+    this.netLevel = levels.nets ?? 0;
     for (const m of this.stationMarkers.children) m.visible = this.stationOn(m.userData.station as string);
     for (const [id, arr] of Object.entries(this.upg)) {
       const lvl = levels[id] ?? 0;

@@ -1,7 +1,7 @@
 import { formatMoney } from '../core/math';
 import { fishSellPrice, FISH, FISH_BY_ID, ZONE_NAMES } from '../game/fish';
 import { demandAt, glutUnits } from '../game/market';
-import { UPGRADES, UPGRADE_BY_ID, MAX_LEVEL, upgradeCost } from '../game/upgrades';
+import { UPGRADES, UPGRADE_BY_ID, MAX_LEVEL, upgradeCost, upgradeLock } from '../game/upgrades';
 import { PartPreview } from './partPreview';
 import { PLANS, boatValue, dailyPremium, type SinkReport } from '../game/insurance';
 import type { UpgradeId } from '../core/types';
@@ -425,7 +425,9 @@ export class Dialogs {
     }).join('');
     const statHead = owned ? '<tr><th></th><th>зараз</th></tr>' : `<tr><th></th><th>зараз</th><th></th><th>${next ? 'з цією річчю' : `на рівні ${sel.lvl}`}</th></tr>`;
     let action: string;
+    const lock = upgradeLock(sel.id, game.upgrades);
     if (owned) action = `<div class="sc-status ok">✓ Стоїть на твоєму човні</div>`;
+    else if (next && lock) action = `<div class="sc-status">🔒 Спершу: ${esc(lock.replace(/^спершу /, ''))}</div>`;
     else if (next) action = `<button class="btn primary sc-buy" data-buy="${sel.id}" ${game.money < cost ? 'disabled' : ''}>Купити й поставити — ${formatMoney(cost)}</button>
         ${game.money < cost ? `<div class="sc-status">Бракує ${formatMoney(cost - game.money)}</div>` : ''}`;
     else action = `<div class="sc-status">🔒 Спершу постав «${esc(def.parts[cur].name)}»</div>`;

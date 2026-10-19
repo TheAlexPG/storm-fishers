@@ -6,7 +6,7 @@ import { Ocean, UNDERWATER_LAYER } from './core/ocean';
 import { AudioEngine } from './core/audio';
 import { clamp, rand, formatMoney } from './core/math';
 import type { UpgradeId } from './core/types';
-import { UPGRADE_BY_ID, MAX_LEVEL, upgradeCost } from './game/upgrades';
+import { UPGRADE_BY_ID, MAX_LEVEL, upgradeCost, upgradeLock } from './game/upgrades';
 import { GameState } from './game/state';
 import { Boat, BOAT, MOOR, MOOR_HEADING, STATION_POS } from './world/boat';
 import { Port } from './world/port';
@@ -44,6 +44,7 @@ import { DeckFish } from './world/deckFish';
 import { RadioSet, RADIO_CHANNELS } from './world/radioSet';
 import { CabinDoor } from './world/cabinDoor';
 import { ChartTable, CHART_CENTER } from './world/chartTable';
+import { Nets, type NetsNet } from './world/nets';
 import { ShopCounter, type CounterTarget } from './world/shopCounter';
 import { describeSave } from './game/saveTransfer';
 import { Highlighter } from './world/highlight';
@@ -141,6 +142,11 @@ class Game {
   private shopCounter!: ShopCounter;
   private cabinDoor!: CabinDoor;
   private chart!: ChartTable;
+  /** сітки (апгрейд «Сітки»): буї в морі, постановка/вибирання з корми */
+  private nets!: Nets;
+  private netsSyncT = 0;
+  private netsSyncKey = '';
+  private netsSyncMode = 'idle';
   /** гравець схилився над штурманським столом */
   private chartMode = false;
   private chartK = 0;
@@ -239,6 +245,22 @@ class Game {
     this.radio = new RadioSet(this.boat.group);
     this.cabinDoor = new CabinDoor(this.boat.group);
     this.chart = new ChartTable(this.boat.group);
+    this.nets = new Nets(this.scene);
+    this.nets.onEvent = (msg, kind) => this.hud.toast(msg, kind, 4000);
+    this.nets.onSound = (k, p) => (k === 'splash' ? this.audio.splash(p) : k === 'winch' ? this.audio.click() : this.audio.thump(p));
+    this.nets.onFish = (f, at) => {
+      // з сітки — у трюм; не влізло — на палубу (до 8 рибин); далі — за борт
+      this.game.recordCatch(f);
+      if (this.game.storeFish(f)) {
+        if (Math.random() < 0.5) this.audio.thump(0.15);
+        return 'hold';
+      }
+      if (this.deckFish.count < 8) {
+        this.deckFish.drop(f, at, 0.2);
+        return 'deck';
+      }
+      return 'lost';
+    };
     this.deckFish.onWashed = (f) => this.hud.toast(`🌊 Хвиля змила за борт: ${this.game.speciesName(f.speciesId)}! Клади рибу в ящик одразу.`, 'bad', 4000);
     this.player.onJump = () => this.audio.step(this.player.mode === 'boat' ? 0 : 2, true);
     this.player.stationText = (id) =>
@@ -250,6 +272,8 @@ class Game {
           : this.deckFish.carried
             ? `Покласти в трюм: ${this.game.speciesName(this.deckFish.carried.fish.speciesId).toLowerCase()} (${this.game.hold.length}/${this.game.holdCap})`
             : 'Закрити люк трюму'
+        : id === 'nets'
+        ? this.nets.stationLabel(this.game.upgrades.nets ?? 0, this.boat)
         : this.fishing.stationLabel(id);
 
     this.coop = new Coop(this.scene, {
@@ -441,6 +465,9 @@ class Game {
   private startCrew() {
     GameState.saveKey = GameState.COOP_KEY;
     const data = GameState.load();
+    // сітки на човні капітана — його; гість лише бачить буї
+    this.nets.load(null);
+    this.nets.remote = true;
     this.game = new GameState();
     if (data) this.game.applySave(data);
     this.player.attachGame(this.game);
@@ -536,6 +563,9 @@ class Game {
       case 'hatch':
         this.boat.hatchOpen = act.v === 1;
         break;
+      case 'nets':
+        this.nets.interact(g.upgrades.nets ?? 0, this.boat, g, this.weather);
+        break;
       case 'door':
         this.boat.doorOpen = act.v === 1;
         break;
@@ -555,6 +585,9 @@ class Game {
   /** гість: подія від капітана */
   private onCoopEvent(e: string, v: unknown) {
     switch (e) {
+      case 'nets':
+        this.nets.applyNet(v as NetsNet);
+        break;
       case 'slam': {
         const [dmg, k, power] = (Array.isArray(v) ? v : [0, 1, 3]) as number[];
         this.slamShake = Math.min(1, 0.35 + power * 0.08);
@@ -598,6 +631,7 @@ class Game {
 
   private startNew() {
     GameState.clear();
+    this.nets.load(null);
     this.game = new GameState();
     this.player.attachGame(this.game);
     this.time = new TimeCycle(8.0);
@@ -623,6 +657,7 @@ class Game {
       return;
     }
     this.game.applySave(data);
+    this.nets.load(data.nets);
     this.time = new TimeCycle(data.timeHours ?? 8.0);
     this.time.dayCount = data.dayCount ?? 1;
     this.weather.restore(data.weatherSeed ?? 10);
@@ -693,6 +728,9 @@ class Game {
       } else if (id === 'st:fishbox') {
         key = id;
         objs = [this.deckFish.hatch];
+      } else if (id === 'st:nets') {
+        key = id + (this.game.upgrades.nets ?? 0);
+        objs = near(key, 0.6, 0.95, -4.95, 0.8, 1.4);
       } else if (id === 'st:radio') {
         key = id;
         objs = [this.radio.group];
@@ -759,6 +797,11 @@ class Game {
       return;
     }
     const cost = upgradeCost(id, g.upgrades[id]) ?? 0;
+    const lock = upgradeLock(id, g.upgrades);
+    if (lock) {
+      this.hud.toast(`🔒 «${u.parts[g.upgrades[id]].name}»: ${lock}`, 'warn', 2600);
+      return;
+    }
     if (!g.buyUpgrade(id)) {
       this.hud.toast(`Не вистачає ${formatMoney(cost - g.money)} на «${u.parts[g.upgrades[id]].name}»`, 'warn', 2600);
       return;
@@ -881,6 +924,7 @@ class Game {
       this.playTime,
       this.weather.intensity,
     );
+    if (!this.nets.remote) data.nets = this.nets.save();
     GameState.write(data);
   }
 
@@ -1170,6 +1214,8 @@ class Game {
     }
     // риба на палубі: б'ється, псується, хвиля може змити
     this.cabinDoor.update(dt, this.boat.doorOpen);
+    this.nets.update(dt, this.time.gameHourDelta(dt), t, this.boat, this.ocean, this.weather, this.camera.position);
+    this.syncNets(dt);
     this.deckFish.update(dt, t, this.time.gameHourDelta(dt), this.boat.deckWater, g.hold, this.boat.hatchOpen);
     // радіо: текст станції й звук (чути в каюті, тихіше — з палуби)
     this.radio.update(dt);
@@ -1391,6 +1437,12 @@ class Game {
     const id = p.interact(this.boat, this.port, this.audio);
     if (!id) return; // climb — оброблено
 
+    if (id === 'st:nets') {
+      if (this.coop.isClient) this.coop.sendAction({ a: 'nets' });
+      else this.nets.interact(g.upgrades.nets ?? 0, this.boat, g, this.weather);
+      return;
+    }
+
     if (id === 'st:chart') {
       if (this.fishing.holding) {
         this.hud.toast('Спершу постав вудку — над картою потрібні обидві руки', 'warn', 2500);
@@ -1517,6 +1569,7 @@ class Game {
     this.fade.classList.add('on');
     setTimeout(() => {
       const delta = this.time.sleepToDawn();
+      this.nets.advanceHours(delta);
       this.lastHours = this.time.hours;
       this.game.addEnergy(100);
       this.game.decayFreshness(delta);
@@ -1673,6 +1726,8 @@ class Game {
     const friends = this.coop.active ? this.coop.friendMarkers() : [];
     this.minimap.friends = friends;
     this.mapView.friends = friends;
+    this.mapView.buoys = this.nets.markers();
+    this.minimap.buoys = this.mapView.buoys;
     this.minimap.update(this.boat.pos.x, this.boat.pos.z, this.boat.heading, this.port.rocks, time.isNight);
     // відкрита мапа в коопі — друзі й човен рухаються (~4 рази/с)
     if (this.phase === 'map' && this.coop.active) {
@@ -1914,6 +1969,21 @@ class Game {
     this.hud.toast(`📍 Точку маршруту поставлено · ${this.mapView.fmtDist(d)}. Курс — на компасі`, 'good', 2500);
   }
 
+  /** капітан: сітки й буї гостям (на зміні та 2 Гц під час постановки/вибирання) */
+  private syncNets(dt: number) {
+    if (!this.coop.isHost || this.nets.remote) return;
+    this.netsSyncT -= dt;
+    const st = this.nets.netState();
+    const key = JSON.stringify(st);
+    const modeChanged = this.nets.mode !== this.netsSyncMode;
+    if (key === this.netsSyncKey && this.netsSyncT > 0) return;
+    if (!modeChanged && this.nets.mode !== 'idle' && this.netsSyncT > 0) return;
+    this.netsSyncKey = key;
+    this.netsSyncMode = this.nets.mode;
+    this.netsSyncT = this.nets.mode === 'idle' ? 5 : 0.5;
+    this.coop.sendEvent('nets', st);
+  }
+
   private currentPrompt(): { text: string | null; bite: boolean; key?: string } {
     if (this.chartMode) {
       const [cw, ch] = this.chart.size;
@@ -1921,6 +1991,8 @@ class Game {
       const d = w ? ` (${this.mapView.fmtDist(Math.hypot(w[0] - this.boat.pos.x, w[1] - this.boat.pos.z))})` : '';
       return { text: `Поставити точку маршруту${d} · ПКМ — стерти · E — встати`, bite: false, key: 'ЛКМ' };
     }
+    const np = this.player.mode === 'boat' ? this.nets.prompt(this.boat) : null;
+    if (np && this.fishing.state !== 'fight' && this.fishing.state !== 'bite') return { text: np, bite: false };
     // боротьба — перш за все
     if (this.fishing.state === 'fight' || this.fishing.state === 'charge') return { text: null, bite: false };
     if (this.fishing.state === 'bite') return { text: 'Клює! Підсікай!', bite: true, key: 'ЛКМ' };

@@ -1,7 +1,7 @@
 import { clamp, mulberry32 } from '../core/math';
 import { FISH, FISH_BY_ID, fishSellPrice } from './fish';
 import { demandAt, FishMarket, glutUnits, type MarketEvent } from './market';
-import { defaultUpgrades, eff, UPGRADES, MAX_LEVEL, upgradeCost } from './upgrades';
+import { defaultUpgrades, eff, UPGRADES, MAX_LEVEL, upgradeCost, upgradeLock } from './upgrades';
 import type {
   FishItem,
   ObjectiveState,
@@ -178,7 +178,7 @@ export class GameState {
 
   buyUpgrade(id: UpgradeId): boolean {
     const cost = upgradeCost(id, this.upgrades[id]);
-    if (cost == null || this.money < cost) return false;
+    if (cost == null || this.money < cost || upgradeLock(id, this.upgrades)) return false;
     this.money -= cost;
     this.upgrades[id]++;
     // корпус: після апгрейду збільшуємо поточну міцність на таку ж кількість
