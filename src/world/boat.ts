@@ -108,6 +108,13 @@ export class Boat {
 
   // події для світу
   onHullHit: ((power: number, pos: THREE.Vector3) => void) | null = null;
+  /** удар хвилі: bow — ніс плеснув об хвилю (слемінг), beam — гребінь накрив борт */
+  onSlam: ((dmg: number, kind: 'bow' | 'beam', power: number) => void) | null = null;
+  private bowOut = false;
+  private slamCd = 0;
+  private beamCd = 0;
+  private _sv = new THREE.Vector3();
+  private _sv2 = new THREE.Vector3();
   onEngineStall: (() => void) | null = null;
   onSunk: (() => void) | null = null;
 
@@ -537,6 +544,8 @@ export class Boat {
       this.deckWater = Math.max(0, this.deckWater - 2.5 * dt);
     }
 
+    this.updateSlam(dt, t, ocean, game, particles, fwd);
+
     // бризки від носа
     this.localToWorld(0, 0.7, 4.3, this.bowPoint);
     particles.spray(this.bowPoint, fwd, speed * Math.abs(this.throttle) + speed * 0.4, dt);
@@ -649,6 +658,83 @@ export class Boat {
     this.updatePanel(dt, game, weather, this.night);
     this.updateFlag(dt, t, weather);
     audio.setEngine(Math.abs(this.throttle), this.engineOn, this.engineLoad);
+  }
+
+  /**
+   * Удари хвиль, як у реальності:
+   *  • слемінг — ніс вилітає з хвилі й плескається днищем; сила росте з
+   *    вертикальною швидкістю носа відносно води й ходом у схил хвилі
+   *    (на повному газі проти крутої хвилі — тріщить корпус);
+   *  • удар у борт — крутий гребінь шторму, що йде впоперек, накриває борт:
+   *    кидає в крен, заливає палубу (найнебезпечніше — стояти лагом до хвилі).
+   * Порада гравцю: скинути газ і брати хвилю носом під кутом 20–40°.
+   */
+  private updateSlam(dt: number, t: number, ocean: Ocean, game: GameState, particles: ParticlePool, fwd: THREE.Vector3) {
+    this.slamCd -= dt;
+    this.beamCd -= dt;
+    const hullLvl = game.upgrades.hull ?? 0;
+    const armor = 1 - 0.1 * hullLvl;
+    const u = this.vel.x * fwd.x + this.vel.z * fwd.z;
+    const DT = 0.05;
+
+    // ── ніс ──
+    const BZ = 3.6;
+    const p = this.physicsToLocal(0, 0.25, BZ, this._sv);
+    const h = ocean.heightAt(p.x, p.z, t);
+    const depth = h - p.y;
+    if (depth < -0.08) this.bowOut = true;
+    else if (depth > 0 && this.bowOut) {
+      this.bowOut = false;
+      const waterVy = (h - ocean.heightAt(p.x, p.z, t - DT)) / DT;
+      const ptVy = this.vel.y - this.angVel.x * BZ;
+      // схил хвилі попереду: хід у висхідний схил додає швидкості удару
+      const ahead = ocean.heightAt(p.x + fwd.x * 0.6, p.z + fwd.z * 0.6, t);
+      const slope = Math.max(0, (ahead - h) / 0.6);
+      const vImp = Math.max(0, waterVy - ptVy) + 1.4 * Math.max(0, u) * slope;
+      if (vImp > 2.4 && this.slamCd <= 0) {
+        this.slamCd = 0.7;
+        // найсильніший удар — до 14 міцності (корпус не ламається за один раз)
+        const dmg = Math.min(14, 2.2 * Math.pow(vImp - 2.4, 1.5)) * armor;
+        game.damage(dmg);
+        // удар гасить хід і підкидає ніс
+        if (u > 0) {
+          const k = Math.min(0.35, 0.06 * vImp);
+          this.vel.x -= fwd.x * u * k;
+          this.vel.z -= fwd.z * u * k;
+        }
+        this.angVel.x -= Math.min(0.5, vImp * 0.06);
+        particles.splash(p.x, h + 0.2, p.z, Math.min(2.5, 0.6 + vImp * 0.25));
+        particles.splash(p.x + fwd.z * 1.0, h + 0.2, p.z - fwd.x * 1.0, 1.0);
+        particles.splash(p.x - fwd.z * 1.0, h + 0.2, p.z + fwd.x * 1.0, 1.0);
+        this.onSlam?.(dmg, 'bow', vImp);
+      }
+    }
+
+    // ── борт: крутий гребінь, що набігає збоку ──
+    if (this.beamCd <= 0) {
+      for (const s of [-1, 1]) {
+        const q = this.physicsToLocal(s * 1.55, 0.55, 0.3, this._sv2);
+        const hb = ocean.heightAt(q.x, q.z, t);
+        const db = hb - q.y;
+        if (db < 0.35) continue;
+        const wVy = (hb - ocean.heightAt(q.x, q.z, t - DT)) / DT;
+        const ptVy = this.vel.y + this.angVel.z * s * 1.55;
+        const vImp = wVy - ptVy;
+        if (vImp > 2.6) {
+          this.beamCd = 2.0;
+          const dmg = Math.min(10, 1.8 * Math.pow(vImp - 2.6, 1.5)) * armor;
+          game.damage(dmg);
+          // гребінь штовхає борт угору й убік — крен від хвилі
+          this.angVel.z += s * Math.min(0.9, vImp * 0.12);
+          this.vel.x -= fwd.z * s * Math.min(1.5, vImp * 0.25);
+          this.vel.z += fwd.x * s * Math.min(1.5, vImp * 0.25);
+          this.deckWater = clamp(this.deckWater + vImp * 7, 0, 100);
+          particles.splash(q.x, hb + 0.3, q.z, Math.min(2.5, 0.8 + vImp * 0.3));
+          this.onSlam?.(dmg, 'beam', vImp);
+          break;
+        }
+      }
+    }
   }
 
   /** кооп: компактна поза для мережі */
@@ -821,6 +907,10 @@ export class Boat {
     this.bilge = 0;
     this.hatchOpen = false;
     this.doorOpen = true;
+    // щойно поставлений на воду човен «сідає» — це не удар хвилі
+    this.slamCd = 2;
+    this.beamCd = 2;
+    this.bowOut = false;
     this.sails.reset();
     this.syncTransform();
   }

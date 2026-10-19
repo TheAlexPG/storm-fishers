@@ -107,6 +107,9 @@ class Game {
   private outOfFuelWarned = false;
   private prevObjectives = { ...this.game.objectives };
   private camShake = new THREE.Vector3();
+  /** поштовх від удару хвилі (згасає) */
+  private slamShake = 0;
+  private slamTipT = 0;
   private _tiltQ = new THREE.Quaternion();
   private _tiltEuler = new THREE.Euler();
   /** наскільки камера наслідує нахил човна (1 = повністю, 0 = повна стабілізація) */
@@ -314,6 +317,21 @@ class Game {
       this.hud.toast(`Удар! Міцність −${Math.round(power * 6)}`, 'bad');
       this.audio.thump(power / 6);
       this.coop.sendEvent('hit', power);
+    };
+    this.boat.onSlam = (dmg, kind, power) => {
+      this.slamShake = Math.min(1, 0.35 + power * 0.08);
+      this.audio.thump(Math.min(1, power / 6));
+      if (dmg >= 1) {
+        const tip = this.slamTipT <= 0;
+        if (tip) this.slamTipT = 25;
+        const msg = kind === 'bow'
+          ? `💥 Ніс ляснув об хвилю! Корпус −${Math.round(dmg)}${tip ? ' · скинь газ і бери хвилю під кутом 20–40°' : ''}`
+          : `🌊 Гребінь ударив у борт! Корпус −${Math.round(dmg)}${tip ? ' · не стій лагом до хвилі — розвернись носом' : ''}`;
+        this.hud.toast(msg, 'bad', tip ? 5000 : 2500);
+        this.coop.sendEvent('slam', [Math.round(dmg), kind === 'bow' ? 1 : 2, Math.round(power * 10) / 10]);
+      } else {
+        this.coop.sendEvent('slam', [0, kind === 'bow' ? 1 : 2, Math.round(power * 10) / 10]);
+      }
     };
     this.boat.sails.onEvent = (msg, kind) => {
       this.hud.toast(msg, kind, 4000);
@@ -532,6 +550,13 @@ class Game {
   /** гість: подія від капітана */
   private onCoopEvent(e: string, v: unknown) {
     switch (e) {
+      case 'slam': {
+        const [dmg, k, power] = (Array.isArray(v) ? v : [0, 1, 3]) as number[];
+        this.slamShake = Math.min(1, 0.35 + power * 0.08);
+        this.audio.thump(Math.min(1, power / 6));
+        if (dmg >= 1) this.hud.toast(k === 1 ? `💥 Ніс ляснув об хвилю! Корпус −${dmg}` : `🌊 Гребінь ударив у борт! Корпус −${dmg}`, 'bad', 2500);
+        break;
+      }
       case 'hit': {
         const power = Number(v) || 1;
         this.hud.toast(`Удар! Міцність −${Math.round(power * 6)}`, 'bad');
@@ -1206,6 +1231,7 @@ class Game {
     this.prevObjectives = { ...g.objectives };
 
     // автозбереження
+    this.slamTipT -= dt;
     this.saveTimer -= dt;
     if (this.saveTimer <= 0 && this.phase === 'play') {
       this.saveTimer = 30;
@@ -1515,7 +1541,8 @@ class Game {
     const head = this.player.head;
     const chase = this.rig.mode !== 'fp';
     // тряска: шторм + хвилі
-    const shakeAmp = 0.008 + this.weather.intensity * 0.02;
+    this.slamShake = Math.max(0, this.slamShake - this.clockDelta * 1.8);
+    const shakeAmp = 0.008 + this.weather.intensity * 0.02 + this.slamShake * 0.09;
     this.camShake.set(
       (Math.sin(t * 13.7) + Math.sin(t * 7.3)) * 0.5 * shakeAmp,
       (Math.sin(t * 11.1) + Math.sin(t * 5.9)) * 0.5 * shakeAmp,
