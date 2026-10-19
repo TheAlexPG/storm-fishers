@@ -1360,8 +1360,7 @@ export class YachtBuilder {
       g.add(scr);
       // радіо — окремий фізичний прилад (world/radioSet.ts)
     }
-    // карта на столі
-    this.box(g, 0.4, 0.004, 0.55, 0.82, S + 0.785, 0.95, this.mat(0xe8dcbc, 0.95), false);
+    // паперова лоція на столі — world/chartTable.ts
 
     // ── салон: дивани з подушками, стіл, полиці ──
     const sz0 = 1.62;

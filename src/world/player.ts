@@ -23,7 +23,12 @@ const RUN = 5.6;
 const SWIM = 2.3;
 
 // станції в салоні (доступні лише внизу)
-const CABIN_STATIONS = new Set(['kitchen', 'radio', 'bed']);
+const CABIN_STATIONS = new Set(['kitchen', 'radio', 'bed', 'chart']);
+/** куди дивитись, щоб «вибрати» станцію (локаль яхти) — для приладів на одному місці */
+const LOOK_AT: Record<string, [number, number, number]> = {
+  radio: [1.04, SOLE_Y + 1.02, 1.2],
+  chart: [0.83, SOLE_Y + 0.79, 0.95],
+};
 /** ближча досяжність: до щогли треба реально підійти бічною палубою */
 const STATION_REACH: Record<string, number> = { sails: 1.7, door: 2.4 };
 /** станції, доступні і з палуби, і з каюти */
@@ -91,6 +96,7 @@ export class Player {
   private railPush = 0;
   private inWaterT = 0;
   private _v = new THREE.Vector3();
+  private _v2 = new THREE.Vector3();
   private _n = new THREE.Vector3();
 
   constructor(private game: GameState) {
@@ -404,9 +410,12 @@ export class Player {
         const d = Math.hypot(p.x - w.x, p.y - w.y - 0.4, p.z - w.z);
         if (d >= (STATION_REACH[id] ?? 3.2)) continue;
         // перевага тому, на що дивишся: станція збоку/позаду «далі» до 1.8×
-        const hx = w.x - p.x, hz = w.z - p.z;
-        const hl = Math.hypot(hx, hz);
-        const look = hl > 0.05 ? (-Math.sin(this.yaw) * hx - Math.cos(this.yaw) * hz) / hl : 1;
+        const la = LOOK_AT[id];
+        const tgt = la ? boat.localToWorld(la[0], la[1], la[2], this._v2) : w;
+        const hx = tgt.x - p.x, hy = la ? tgt.y - p.y : 0, hz = tgt.z - p.z;
+        const hl = Math.hypot(hx, hy, hz);
+        const cp = la ? Math.cos(this.pitch) : 1;
+        const look = hl > 0.05 ? (-Math.sin(this.yaw) * cp * hx + (la ? Math.sin(this.pitch) : 0) * hy - Math.cos(this.yaw) * cp * hz) / hl : 1;
         const score = d * (1.4 - 0.4 * look);
         if (score < bestD) {
           bestD = score;
@@ -460,6 +469,7 @@ export class Player {
       case 'engine': return boat.engineOn ? 'Ремонт двигуна' : 'Запустити двигун!';
       case 'pump': return boat.bilge > 1 ? `Помпа — відкачати трюм (${Math.round(boat.bilge)}%)` : boat.deckWater > 5 ? 'Осушити палубу' : 'Помпа (сухо)';
       case 'door': return boat.doorOpen ? 'Двері каюти — зачинити (у шторм вода ллється в салон)' : 'Двері каюти — відчинити';
+      case 'chart': return 'Штурманський стіл — прокласти маршрут на карті';
       case 'kitchen': return 'Кухня — сварити рибу';
       case 'radio': return this.stationText?.('radio') ?? 'Радіо';
       case 'bed': return 'Койка — спати';

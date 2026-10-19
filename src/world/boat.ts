@@ -49,6 +49,7 @@ export const STATION_POS: Record<string, { x: number; z: number; y?: number }> =
   // салон у корпусі (y = підлога салону)
   kitchen: { x: -0.4, z: 1.15, y: SOLE_Y },
   radio: { x: 0.4, z: 0.95, y: SOLE_Y },
+  chart: { x: 0.42, z: 0.75, y: SOLE_Y },
   bed: { x: 0, z: 2.45, y: SOLE_Y },
   // рибальські стійки (апгрейд «Стійки для вудок») — біля тримачів
   // рибний ящик на баку — сюди кладуть рибу з рук

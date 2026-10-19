@@ -41,6 +41,7 @@ import { FishJump } from './world/fishJump';
 import { DeckFish } from './world/deckFish';
 import { RadioSet, RADIO_CHANNELS } from './world/radioSet';
 import { CabinDoor } from './world/cabinDoor';
+import { ChartTable, CHART_CENTER } from './world/chartTable';
 import { describeSave } from './game/saveTransfer';
 import { Highlighter } from './world/highlight';
 import { HOLDER_MOUNTS } from './world/upgradeParts';
@@ -132,6 +133,15 @@ class Game {
   private deckFish: DeckFish;
   private radio!: RadioSet;
   private cabinDoor!: CabinDoor;
+  private chart!: ChartTable;
+  /** гравець схилився над штурманським столом */
+  private chartMode = false;
+  private chartK = 0;
+  private _chEye = new THREE.Vector3();
+  private _chAt = new THREE.Vector3();
+  private _chUp = new THREE.Vector3();
+  private _chQ = new THREE.Quaternion();
+  private _chM = new THREE.Matrix4();
   private doorWarnT = 0;
   private radioTextT = 0;
   private hl = new Highlighter();
@@ -220,6 +230,7 @@ class Game {
     this.deckFish = new DeckFish(this.scene, this.boat);
     this.radio = new RadioSet(this.boat.group);
     this.cabinDoor = new CabinDoor(this.boat.group);
+    this.chart = new ChartTable(this.boat.group);
     this.deckFish.onWashed = (f) => this.hud.toast(`🌊 Хвиля змила за борт: ${this.game.speciesName(f.speciesId)}! Клади рибу в ящик одразу.`, 'bad', 4000);
     this.player.onJump = () => this.audio.step(this.player.mode === 'boat' ? 0 : 2, true);
     this.player.stationText = (id) =>
@@ -837,11 +848,14 @@ class Game {
 
     // E — дія
     if (locked && input.pressed('KeyE') && this.phase === 'play' && !this.dialogs.isOpen) {
-      this.doInteract();
+      if (this.chartMode) this.setChart(false);
+      else this.doInteract();
     }
     // Esc — меню паузи / продовження / закрити карту (працює і без pointer lock)
     if (input.pressed('Escape')) {
-      if (this.phase === 'map') {
+      if (this.chartMode) {
+        this.setChart(false);
+      } else if (this.phase === 'map') {
         this.closeMap();
       } else if (!this.escSwallow) {
         if (this.phase === 'play' && !this.dialogs.isOpen) {
@@ -991,7 +1005,20 @@ class Game {
     if (g.fuel > 5) this.outOfFuelWarned = false;
 
     // гравець
-    if (locked && this.phase === 'play' && !this.photo) {
+    if (this.chartMode && (this.phase !== 'play' || this.player.mode !== 'boat')) this.setChart(false);
+    if (locked && this.phase === 'play' && !this.photo && this.chartMode) {
+      // над картою: миша водить олівцем, ЛКМ — точка, ПКМ — стерти
+      const [mdx, mdy] = input.consumeMouse();
+      this.chart.moveCursor(mdx, mdy);
+      if (input.pressed('Mouse0')) this.chartClick();
+      if (input.pressed('Mouse2') && this.game.waypoint) {
+        this.game.clearWaypoint();
+        this.audio.click();
+        this.chart.markDirty();
+        this.saveGame();
+      }
+      this.boat.localToWorld(this.player.localX, this.player.floorY + 1.62, this.player.localZ, this.player.head);
+    } else if (locked && this.phase === 'play' && !this.photo) {
       const crewHelm = this.coop.isClient && this.player.wheeling;
       if (crewHelm) {
         // свій газ/кермо (знімок капітана ще не встиг їх побачити)
@@ -1039,7 +1066,7 @@ class Game {
     // ловля
     this.fishing.update(dt, t, this.boat, this.ocean, input, g, this.weather, this.time);
     // вудка в руках: ЛКМ — закид / підсічка, R — змотати
-    if (locked && this.phase === 'play' && !this.dialogs.isOpen && !this.photo && this.player.mode === 'boat' && !this.player.wheeling) {
+    if (locked && this.phase === 'play' && !this.dialogs.isOpen && !this.photo && !this.chartMode && this.player.mode === 'boat' && !this.player.wheeling) {
       if (input.pressed('Mouse0')) this.fishing.click(this.boat, g, this.weather, this.time);
       if (input.pressed('KeyR')) this.fishing.reelHand();
     }
@@ -1074,6 +1101,10 @@ class Game {
     this.deckFish.update(dt, t, this.time.gameHourDelta(dt), this.boat.deckWater, g.hold, this.boat.hatchOpen);
     // радіо: текст станції й звук (чути в каюті, тихіше — з палуби)
     this.radio.update(dt);
+    if ((this.chartMode || (this.player.mode === 'boat' && this.player.inCabin)) && this.chart.due(dt, this.chartMode)) {
+      this.mapView.drawChart(this.chart.canvas, this.boat.pos.x, this.boat.pos.z, this.boat.heading, this.port.rocks, this.game);
+      this.chart.textureUpdated();
+    }
     this.updateHighlight(t);
     this.radioTextT -= dt;
     if (this.radioTextT <= 0) {
@@ -1286,6 +1317,15 @@ class Game {
 
     const id = p.interact(this.boat, this.port, this.audio);
     if (!id) return; // climb — оброблено
+
+    if (id === 'st:chart') {
+      if (this.fishing.holding) {
+        this.hud.toast('Спершу постав вудку — над картою потрібні обидві руки', 'warn', 2500);
+        return;
+      }
+      this.setChart(true);
+      return;
+    }
 
     if (id === 'st:door') {
       this.boat.doorOpen = !this.boat.doorOpen;
@@ -1503,6 +1543,18 @@ class Game {
       t,
       orbitYaw: this.introYaw(),
     });
+    // над штурманським столом: камера схиляється до карти (згори, північ — від себе)
+    this.chartK += ((this.chartMode ? 1 : 0) - this.chartK) * (1 - Math.exp(-this.clockDelta * 6));
+    if (this.chartK > 0.002) {
+      const b = this.boat;
+      b.localToWorld(CHART_CENTER.x - 0.3, CHART_CENTER.y + 0.55, CHART_CENTER.z, this._chEye);
+      b.localToWorld(CHART_CENTER.x + 0.02, CHART_CENTER.y, CHART_CENTER.z, this._chAt);
+      this._chUp.set(1, 0, 0).applyQuaternion(b.group.quaternion);
+      this._chM.lookAt(this._chEye, this._chAt, this._chUp);
+      this._chQ.setFromRotationMatrix(this._chM);
+      this.camera.position.lerp(this._chEye, this.chartK);
+      this.camera.quaternion.slerp(this._chQ, this.chartK);
+    }
     // вітрові завитки (не в каюті)
     if (simDt > 0) {
       const indoor = this.rig.mode === 'fp' && this.player.mode === 'boat' && this.player.level !== 'deck';
@@ -1754,7 +1806,43 @@ class Game {
     this.selfAvatar.update(this.clockDelta, this.boat, this.ocean, this.simTime);
   }
 
+  private setChart(on: boolean) {
+    if (on === this.chartMode) return;
+    this.chartMode = on;
+    this.chart.setActive(on);
+    this.audio.click();
+    if (on) {
+      // олівець — на яхту (або на вже поставлену точку)
+      const [cw, ch] = this.chart.size;
+      const wp = this.game.waypoint;
+      const uv = this.mapView.worldToUV(wp?.x ?? this.boat.pos.x, wp?.z ?? this.boat.pos.z, cw, ch);
+      this.chart.setCursorUV(uv[0], uv[1]);
+      this.chart.markDirty();
+    }
+  }
+
+  private chartClick() {
+    const [cw, ch] = this.chart.size;
+    const w = this.mapView.uvToWorld(this.chart.u, this.chart.v, cw, ch);
+    if (!w || this.mapView.isOnLand(w[0], w[1])) {
+      this.hud.toast('Це суша — точку ставлять на воді', 'warn', 1800);
+      return;
+    }
+    this.game.setWaypoint(w[0], w[1]);
+    this.audio.click();
+    this.chart.markDirty();
+    this.saveGame();
+    const d = Math.hypot(w[0] - this.boat.pos.x, w[1] - this.boat.pos.z);
+    this.hud.toast(`📍 Точку маршруту поставлено · ${this.mapView.fmtDist(d)}. Курс — на компасі`, 'good', 2500);
+  }
+
   private currentPrompt(): { text: string | null; bite: boolean; key?: string } {
+    if (this.chartMode) {
+      const [cw, ch] = this.chart.size;
+      const w = this.mapView.uvToWorld(this.chart.u, this.chart.v, cw, ch);
+      const d = w ? ` (${this.mapView.fmtDist(Math.hypot(w[0] - this.boat.pos.x, w[1] - this.boat.pos.z))})` : '';
+      return { text: `Поставити точку маршруту${d} · ПКМ — стерти · E — встати`, bite: false, key: 'ЛКМ' };
+    }
     // боротьба — перш за все
     if (this.fishing.state === 'fight' || this.fishing.state === 'charge') return { text: null, bite: false };
     if (this.fishing.state === 'bite') return { text: 'Клює! Підсікай!', bite: true, key: 'ЛКМ' };

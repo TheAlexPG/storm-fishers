@@ -104,7 +104,7 @@ export class MapView {
 
   private resize() {
     // canvas у flex-колонці: фактичний розмір = екран мінус шапка/легенда
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = this.dprOverride ?? Math.min(window.devicePixelRatio || 1, 2);
     const w = this.canvas.clientWidth || window.innerWidth;
     const h = this.canvas.clientHeight || window.innerHeight;
     this.canvas.width = Math.round(w * dpr);
@@ -113,7 +113,7 @@ export class MapView {
 
   private render(boatX: number, boatZ: number, heading: number, rocks: RockObstacle[], game: GameState) {
     const c = this.ctx;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = this.dprOverride ?? Math.min(window.devicePixelRatio || 1, 2);
     const w = this.canvas.width / dpr;
     const h = this.canvas.height / dpr;
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -450,7 +450,7 @@ export class MapView {
   private baseLayer(w: number, h: number, s: number, ox: number, oy: number): HTMLCanvasElement {
     const key = `${w}x${h}`;
     if (this.base && this.baseKey === key) return this.base;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = this.dprOverride ?? Math.min(window.devicePixelRatio || 1, 2);
     const cv = this.base ?? document.createElement('canvas');
     cv.width = Math.round(w * dpr);
     cv.height = Math.round(h * dpr);
@@ -528,6 +528,43 @@ export class MapView {
 
   fmtDist(d: number): string {
     return d >= 1000 ? (d / 1000).toFixed(1).replace('.', ',') + ' км' : Math.round(d) + ' м';
+  }
+
+  private dprOverride: number | null = null;
+  private chartBase: HTMLCanvasElement | null = null;
+  private chartBaseKey = '';
+
+  /** намалювати лоцію в чужий canvas (паперова карта на штурманському столі) */
+  drawChart(cv: HTMLCanvasElement, boatX: number, boatZ: number, heading: number, rocks: RockObstacle[], game: GameState) {
+    const keep = [this.canvas, this.ctx, this.base, this.baseKey] as const;
+    this.canvas = cv;
+    this.ctx = cv.getContext('2d')!;
+    this.base = this.chartBase;
+    this.baseKey = this.chartBaseKey;
+    this.dprOverride = 1.7; // крупніші підписи на паперовій карті
+    try {
+      this.render(boatX, boatZ, heading, rocks, game);
+    } finally {
+      this.chartBase = this.base;
+      this.chartBaseKey = this.baseKey;
+      [this.canvas, this.ctx, this.base, this.baseKey] = keep;
+      this.dprOverride = null;
+    }
+  }
+
+  /** світ → (u, v) на паперовій карті */
+  worldToUV(wx: number, wz: number, cw: number, ch: number): [number, number] {
+    const s = Math.min(cw / WW, ch / HH);
+    return [((wx - W0) * s + (cw - WW * s) / 2) / cw, ((wz - H0) * s + (ch - HH * s) / 2) / ch];
+  }
+
+  /** точка на паперовій карті (u, v 0..1, v — згори) → світ; null — поза картою */
+  uvToWorld(u: number, v: number, cw: number, ch: number): [number, number] | null {
+    const s = Math.min(cw / WW, ch / HH);
+    const wx = (u * cw - (cw - WW * s) / 2) / s + W0;
+    const wz = (v * ch - (ch - HH * s) / 2) / s + H0;
+    if (wx < W0 || wx > W1 || wz < H0 || wz > H1) return null;
+    return [wx, wz];
   }
 
   /** координати кліку → світ; null, якщо поза межами карти */
