@@ -304,7 +304,11 @@ export class GameState {
   static readonly SOLO_KEY = SAVE_KEY;
   static readonly COOP_KEY = 'storm-fishers-coop-v1';
 
+  /** після імпорту сейву (перед перезавантаженням) — не записувати */
+  static frozen = false;
+
   static write(data: SaveData) {
+    if (GameState.frozen) return;
     try {
       localStorage.setItem(GameState.saveKey, JSON.stringify(data));
     } catch {

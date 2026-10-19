@@ -41,6 +41,7 @@ import { FishJump } from './world/fishJump';
 import { DeckFish } from './world/deckFish';
 import { RadioSet, RADIO_CHANNELS } from './world/radioSet';
 import { CabinDoor } from './world/cabinDoor';
+import { describeSave } from './game/saveTransfer';
 import { Highlighter } from './world/highlight';
 import { HOLDER_MOUNTS } from './world/upgradeParts';
 import { DECK_Y as Y_DECK, HOUSE as L_HOUSE, RIG as L_RIG, SOLE_Y as Y_SOLE } from './world/yachtLayout';
@@ -742,6 +743,7 @@ class Game {
         saveSettings(st);
       },
       playTime: this.playTime,
+      onBeforeExport: () => this.saveGame(),
       places: LANDMARKS.map((l) => ({ name: l.name, found: this.game.places.includes(l.id) })),
       coop: this.coop.active
         ? {
@@ -782,9 +784,7 @@ class Game {
   /** коротко про соло-сейв для стартового екрана */
   private saveSummary(): string | undefined {
     const d = GameState.load();
-    if (!d) return undefined;
-    const up = Object.values(d.upgrades ?? {}).reduce((a, v) => a + (v ?? 0), 0);
-    return `день ${d.dayCount ?? 1}, ${Math.round(d.money ?? 0)} ₴, апгрейдів ${up}, улов ${d.hold?.length ?? 0}`;
+    return d ? describeSave(d) : undefined;
   }
 
   private saveGame() {

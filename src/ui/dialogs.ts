@@ -10,6 +10,7 @@ import type { Weather } from '../core/weather';
 import type { TimeCycle } from '../core/time';
 import type { AudioEngine } from '../core/audio';
 import type { Settings } from '../game/settings';
+import { exportSave, parseSaveFile, applyImport, hasAnySave } from '../game/saveTransfer';
 
 // ─────────────────────────────────────────────────────────────
 // Оверлеї: вступ, пауза, магазин, радіо.
@@ -104,7 +105,8 @@ export class Dialogs {
         ${hasSave ? '<button class="btn primary" data-act="continue">Продовжити</button>' : ''}
         <button class="btn ${hasSave ? '' : 'primary'}" data-act="new">${hasSave ? 'Нова гра' : 'Вийти в море'}</button>
       </div>
-      <div class="intro-save">${hasSave && saveInfo ? `💾 Збережено: ${esc(saveInfo)}. ` : ''}Прогрес зберігається автоматично в цьому браузері — і в соло, і в коопі.</div>
+      <div class="intro-save">${hasSave && saveInfo ? `💾 Збережено: ${esc(saveInfo)}. ` : ''}Прогрес зберігається автоматично в цьому браузері — і в соло, і в коопі. Щоб перенести на інший комп — експорт у файл.</div>
+      ${this.saveToolsHtml()}
       <details class="intro-more">
         <summary>Керування</summary>
         <div class="intro-keys">
@@ -193,6 +195,7 @@ export class Dialogs {
       this.close();
       onNew();
     });
+    this.bindSaveTools();
     const cont = this.panel.querySelector('[data-act="continue"]');
     if (cont) {
       cont.addEventListener('click', () => {
@@ -204,9 +207,56 @@ export class Dialogs {
     }
   }
 
+  /** кнопки експорту/імпорту сейву (файл .json) */
+  private bindSaveTools(beforeExport?: () => void) {
+    const root = this.panel.querySelector('.save-tools');
+    if (!root) return;
+    const msg = root.querySelector('.save-msg') as HTMLElement;
+    const file = root.querySelector('input[type=file]') as HTMLInputElement;
+    const say = (html: string, cls = '') => {
+      msg.innerHTML = html;
+      msg.className = 'save-msg ' + cls;
+    };
+    root.querySelector('[data-act="exp"]')!.addEventListener('click', () => {
+      this.audio.click();
+      beforeExport?.();
+      if (exportSave()) say('Файл сейву завантажено ✓ Перенеси його на інший комп і натисни там «Імпорт сейву».', 'good');
+      else say('Ще нічого не збережено.', 'bad');
+    });
+    root.querySelector('[data-act="imp"]')!.addEventListener('click', () => {
+      this.audio.click();
+      file.value = '';
+      file.click();
+    });
+    file.addEventListener('change', async () => {
+      const f = file.files?.[0];
+      if (!f) return;
+      try {
+        const p = await parseSaveFile(f);
+        say(`Знайдено: <b>${esc(p.summary)}</b>.<br>${hasAnySave() ? 'Поточний прогрес у цьому браузері буде замінено. ' : ''}<button class="btn primary" data-act="imp-ok">Завантажити цей сейв</button>`);
+        msg.querySelector('[data-act="imp-ok"]')!.addEventListener('click', () => {
+          applyImport(p);
+          say('Сейв імпортовано — перезапуск…', 'good');
+          setTimeout(() => location.reload(), 300);
+        });
+      } catch (e) {
+        say(esc((e as Error).message), 'bad');
+      }
+    });
+  }
+
+  private saveToolsHtml(): string {
+    return `<div class="save-tools">
+        <button class="btn small" data-act="exp">⬇ Експорт сейву</button>
+        <button class="btn small" data-act="imp">⬆ Імпорт сейву</button>
+        <input type="file" accept=".json,application/json" hidden>
+        <div class="save-msg"></div>
+      </div>`;
+  }
+
   // ── ПАУЗА ──
 
-  pause(opts: { onResume: () => void; onReset: () => void; settings: Settings; onSettings: (s: Settings) => void; playTime: number; places?: Array<{ name: string; found: boolean }>; coop?: CoopPause }) {
+  pause(opts: { onResume: () => void; onReset: () => void; onBeforeExport?: () => void; settings: Settings; onSettings: (s: Settings) => void; playTime: number; places?: Array<{ name: string; found: boolean }>; coop?: CoopPause }) {
     this.escAllowed = false;
     this.show(`
       <h1>Пауза</h1>
@@ -224,6 +274,9 @@ export class Dialogs {
       ${opts.places ? `
       <h2>Місця · ${opts.places.filter((p) => p.found).length}/${opts.places.length}</h2>
       <div class="places">${opts.places.map((p) => `<span class="place${p.found ? ' found' : ''}">${p.found ? esc(p.name) : '???'}</span>`).join('')}</div>` : ''}
+      <h2>Збереження</h2>
+      <p class="sub">Гра зберігається сама. Щоб грати на іншому комп'ютері — експортуй сейв у файл і імпортуй його там.</p>
+      ${this.saveToolsHtml()}
       <h2>Налаштування</h2>
       <div class="settings">
         <label>Гучність<input type="range" min="0" max="100" data-k="volume"><output></output></label>
@@ -262,6 +315,7 @@ export class Dialogs {
       this.close();
       opts.onResume();
     });
+    this.bindSaveTools(opts.onBeforeExport);
     // налаштування: повзунки змінюють одразу
     const st = { ...opts.settings };
     const fmt: Record<string, (v: number) => string> = {
