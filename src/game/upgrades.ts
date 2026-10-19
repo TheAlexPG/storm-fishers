@@ -1,7 +1,7 @@
 import type { UpgradeId, UpgradeLevels } from '../core/types';
 
 // ─────────────────────────────────────────────────────────────
-// 7 дерев апгрейдів × 5 рівнів. Правило: жодного «невидимого»
+// 9 дерев апгрейдів × 5 рівнів. Правило: жодного «невидимого»
 // апгрейду — кожен рівень це конкретна річ, що стоїть на полиці
 // крамниці й після купівлі з'являється на човні (моделі —
 // world/upgradeParts.ts).
@@ -171,7 +171,56 @@ export const UPGRADES: UpgradeDef[] = [
       { label: 'Швидкість клювання', value: (l) => (holderBiteSpeed(l) - 1) * 100, fmt: pct },
     ],
   },
+  {
+    id: 'sails',
+    name: 'Паруси',
+    role: 'швидкість і гострота під вітрилами',
+    desc: (l) => {
+      const p = sailPerf(l);
+      return `тяга +${Math.round((p.drive - 1) * 100)} %, мертвий кут ${p.noGo}°${p.genn ? ', генакер на повних курсах' : ''}`;
+    },
+    costs: [450, 900, 1800, 3600, 6800],
+    parts: [
+      { name: 'Нові дакронові паруси', blurb: 'Сліпучо-білий дакрон із синьою смугою: парус тримає форму — більше тяги, менше крену.' },
+      { name: 'Ролик і лебідки', blurb: 'Великий барабан ролика на штагу й пара хромованих лебідок із самостопором на рубці: риф і постановка — вдвічі швидше.' },
+      { name: 'Ламіновані паруси', blurb: 'Сріблясто-золотий ламінат із волокнами по лініях навантаження: човен іде гостріше до вітру й не полощеться.' },
+      { name: 'Бушприт і генакер', blurb: 'Карбоновий бушприт на носі й синьо-жовтий генакер: сам розкривається на повних курсах і тягне, як паровоз.' },
+      { name: 'Гоночний карбоновий пакет', blurb: 'Чорні карбонові паруси, карбоновий гік і вітромір на топі: найгостріший курс і запас на шквал.' },
+    ],
+    stats: [
+      { label: 'Тяга під парусом', value: (l) => (sailPerf(l).drive - 1) * 100, fmt: pct },
+      { label: 'Мертвий кут до вітру', value: (l) => sailPerf(l).noGo, fmt: (v) => `${Math.round(v)}°`, lowerBetter: true },
+      { label: 'Запас на шквал', value: (l) => (sailPerf(l).over - 1) * 100, fmt: pct },
+      { label: 'Постановка / риф', value: (l) => 3 / sailPerf(l).hoist, fmt: (v) => `${v.toFixed(1).replace('.', ',')} с`, lowerBetter: true },
+    ],
+  },
 ];
+
+/**
+ * Паруси: що дає кожен рівень (читає SailRig).
+ *  drive — множник тяги, noGo — мертвий кут (°), hoist — швидкість лебідки/ролика,
+ *  heel — множник крену від вітру, over — запас до перевантаження (шквал),
+ *  genn — є генакер для повних курсів.
+ */
+export interface SailPerf {
+  drive: number;
+  noGo: number;
+  hoist: number;
+  heel: number;
+  over: number;
+  genn: boolean;
+}
+const SAIL_PERF: SailPerf[] = [
+  { drive: 1.0, noGo: 28, hoist: 1.2, heel: 1.0, over: 1.0, genn: false },
+  { drive: 1.12, noGo: 27, hoist: 1.2, heel: 0.9, over: 1.06, genn: false },
+  { drive: 1.12, noGo: 27, hoist: 2.4, heel: 0.9, over: 1.1, genn: false },
+  { drive: 1.24, noGo: 23, hoist: 2.4, heel: 0.85, over: 1.15, genn: false },
+  { drive: 1.24, noGo: 23, hoist: 2.4, heel: 0.85, over: 1.15, genn: true },
+  { drive: 1.32, noGo: 21, hoist: 2.8, heel: 0.75, over: 1.45, genn: true },
+];
+export function sailPerf(l: number): SailPerf {
+  return SAIL_PERF[Math.max(0, Math.min(5, Math.round(l)))];
+}
 
 /** скільки вудок у стійках на рівні */
 export function holderCount(l: number): number {
@@ -189,7 +238,7 @@ export const UPGRADE_BY_ID: Record<string, UpgradeDef> = Object.fromEntries(UPGR
 export const MAX_LEVEL = 5;
 
 export function defaultUpgrades(): UpgradeLevels {
-  return { engine: 0, hull: 0, hold: 0, rod: 0, fuel: 0, lights: 0, stab: 0, holders: 0 };
+  return { engine: 0, hull: 0, hold: 0, rod: 0, fuel: 0, lights: 0, stab: 0, holders: 0, sails: 0 };
 }
 
 export function upgradeCost(id: UpgradeId, currentLevel: number): number | null {
