@@ -85,6 +85,16 @@ export class Hud {
   private chipWp!: HTMLElement;
   private chipAnchor!: HTMLElement;
   private lastAnchorChip = '';
+  private chipInstr!: HTMLElement;
+  private lastInstrChip = '';
+  /**
+   * прилади яхти (апгрейд «Прилади»): рівень і показники для чіпів.
+   * 0 — лише компас: чіпи грубі (8 румбів, ≈відстань); 1 — лаг (швидкість), тиск;
+   * 2 — глибина й вітер; 3 — GPS: точний курс/відстань/час; 4 — стрілка до зграї
+   */
+  instr: { lvl: number; speed: number; depth: number; wind: number; falling: boolean; fishBrg: number | null; fish: number; autopilot: boolean } = {
+    lvl: 3, speed: 0, depth: 0, wind: 0, falling: false, fishBrg: null, fish: 0, autopilot: false,
+  };
   private lastPortChip = '';
   private lastWpChip = '';
   private toasts: HTMLElement;
@@ -123,6 +133,7 @@ export class Hud {
           <span class="nav-chip hud-card" id="chip-port"></span>
           <span class="nav-chip hud-card" id="chip-wp"></span>
           <span class="nav-chip hud-card hidden" id="chip-anchor"></span>
+          <span class="nav-chip hud-card hidden" id="chip-instr"></span>
         </div>
       </div>
       <div class="hud-tr">
@@ -242,6 +253,7 @@ export class Hud {
     this.chipPort = root.querySelector('#chip-port')!;
     this.chipWp = root.querySelector('#chip-wp')!;
     this.chipAnchor = root.querySelector('#chip-anchor')!;
+    this.chipInstr = root.querySelector('#chip-instr')!;
     this._day = elDay;
   }
 
@@ -549,6 +561,23 @@ export class Hud {
     };
     drawMark(Hud.bearing(boat.x, boat.z, this.navPort.x, this.navPort.z), '#e39a2d', false);
     if (wp) drawMark(Hud.bearing(boat.x, boat.z, wp.x, wp.z), this.night ? '#7fd6cc' : '#24878c', true);
+    // рибошукач: куди найближча зграя (риб'ячий значок)
+    if (this.instr.lvl >= 4 && this.instr.fishBrg != null) {
+      const d = wrap(this.instr.fishBrg);
+      if (Math.abs(d) <= 92) {
+        const x = cx + d * pxPerDeg;
+        c.fillStyle = this.night ? '#ffd34d' : '#d08a0c';
+        c.beginPath();
+        c.ellipse(x - 1, 6, 4.5, 2.6, 0, 0, Math.PI * 2);
+        c.fill();
+        c.beginPath();
+        c.moveTo(x + 2.5, 6);
+        c.lineTo(x + 6.5, 3);
+        c.lineTo(x + 6.5, 9);
+        c.closePath();
+        c.fill();
+      }
+    }
     // вітер: звідки дме (стрілка вниз, «у тебе»), довжина — сила
     {
       const from = ((windDir * 180) / Math.PI + 180 + 360) % 360;
@@ -601,7 +630,7 @@ export class Hud {
     const dPort = Math.hypot(boat.x - np.x, boat.z - np.z);
     const ic = np.home ? '🏠' : '⚓';
     // у шварту курс сенсу не має — показуємо лише факт
-    const tPort = dPort < 5 ? `${ic} у шварту${np.home ? '' : ` · ${np.name}`}` : `${ic} ${np.home ? '' : `${np.name} · `}${String(Math.round(bPort) % 360).padStart(3, '0')}° · ${Hud.fmtDist(dPort)}`;
+    const tPort = dPort < 5 ? `${ic} у шварту${np.home ? '' : ` · ${np.name}`}` : `${ic} ${np.home ? '' : `${np.name} · `}${this.navText(bPort, dPort)}`;
     if (tPort !== this.lastPortChip) {
       this.lastPortChip = tPort;
       this.chipPort.textContent = tPort;
@@ -609,7 +638,7 @@ export class Hud {
     if (wp) {
       const bWp = Hud.bearing(boat.x, boat.z, wp.x, wp.z);
       const dWp = Math.hypot(wp.x - boat.x, wp.z - boat.z);
-      const tWp = `⚑ ${String(Math.round(bWp) % 360).padStart(3, '0')}° · ${Hud.fmtDist(dWp)}`;
+      const tWp = `⚑ ${this.navText(bWp, dWp)}`;
       if (tWp !== this.lastWpChip) {
         this.lastWpChip = tWp;
         this.chipWp.textContent = tWp;
@@ -618,6 +647,33 @@ export class Hud {
     } else {
       this.chipWp.classList.add('hidden');
     }
+    // прилади: швидкість (лаг), глибина й вітер (ехолот/вітромір), риба (сонар), автопілот
+    const ins = this.instr;
+    const parts: string[] = [];
+    if (ins.lvl >= 1) parts.push(`⛵ ${(ins.speed * 1.944).toFixed(1).replace('.', ',')} вуз`);
+    if (ins.lvl >= 2) parts.push(`⇣ ${ins.depth > 240 ? '>250' : ins.depth.toFixed(ins.depth < 10 ? 1 : 0).replace('.', ',')} м`, `🌬 ${Math.round(ins.wind)} м/с`);
+    else if (ins.lvl >= 1 && ins.falling) parts.push('🌡 тиск падає');
+    if (ins.lvl >= 4) parts.push(ins.fish > 0.62 ? '🐟 густо' : ins.fish > 0.32 ? '🐟 помірно' : '🐟 рідко');
+    if (ins.autopilot) parts.push('🤖 АВТО');
+    const tI = parts.join(' · ');
+    if (tI !== this.lastInstrChip) {
+      this.lastInstrChip = tI;
+      this.chipInstr.textContent = tI;
+      this.chipInstr.classList.toggle('hidden', !tI);
+      this.chipInstr.classList.toggle('alarm', ins.lvl >= 2 && ins.depth < 4.5);
+    }
+  }
+
+  /** курс і відстань: з GPS — точно (+ час ходу), без нього — румб і «≈» */
+  private navText(brg: number, d: number): string {
+    const ins = this.instr;
+    if (ins.lvl >= 3) {
+      const eta = ins.speed > 0.5 ? d / ins.speed / 60 : null;
+      return `${String(Math.round(brg) % 360).padStart(3, '0')}° · ${Hud.fmtDist(d)}${eta != null && eta < 600 ? ` · ${eta < 1 ? '<1' : Math.round(eta)} хв` : ''}`;
+    }
+    const P = ['П', 'ПнСх', 'Сх', 'ПдСх', 'Пд', 'ПдЗх', 'Зх', 'ПнЗх'];
+    const rough = d < 1000 ? `≈${Math.max(100, Math.round(d / 100) * 100)} м` : `≈${(Math.round(d / 500) / 2).toFixed(1).replace('.', ',')} км`;
+    return `${P[Math.round(brg / 45) % 8]} · ${rough}`;
   }
 
   /** чіп якоря: «⚓ на якорі · 18 м ланцюга» (null — сховати); warn — якір повзе */

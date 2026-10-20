@@ -36,7 +36,10 @@ const LOOK_AT: Record<string, [number, number, number]> = {
   chart: [0.83, SOLE_Y + 0.79, 0.95],
   nets: [0.6, 1.0, -4.95],
   anchor: [0, 1.2, 4.12],
+  autopilot: [-0.22, 1.95, -3.57],
 };
+/** дрібні органи: вибираються лише точним поглядом (cos кута до точки LOOK_AT), щоб не перебивати сусідів */
+const LOOK_ONLY: Record<string, number> = { autopilot: 0.985 };
 /** ближча досяжність: до щогли треба реально підійти бічною палубою */
 const STATION_REACH: Record<string, number> = { sails: 1.7, door: 2.4, nets: 2.4, anchor: 2.2 };
 /** станції, доступні і з палуби, і з каюти */
@@ -518,6 +521,7 @@ export class Player {
         const hl = Math.hypot(hx, hy, hz);
         const cp = la ? Math.cos(this.pitch) : 1;
         const look = hl > 0.05 ? (-Math.sin(this.yaw) * cp * hx + (la ? Math.sin(this.pitch) : 0) * hy - Math.cos(this.yaw) * cp * hz) / hl : 1;
+        if (LOOK_ONLY[id] && look < LOOK_ONLY[id]) continue;
         // прилад, на який дивишся прямо (є точка LOOK_AT), — ще пріоритетніший;
         // що точніше погляд, то більше (радіо над штурманським столом — поруч)
         const score = d * (1.4 - 0.4 * look) * (la && look > 0.9 ? 0.6 - (look - 0.9) * 4 : 1);
@@ -590,7 +594,7 @@ export class Player {
 
   private stationLabel(id: string, boat: Boat): string {
     switch (id) {
-      case 'wheel': return this.wheeling ? 'Вийти зі штурвала' : 'Стати за штурвал (газ W/S, кермо A/D)';
+      case 'wheel': return this.wheeling ? (boat.instrLevel >= 5 ? (boat.autopilot ? 'Вийти зі штурвала (автопілот кермує) · T — вимкнути автопілот' : 'Вийти зі штурвала · T — автопілот') : 'Вийти зі штурвала') : 'Стати за штурвал (газ W/S, кермо A/D)';
       case 'sails': return boat.sails.mode === 0 ? 'Фал на щоглі — підняти паруси' : boat.sails.mode === 2 ? 'Риф-шкентель — взяти риф' : 'Фал — спустити паруси';
       case 'rod': return this.stationText?.('rod') ?? 'Стійка з вудками';
       case 'fishbox': return this.stationText?.('fishbox') ?? 'Рибний ящик';
@@ -600,6 +604,7 @@ export class Player {
       case 'door': return boat.doorOpen ? 'Двері каюти — зачинити (у шторм вода ллється в салон)' : 'Двері каюти — відчинити';
       case 'nets': return this.stationText?.('nets') ?? 'Сітки';
       case 'anchor': return this.stationText?.('anchor') ?? 'Брашпиль — якір';
+      case 'autopilot': return boat.autopilot ? 'Автопілот — вимкнути (кермо знову твоє)' : 'Автопілот — увімкнути (веде маршрутом або тримає курс)';
       case 'chart': return 'Штурманський стіл — прокласти маршрут на карті';
       case 'kitchen': return 'Кухня — сварити рибу';
       case 'radio': return this.stationText?.('radio') ?? 'Радіо';

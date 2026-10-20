@@ -34,6 +34,8 @@ export interface YachtRefs {
   /** згорнутий на штагу стаксель (ховається, коли парус розгорнуто) */
   furledJib: THREE.Object3D[];
   helmDisplay: HelmDisplay | null;
+  /** прилади на пульті штурвала (видно за рівнем апгрейду «Прилади»): rpm/fuel/speed/compass + mfd */
+  panelParts: Record<string, THREE.Object3D[]>;
   /** основна вудка: шарнір у тримачі, вудлище вздовж локальної +Y */
   rod: THREE.Group;
   rodLen: number;
@@ -438,6 +440,7 @@ export class YachtBuilder {
       furledJib: [],
       fenders: [],
       helmDisplay: null,
+      panelParts: {},
       rod: new THREE.Group(),
       rodLen: 2.4,
     };
@@ -1096,6 +1099,7 @@ export class YachtBuilder {
     // пульт приборів на тумбі (нахилений до стерновика)
     const pod = this.box(g, 1.36, 0.12, 0.4, 0, DECK_Y + 1.1, -2.98, dark);
     pod.rotation.x = -0.55; // верхня грань — до стерновика
+    this.refs.panelParts.pod = [pod];
     // орієнтація приладів: обличчям до стерновика (нормаль угору й до корми),
     // «верх» шкали — від стерновика вперед; правий край — праворуч від нього (−X)
     const faceQ = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(
@@ -1120,11 +1124,13 @@ export class YachtBuilder {
     frame.position.addScaledVector(n, 0.06);
     frame.rotation.x = -0.55;
     this.refs.helmDisplay = mfd;
+    this.refs.panelParts.mfd = [mfd.mesh, frame];
     for (const [dx, kind] of dials) {
       const dial = new THREE.Group();
       dial.position.set(dx, DECK_Y + 1.1, -2.98).addScaledVector(n, 0.065);
       dial.quaternion.copy(faceQ);
       g.add(dial);
+      this.refs.panelParts[kind] = [dial];
       const bezel = new THREE.Mesh(new THREE.TorusGeometry(0.105, 0.012, 6, 24), steel);
       dial.add(bezel);
       if (kind === 'compass') {
@@ -1157,6 +1163,7 @@ export class YachtBuilder {
     const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.03, 0.05), this.refs.onLampMat);
     lamp.position.set(0.435, DECK_Y + 1.1, -2.98).addScaledVector(n, 0.07).addScaledVector(new THREE.Vector3(0, Math.sin(0.55), Math.cos(0.55)), 0.14);
     g.add(lamp);
+    this.refs.panelParts.pod.push(lamp);
     // ручка газу (праворуч на тумбі)
     this.box(g, 0.1, 0.16, 0.12, 0.17, DECK_Y + 0.75, -3.08, dark);
     const lever = this.box(g, 0.025, 0.2, 0.025, 0.24, DECK_Y + 0.85, -3.08, steel);

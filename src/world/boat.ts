@@ -17,6 +17,7 @@ import { HOLDER_MOUNTS } from './upgradeParts';
 import { FISH_BOX } from './deckFish';
 import { holderCount } from '../game/upgrades';
 import { Anchor } from './anchor';
+import { depthAt } from './helmInstruments';
 
 // ─────────────────────────────────────────────────────────────
 // Вітрильна яхта «Шторм» (меш — yachtModel.ts, компонування — yachtLayout.ts):
@@ -64,6 +65,8 @@ export const STATION_POS: Record<string, { x: number; z: number; y?: number }> =
   nets: { x: 0.55, z: -4.3 },
   // брашпиль на баку — віддати / вибрати якір
   anchor: { x: 0, z: 4.25 },
+  // пульт автопілота на штурвальній тумбі (апгрейд «Прилади» 5)
+  autopilot: { x: -0.25, z: -4.1 },
 };
 
 export interface RockObstacle {
@@ -261,6 +264,7 @@ export class Boat {
     this.compassCard = r.compassCard;
     this.onLampMat = r.onLampMat;
     this.helmDisplay = r.helmDisplay;
+    this.panelParts = r.panelParts;
     this.rodGroup = r.rod;
     this.rodLen = r.rodLen;
     this.rodBaseRot = r.rod.rotation.x;
@@ -296,10 +300,17 @@ export class Boat {
   /** застосувати рівні апгрейдів до mesh */
   /** скільки стійок для вудок встановлено */
   holderSlots = 0;
+  /** рівень «Приладів» (пульт автопілота — з 5-го) */
+  instrLevel = 0;
+  /** автопілот увімкнено (симулює власник яхти, екіпаж бачить зі знімка) */
+  autopilot = false;
+  /** прилади пульта (yachtModel) — їх показує HelmInstruments за рівнем */
+  panelParts: Record<string, THREE.Object3D[]> = {};
   /** станція доступна (стійки — лише куплені) */
   stationOn(id: string): boolean {
     if (id.startsWith('holder')) return Number(id.slice(6)) < this.holderSlots;
     if (id === 'nets') return this.netLevel > 0;
+    if (id === 'autopilot') return this.instrLevel >= 5;
     return true;
   }
 
@@ -307,6 +318,7 @@ export class Boat {
     this.holderSlots = holderCount(levels.holders ?? 0);
     this.sails.setLevel(levels.sails ?? 0);
     this.netLevel = levels.nets ?? 0;
+    this.instrLevel = levels.instr ?? 0;
     for (const m of this.stationMarkers.children) m.visible = this.stationOn(m.userData.station as string);
     for (const [id, arr] of Object.entries(this.upg)) {
       const lvl = levels[id] ?? 0;
@@ -940,7 +952,7 @@ export class Boat {
     // картка: під курсовою рискою — компасний курс (π − heading)
     this.compassCard.rotation.z = Math.PI - this.heading;
     if (this.onLampMat) this.onLampMat.emissiveIntensity = this.engineOn ? 0.9 : 0.05;
-    if (this.helmDisplay) {
+    if (this.helmDisplay && this.helmDisplay.mesh.visible) {
       const thr = Math.abs(this.throttle);
       // витрата як у main: |газ|^1.4 · 0.07 л/с
       const lps = Math.pow(thr, 1.4) * 0.07;
@@ -969,6 +981,7 @@ export class Boat {
         hull: game.hull,
         hullMax: game.maxHull,
         night,
+        depth: depthAt(this.pos.x, this.pos.z),
       });
     }
   }

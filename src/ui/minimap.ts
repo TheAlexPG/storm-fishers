@@ -32,7 +32,11 @@ export class Minimap {
   /** сітки (буї): кінці ліній */
   buoys: Array<{ x0: number; z0: number; x1: number; z1: number }> = [];
   /** човни місцевих рибалок */
-  bots: Array<{ x: number; z: number; h: number }> = [];
+  bots: Array<{ x: number; z: number; h: number; name?: string }> = [];
+  /** маршрут (з GPS-картплотером, «Прилади» 3+) */
+  route: Array<{ x: number; z: number }> = [];
+  /** AIS (радар, «Прилади» 5): судна з іменами на всю мінікарту; без нього — лише ті, що видно оком */
+  ais = true;
   private readonly scale = 0.42; // px/м → радіус ~190 м
   private land: HTMLCanvasElement | null = null;
 
@@ -158,11 +162,39 @@ export class Minimap {
       }
     }
 
-    // човни рибалок — сірі трикутнички (лише в межах кола)
+    // маршрут (GPS): від яхти через точки, пурпурний як на плотері
+    if (this.route.length) {
+      c.strokeStyle = 'rgba(214,51,180,0.85)';
+      c.lineWidth = 2;
+      c.beginPath();
+      c.moveTo(cx, cx);
+      for (const p of this.route) {
+        const [px, pz] = toMap(p.x, p.z);
+        c.lineTo(px, pz);
+      }
+      c.stroke();
+      for (const p of this.route) {
+        const [px, pz] = toMap(p.x, p.z);
+        c.beginPath();
+        c.arc(px, pz, 2.6, 0, Math.PI * 2);
+        c.fillStyle = '#d633b4';
+        c.fill();
+      }
+    }
+
+    // човни рибалок — сірі трикутнички (лише в межах кола; без AIS — лише ближні, видно оком)
     c.fillStyle = 'rgba(42,58,70,0.55)';
     for (const b of this.bots) {
       const [px, pz] = toMap(b.x, b.z);
       if (Math.hypot(px - cx, pz - cx) > R - 4) continue;
+      if (!this.ais && Math.hypot(b.x - boatX, b.z - boatZ) > 120) continue;
+      if (this.ais && b.name) {
+        c.font = '700 8.5px Manrope, system-ui, sans-serif';
+        c.textAlign = 'left';
+        c.fillStyle = 'rgba(42,58,70,0.85)';
+        c.fillText(b.name, px + 5, pz - 4);
+        c.fillStyle = 'rgba(42,58,70,0.55)';
+      }
       c.save();
       c.translate(px, pz);
       c.rotate(-b.h + Math.PI);
