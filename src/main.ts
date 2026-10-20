@@ -54,6 +54,9 @@ import { DECK_Y as Y_DECK, HOUSE as L_HOUSE, RIG as L_RIG, SOLE_Y as Y_SOLE } fr
 import { HELM_DZ } from './world/yachtModel';
 import { PLANS, applySinkToUpgrades, dailyPremium, type SinkReport } from './game/insurance';
 import { Landmarks, LANDMARKS } from './world/landmarks';
+import { Islands, FINDS } from './world/islands';
+import { ISLANDS, islandNear } from './world/islandShape';
+import { HATS, HAT_BY_ID } from './game/hats';
 import { Avatar } from './world/avatar';
 import './styles.css';
 
@@ -161,6 +164,7 @@ class Game {
   private hl = new Highlighter();
   private _hv = new THREE.Vector3();
   private landmarks: Landmarks;
+  private islands: Islands;
   private bellCd = 0;
   /** «з-за корми» за штурвалом (V); запам'ятовується */
   private chasePref = true;
@@ -238,6 +242,7 @@ class Game {
     this.leapJump = new FishJump(this.scene);
     this.scene.add(this.moorMark);
     this.landmarks = new Landmarks(this.scene, this.port.rocks);
+    this.islands = new Islands(this.scene);
     this.boat = new Boat(this.scene);
     this.player = new Player(this.game);
     this.stations = new Stations(this.boat, this.game, this.audio);
@@ -966,6 +971,14 @@ class Game {
             },
           }
         : undefined,
+      hats: {
+        list: HATS.map((h) => ({ id: h.id, name: h.name, icon: h.icon, owned: this.hatOwned(h.id), hint: h.hint })),
+        current: this.game.hat,
+        onPick: (id) => {
+          this.game.hat = id;
+          this.saveGame();
+        },
+      },
     });
   }
 
@@ -1229,6 +1242,10 @@ class Game {
       }
       this.player.update(dt, input, this.boat, this.port, this.ocean, t);
       this.pickCounter();
+      if (this.player.onIsland) {
+        const f = this.islands.pick(this.player.wx, this.player.wz, this.game.finds);
+        if (f) this.player.nearest = f;
+      }
       if (crewHelm) this.coop.myHelm = [this.boat.throttle, this.boat.rudder];
     } else {
       // навіть без лока тримаємо голову на місці
@@ -1249,6 +1266,13 @@ class Game {
       // інші яхти флотилії — теж перешкоди (зіткнення бортами)
       const others = this.coop.active ? this.coop.fleetObstacles() : [];
       this.boat.update(dt, t, this.ocean, this.weather, g, this.particles, this.audio, others.length ? [...this.port.rocks, ...others] : this.port.rocks, this.port.platforms[0]);
+      this.islands.collideBoat(this.boat, g);
+      // капітан на острові / плаває біля нього — яхта стоїть на якорі
+      const p = this.player;
+      if (p.onIsland || (p.mode === 'water' && islandNear(p.wx, p.wz, 40))) {
+        this.boat.throttle = 0;
+        this.boat.vel.multiplyScalar(Math.exp(-dt * 2.5));
+      }
     }
     this.boat.updateGangway(dt, this.port.platforms[0]);
     // камера й маска води в корпусі — від пози човна саме цього кадру
@@ -1268,6 +1292,7 @@ class Game {
     // кооп: знімок світу (капітан), свій гравець і аватари екіпажу
     this.coop.ownerSend(dt, t, this.boat, this.weather, this.time, g, this.coop.crewing ? undefined : this.ocean.netState());
     this.coop.updateFleet(dt, t, this.ocean, this.weather, g, this.particles, this.time.daylight);
+    this.coop.myHat = this.game.hat;
     this.coop.tick(dt, this.boat, this.player, this.stations.active?.id === 'pump', this.fishing, this.ocean, t);
 
     // ловля
@@ -1395,6 +1420,7 @@ class Game {
 
     // пам'ятки: дзвоновий буй, відкриття місць
     const ring = this.landmarks.update(dt, t, this.ocean);
+    this.islands.update(dt, t, g.finds);
     this.bellCd -= dt;
     if (ring > 0.9 && this.bellCd <= 0) {
       this.bellCd = 1.6 + Math.random() * 2;
@@ -1472,6 +1498,31 @@ class Game {
     this.hud.setGoal(g.tut < TUTORIAL.length ? TUTORIAL[g.tut] : null, g.tut + 1, TUTORIAL.length);
   }
 
+  /** знахідка на острові: капелюх у гардероб, гроші з пляшки/скрині */
+  private takeFind(fid: string) {
+    const g = this.game;
+    const f = FINDS.find((x) => x.id === fid);
+    if (!f || g.finds.includes(fid)) return;
+    g.finds.push(fid);
+    this.audio.discover();
+    if (f.kind === 'hat') {
+      const h = HAT_BY_ID[f.hat!];
+      g.hat = h.id;
+      this.hud.titleCard(`${h.icon} ${h.name}`, 'знахідка · вже на тобі (змінити — в паузі)');
+      this.hud.toast(`🎩 Капелюхи: ${HATS.filter((x) => this.hatOwned(x.id)).length}/${HATS.length}`, 'good', 3500);
+    } else {
+      if (f.money) g.money += f.money;
+      if (f.kind === 'bottle') this.hud.titleCard('Пляшка із запискою', f.note ?? '');
+      else this.hud.titleCard('Піратська скриня!', `старі монети · +${f.money} ₴`);
+      this.hud.toast(`+${f.money} ₴`, 'good', 3000);
+    }
+    this.saveGame();
+  }
+
+  private hatOwned(id: string): boolean {
+    return id === 'captain' || this.game.finds.includes('hat:' + id);
+  }
+
   /** підплив до пам'ятки — місце відкрито */
   private checkPlaces() {
     const g = this.game;
@@ -1484,6 +1535,11 @@ class Game {
       g.places.push(l.id);
       this.hud.titleCard(l.name, `відкрито · ${l.sub}`);
       this.hud.toast(`📍 Місця: ${g.places.length}/${LANDMARKS.length}`, 'good', 3500);
+      // усі острови відкрито — шапка з помпоном у подарунок
+      if (!g.finds.includes('hat:beanie') && ISLANDS.every((d) => g.places.includes(d.id))) {
+        g.finds.push('hat:beanie');
+        this.hud.toast('🧶 Усі острови на лоції! У гардеробі — шапка з помпоном', 'good', 5000);
+      }
       this.audio.discover();
       this.saveGame();
     }
@@ -1527,6 +1583,21 @@ class Game {
 
     const id = p.interact(this.boat, this.port, this.audio);
     if (!id) return; // climb — оброблено
+
+    if (id === 'go-ashore') {
+      this.audio.splash(0.2);
+      if (!this.coop.crewing) this.hud.toast('⚓ Яхта на якорі. Назад — E біля яхти', 'good', 3000);
+      return;
+    }
+    if (id === 'swim-boat') {
+      this.audio.splash(0.5);
+      this.hud.toast('🏊 Доплив до яхти', 'good', 1800);
+      return;
+    }
+    if (id.startsWith('find:')) {
+      this.takeFind(id.slice(5));
+      return;
+    }
 
     if (id === 'st:nets') {
       if (this.coop.crewing) this.coop.sendAction({ a: 'nets' });
@@ -2003,9 +2074,9 @@ class Game {
       return;
     }
     const color = this.coop.active ? this.coop.myColor : 0xf2c12e;
-    if (!this.selfAvatar || this.selfColor !== color) {
+    if (!this.selfAvatar || this.selfColor !== color || this.selfAvatar.hatId !== this.game.hat) {
       this.selfAvatar?.dispose(this.scene);
-      this.selfAvatar = new Avatar(this.scene, '', color, this.coop.active ? this.coop.myId : 1);
+      this.selfAvatar = new Avatar(this.scene, '', color, this.coop.active ? this.coop.myId : 1, this.game.hat);
       this.selfAvatar.showLabel(false);
       this.selfColor = color;
     }

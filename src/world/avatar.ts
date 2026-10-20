@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Boat } from './boat';
 import type { Ocean } from '../core/ocean';
 import { buildCharacter, hashStr, playerLook } from './character';
+import { hatOf } from '../game/hats';
 
 // ─────────────────────────────────────────────────────────────
 // Аватар іншого гравця (кооп): рибалка в зюйдвестці + нік над головою.
@@ -27,6 +28,8 @@ export interface NetPlayer {
   f?: [number, number, number, number];
   /** чия яхта (id власника), на якій цей гравець */
   bo?: number;
+  /** капелюх (game/hats.ts; немає — капітанський кашкет) */
+  h?: string;
 }
 
 const JACKETS = [0xf2c12e, 0xe0522f, 0x2f7fd0, 0x3fae5a, 0xa04bc0, 0xf08a24, 0x1fb3b0, 0xd23c6e];
@@ -73,9 +76,14 @@ export class Avatar {
   private bz = 0;
   private fishing = false;
 
-  constructor(scene: THREE.Scene, public nick: string, color: number, seed?: number) {
+  /** капелюх, з яким зібрано модель (інший — перебудувати аватар) */
+  readonly hatId: string;
+
+  constructor(scene: THREE.Scene, public nick: string, color: number, seed?: number, hat?: string) {
     const std = (c: number, r = 0.8) => new THREE.MeshStandardMaterial({ color: c, roughness: r });
-    const rig = buildCharacter(playerLook(color, seed ?? hashStr(nick) ^ color));
+    const h = hatOf(hat);
+    this.hatId = h.id;
+    const rig = buildCharacter(playerLook(color, seed ?? hashStr(nick) ^ color, { kind: h.kind, color: h.color, accent: h.accent }));
     this.body = rig.body;
     this.torso = rig.torso;
     this.legL = rig.legL;

@@ -7,6 +7,8 @@ import { Port, PORT_POINTS, type Platform } from './port';
 import { Ocean } from '../core/ocean';
 import type { GameState } from '../game/state';
 import type { PlayerMode } from '../core/types';
+import { islandHeight, islandNear, resolveIslandSolids } from './islandShape';
+import { Islands } from './islands';
 
 // ─────────────────────────────────────────────────────────────
 // Гравець: first-person на палубі / причалі / у воді.
@@ -74,6 +76,8 @@ export class Player {
   /** сходня на причал (борт −1/1, 0 — немає) */
   private gang: -1 | 0 | 1 = 0;
   private toGang = false;
+  /** на острові (режим «port», але під ногами — рельєф острова) */
+  onIsland = false;
   /** позиція голови (для камери) */
   head = new THREE.Vector3();
   /** йде цього кадру (для аватара в коопі) */
@@ -122,6 +126,7 @@ export class Player {
 
   resetToBoat() {
     this.mode = 'boat';
+    this.onIsland = false;
     this.wheeling = false;
     this.localX = 0;
     this.localZ = -2.2;
@@ -211,11 +216,15 @@ export class Player {
               : boat.localToWorld(this.localX, BOAT.deckY, this.localZ, this._v);
             this.toGang = false;
             const plat = this.platformNear(world.x, world.z, port, 0.9);
+            const shore = plat ? null : Islands.landingSpot(world.x, world.z, 1.6);
             if (plat) {
               this.mode = 'port';
+              this.onIsland = false;
               this.wx = clamp(world.x, plat.x0, plat.x1);
               this.wz = clamp(world.z, plat.z0, plat.z1);
               this.wy = plat.y;
+            } else if (shore) {
+              this.goAshore(shore[0], shore[1]);
             } else {
               this.fallIn(boat, world.x, world.z);
             }
@@ -249,8 +258,11 @@ export class Player {
         dx /= l;
         dz /= l;
         // будинки й реквізит — тверді
-        const [nx, nz] = port.resolveSolids(this.wx + dx * speed * dt, this.wz + dz * speed * dt, PLAYER_R);
-        const plat = this.platformNear(nx, nz, port, 0);
+        let [nx, nz] = port.resolveSolids(this.wx + dx * speed * dt, this.wz + dz * speed * dt, PLAYER_R);
+        if (this.onIsland) [nx, nz] = resolveIslandSolids(nx, nz, PLAYER_R);
+        const plat = this.onIsland ? null : this.platformNear(nx, nz, port, 0);
+        // острів: рельєф під ногами; надто крутий схил — не пройти
+        const gh = this.onIsland ? islandHeight(nx, nz) : -99;
         // сходня: підійшов до її кінця й ідеш до яхти — на борт
         let boarded = false;
         if (boat.gangSide) {
@@ -268,6 +280,13 @@ export class Player {
         }
         if (boarded) {
           /* на борту */
+        } else if (this.onIsland && gh > -0.15) {
+          if (gh - this.wy < 0.25 + speed * dt * 1.1) {
+            this.wx = nx;
+            this.wz = nz;
+            this.wy = damp(this.wy, gh, 16, dt);
+            moving = true;
+          }
         } else if (plat) {
           this.wx = nx;
           // плавний ступінь по висоті (причал 1.1 ↔ земля 1.6), без «попапу»
@@ -283,7 +302,7 @@ export class Player {
       if (moving) {
         this.bobPhase += dt * (running ? 11 : 7.5);
         this.head.y += Math.sin(this.bobPhase) * 0.03;
-        this.stepTick(dt, running ? 11 : 7.5, this.wy < 1.35 ? 1 : 2, running);
+        this.stepTick(dt, running ? 11 : 7.5, this.onIsland || this.wy >= 1.35 ? 2 : 1, running);
       }
     } else {
       // ── вода ──
@@ -302,6 +321,9 @@ export class Player {
         this.wx += dx * speed * dt;
         this.wz += dz * speed * dt;
       }
+      // підплив до острова — виходимо на пляж
+      const gh = islandHeight(this.wx, this.wz);
+      if (gh > -0.05) this.goAshore(this.wx, this.wz);
       // плавання: голова на хвилі
       const h = ocean.heightAt(this.wx, this.wz, t);
       const targetY = h + (inUp ? 0.15 : inDown ? -1.1 : -0.35);
@@ -415,7 +437,20 @@ export class Player {
     return null;
   }
 
+  /** ступити на острів у точці (x, z) */
+  private goAshore(x: number, z: number) {
+    this.mode = 'port';
+    this.onIsland = true;
+    this.wx = x;
+    this.wz = z;
+    this.wy = Math.max(0, islandHeight(x, z));
+    this.wheeling = false;
+    this.shakeX = 0;
+    this.shakeZ = 0;
+  }
+
   private fallIn(_boat: Boat, x: number, z: number) {
+    this.onIsland = false;
     this.mode = 'water';
     this.wx = x;
     this.wz = z;
@@ -454,6 +489,21 @@ export class Player {
           best = { id: 'st:' + id, label: this.stationLabel(id, boat) };
         }
       }
+      // біля острова й яхта майже стоїть — зійти на берег
+      if (this.level === 'deck' && !this.wheeling && boat.vel.length() < 1.6 && islandNear(boat.pos.x, boat.pos.z, 12)) {
+        const spot = Islands.landingSpot(p.x, p.z, 8);
+        // перевага, коли дивишся на берег (станція поруч — лише якщо зовсім під рукою)
+        const sx = spot ? spot[0] - p.x : 0, sz = spot ? spot[1] - p.z : 0;
+        const look = spot ? (-Math.sin(this.yaw) * sx - Math.cos(this.yaw) * sz) / (Math.hypot(sx, sz) || 1) : -1;
+        if (spot && (!best || bestD > 1.6 || (look > 0.55 && bestD > 0.9))) {
+          this.ashoreAt = spot;
+          best = { id: 'go-ashore', label: 'Зійти на берег' };
+        }
+      }
+    } else if (this.mode === 'port' && this.onIsland) {
+      // на острові: повернутись на яхту (поруч — залізти, далеко — вплав)
+      const dBoat = Math.hypot(this.wx - boat.pos.x, this.wz - boat.pos.z);
+      best = dBoat < 9 ? { id: 'climb-boat', label: 'Залізти на яхту' } : { id: 'swim-boat', label: `Повернутись на яхту вплав (${Math.round(dBoat)} м)` };
     } else if (this.mode === 'port') {
       for (const pt of PORT_POINTS) {
         const d = Math.hypot(this.wx - pt.x, this.wz - pt.z);
@@ -510,11 +560,25 @@ export class Player {
     }
   }
 
+  private ashoreAt: [number, number] | null = null;
+
   /** E: дія. Повертає true, якщо гравець сам обробив (перехід режиму). */
   interact(boat: Boat, port: Port, audio: { click(): void }): string | null {
     const n = this.nearest;
     if (!n) return null;
     audio.click();
+
+    if (n.id === 'go-ashore' && this.ashoreAt) {
+      this.goAshore(this.ashoreAt[0], this.ashoreAt[1]);
+      // обличчям від яхти — до острова
+      this.yaw = Math.atan2(-(this.wx - boat.pos.x), -(this.wz - boat.pos.z));
+      return 'go-ashore';
+    }
+    if (n.id === 'swim-boat') {
+      this.resetToBoat();
+      this.onIsland = false;
+      return 'swim-boat';
+    }
 
     if (n.id === 'climb-boat') {
       const w = new THREE.Vector3();
@@ -522,6 +586,7 @@ export class Player {
       const local = boat.worldToLocal(this.wx, this.wy, this.wz, this._v);
       this.placeOnDeck(local.x, local.z);
       this.mode = 'boat';
+      this.onIsland = false;
       this.shakeX = 0;
       this.shakeZ = 0;
       return null;
@@ -532,6 +597,7 @@ export class Player {
       this.wz = clamp(this.wz, dock.z0 + 0.5, dock.z1 - 0.5);
       this.wy = dock.y;
       this.mode = 'port';
+      this.onIsland = false;
       this.shakeX = 0;
       this.shakeZ = 0;
       return null;

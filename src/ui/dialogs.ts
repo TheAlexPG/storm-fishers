@@ -40,6 +40,12 @@ function esc(v: string): string {
   return v.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
 
+export interface HatsPause {
+  list: Array<{ id: string; name: string; icon: string; owned: boolean; hint: string }>;
+  current: string;
+  onPick: (id: string) => void;
+}
+
 export class Dialogs {
   private overlay: HTMLElement;
   private panel: HTMLElement;
@@ -264,7 +270,7 @@ export class Dialogs {
 
   // ── ПАУЗА ──
 
-  pause(opts: { onResume: () => void; onReset: () => void; onBeforeExport?: () => void; settings: Settings; onSettings: (s: Settings) => void; playTime: number; places?: Array<{ name: string; found: boolean }>; coop?: CoopPause }) {
+  pause(opts: { onResume: () => void; onReset: () => void; onBeforeExport?: () => void; settings: Settings; onSettings: (s: Settings) => void; playTime: number; places?: Array<{ name: string; found: boolean }>; coop?: CoopPause; hats?: HatsPause }) {
     this.escAllowed = false;
     this.show(`
       <h1>Пауза</h1>
@@ -290,6 +296,10 @@ export class Dialogs {
       ${opts.places ? `
       <h2>Місця · ${opts.places.filter((p) => p.found).length}/${opts.places.length}</h2>
       <div class="places">${opts.places.map((p) => `<span class="place${p.found ? ' found' : ''}">${p.found ? esc(p.name) : '???'}</span>`).join('')}</div>` : ''}
+      ${opts.hats ? `
+      <h2>Капелюхи · ${opts.hats.list.filter((h) => h.owned).length}/${opts.hats.list.length}</h2>
+      <p class="sub">Знахідки з островів — зійди на берег і шукай, що блищить. Вибраний капелюх видно з-за корми й друзям.</p>
+      <div class="hats">${opts.hats.list.map((h) => `<button class="hat${h.owned ? '' : ' locked'}${h.id === opts.hats!.current ? ' on' : ''}" data-hat="${h.id}" ${h.owned ? '' : 'disabled'} title="${esc(h.owned ? h.name : 'Де шукати: ' + h.hint)}"><span class="hat-ico">${h.owned ? h.icon : '❔'}</span><span class="hat-name">${esc(h.owned ? h.name : h.hint)}</span></button>`).join('')}</div>` : ''}
       <h2>Збереження</h2>
       <p class="sub">Гра зберігається сама. Щоб грати на іншому комп'ютері — експортуй сейв у файл і імпортуй його там.</p>
       ${this.saveToolsHtml()}
@@ -331,6 +341,16 @@ export class Dialogs {
       this.panel.querySelector('[data-act="leave"]')!.addEventListener('click', () => {
         this.close();
         c.onLeave();
+      });
+    }
+    if (opts.hats) {
+      const hs = opts.hats;
+      this.panel.querySelectorAll<HTMLButtonElement>('[data-hat]').forEach((b) => {
+        b.addEventListener('click', () => {
+          hs.onPick(b.dataset.hat!);
+          this.panel.querySelectorAll('[data-hat]').forEach((o) => o.classList.toggle('on', o === b));
+          this.audio.click();
+        });
       });
     }
     this.panel.querySelector('[data-act="resume"]')!.addEventListener('click', () => {

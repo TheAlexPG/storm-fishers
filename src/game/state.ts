@@ -28,6 +28,10 @@ export class GameState {
   discovered: string[] = [];
   /** відкриті місця (пам'ятки в морі) */
   places: string[] = [];
+  /** знахідки на островах (капелюхи, пляшки, скриня) */
+  finds: string[] = [];
+  /** вибраний капелюх (game/hats.ts) */
+  hat = 'captain';
   /** крок навчання «що далі» (TUTORIAL.length — пройдено) */
   tut = 0;
   /** пройдений маршрут: плоский масив [x0,z0,x1,z1,…] */
@@ -282,6 +286,8 @@ export class GameState {
       upgrades: this.upgrades,
       discovered: this.discovered,
       places: this.places,
+      finds: this.finds,
+      hat: this.hat,
       tut: this.tut,
       track: this.track,
       objectives: this.objectives,
@@ -342,6 +348,8 @@ export class GameState {
     if (data.upgrades) this.upgrades = { ...defaultUpgrades(), ...data.upgrades };
     if (Array.isArray(data.discovered)) this.discovered = data.discovered;
     if (Array.isArray(data.places)) this.places = data.places;
+    this.finds = Array.isArray(data.finds) ? data.finds.filter((v) => typeof v === 'string') : [];
+    this.hat = typeof data.hat === 'string' ? data.hat : 'captain';
     // старі сейви без кроку: досвідчений гравець — навчання пропускаємо
     if (Array.isArray(data.track)) this.track = data.track.filter((v) => typeof v === 'number').slice(-800);
     if (typeof data.tut === 'number') this.tut = data.tut;

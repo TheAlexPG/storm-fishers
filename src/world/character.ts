@@ -16,7 +16,7 @@ import { mulberry32 } from '../core/math';
 // ~20 викликів малювання на персонажа.
 // ─────────────────────────────────────────────────────────────
 
-export type HatKind = 'sou' | 'cap' | 'beanie' | 'captain' | 'bucket' | 'none';
+export type HatKind = 'sou' | 'cap' | 'beanie' | 'captain' | 'bucket' | 'ushanka' | 'straw' | 'tricorn' | 'crown' | 'none';
 export type HairKind = 'short' | 'bun' | 'bald' | 'long' | 'buzz';
 export type BeardKind = 'none' | 'full' | 'mustache' | 'goatee';
 export type JacketKind = 'rain' | 'knit' | 'coat';
@@ -371,9 +371,14 @@ export function buildCharacter(look: CharacterLook): CharacterRig {
     if (hairK === 'long') P.add(head, new THREE.CapsuleGeometry(0.12, 0.1, 3, 9), hair, 0, C - 0.1, -0.055, { sx: 1.18, sz: 0.62 });
   }
 
-  // шапки
-  const hc = look.hatColor ?? 0x333333;
-  const acc = look.hatAccent ?? 0xf4efe4;
+  addHat(P, head, hatK, look.hatColor ?? 0x333333, look.hatAccent ?? 0xf4efe4, C);
+
+  const tris = P.finish();
+  return { root, body, torso, head, legL: L.leg, legR: R.leg, kneeL: L.knee, kneeR: R.knee, armL, armR, tris };
+}
+
+/** капелюх на голові (C — центр черепа над шиєю) */
+function addHat(P: Parts, head: THREE.Object3D, hatK: HatKind, hc: number, acc: number, C: number) {
   if (hatK === 'sou') {
     const m = P.mat(hc, 0.38);
     P.add(head, new THREE.SphereGeometry(0.168, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2), m, 0, C + 0.03, -0.006, { sy: 0.98 });
@@ -395,6 +400,47 @@ export function buildCharacter(look: CharacterLook): CharacterRig {
     const m = P.mat(hc, 0.9);
     P.add(head, new THREE.SphereGeometry(0.17, 14, 6, 0, Math.PI * 2, 0, Math.PI / 2), m, 0, C + 0.055, -0.005, { sx: 1.04, sy: 0.55, sz: 1.12 });
     P.add(head, new THREE.CylinderGeometry(0.15, 0.15, 0.016, 12, 1, false, -Math.PI / 2, Math.PI), m, 0, C + 0.06, 0.09, { sz: 0.6, rx: 0.22 });
+  } else if (hatK === 'ushanka') {
+    // хутряна вушанка: верх, підвернутий козирок-хутро, вуха на зав'язках
+    const fur = P.mat(hc, 0.98);
+    const top = P.mat(acc, 0.85);
+    P.add(head, new THREE.SphereGeometry(0.17, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2), top, 0, C + 0.035, -0.006, { sy: 0.92 });
+    P.add(head, new THREE.CylinderGeometry(0.185, 0.188, 0.07, 14), fur, 0, C + 0.05, -0.006);
+    P.add(head, new THREE.BoxGeometry(0.2, 0.09, 0.05), fur, 0, C + 0.105, 0.16, { rx: -0.35 });
+    for (const s of [-1, 1]) {
+      P.add(head, new THREE.BoxGeometry(0.05, 0.16, 0.13), fur, s * 0.172, C - 0.02, -0.01, { rz: s * 0.08 });
+      P.add(head, new THREE.CylinderGeometry(0.006, 0.006, 0.08, 4), top, s * 0.18, C - 0.13, 0.0);
+    }
+  } else if (hatK === 'straw') {
+    // солом'яний бриль: широкі поля, низька тулія, червона стрічка
+    const m = P.mat(hc, 0.95);
+    P.add(head, new THREE.CylinderGeometry(0.145, 0.165, 0.11, 16), m, 0, C + 0.12, -0.005);
+    P.add(head, new THREE.SphereGeometry(0.145, 14, 4, 0, Math.PI * 2, 0, Math.PI / 2), m, 0, C + 0.175, -0.005, { sy: 0.3 });
+    P.add(head, new THREE.LatheGeometry([V(0.16, 0.012), V(0.36, -0.01), V(0.37, -0.03), V(0.36, -0.024), V(0.16, -0.006)], 22), m, 0, C + 0.07, -0.005, { rx: -0.06 });
+    P.add(head, new THREE.CylinderGeometry(0.158, 0.167, 0.035, 16, 1, true), P.mat(acc, 0.7), 0, C + 0.09, -0.005);
+  } else if (hatK === 'tricorn') {
+    // треуголка: три загнуті поля навколо тулії, золотий кант, перо
+    const m = P.mat(hc, 0.75);
+    const gold = P.mat(acc, 0.35, 0.7);
+    P.add(head, new THREE.SphereGeometry(0.165, 14, 6, 0, Math.PI * 2, 0, Math.PI / 2), m, 0, C + 0.05, -0.006, { sy: 0.9 });
+    for (let k = 0; k < 3; k++) {
+      const a = (k / 3) * Math.PI * 2;
+      const x = Math.sin(a) * 0.15, z = Math.cos(a) * 0.15;
+      P.add(head, new THREE.BoxGeometry(0.3, 0.13, 0.025), m, x, C + 0.12, z, { ry: a, rx: -0.45 });
+      P.add(head, new THREE.BoxGeometry(0.3, 0.012, 0.03), gold, x * 1.12, C + 0.185, z * 1.12, { ry: a, rx: -0.45 });
+    }
+    P.add(head, new THREE.SphereGeometry(0.035, 8, 6), P.mat(0xf4efe4, 0.9), 0.12, C + 0.2, -0.1, { sx: 0.5, sy: 2.6, rz: -0.6 });
+  } else if (hatK === 'crown') {
+    // корона з мушель: перламутровий обідок і мушлі-зубці, рожеві й кремові
+    const band = P.mat(hc, 0.4, 0.15);
+    P.add(head, new THREE.CylinderGeometry(0.165, 0.163, 0.05, 16, 1, true), band, 0, C + 0.1, -0.005);
+    for (let k = 0; k < 7; k++) {
+      const a = (k / 7) * Math.PI * 2;
+      const x = Math.sin(a) * 0.165, z = Math.cos(a) * 0.165;
+      const shell = P.mat(k % 2 ? acc : 0xfaf1e4, 0.45, 0.1);
+      P.add(head, new THREE.ConeGeometry(0.045, 0.1, 6), shell, x, C + 0.165, z, { ry: a, sz: 0.45 });
+      P.add(head, new THREE.SphereGeometry(0.014, 6, 4), P.mat(0xffffff, 0.15, 0.3), x * 1.04, C + 0.12, z * 1.04);
+    }
   } else if (hatK === 'bucket') {
     const m = P.mat(hc, 0.9);
     P.add(head, new THREE.CylinderGeometry(0.13, 0.165, 0.13, 14), m, 0, C + 0.11, -0.005);
@@ -403,8 +449,16 @@ export function buildCharacter(look: CharacterLook): CharacterRig {
     P.add(head, new THREE.CylinderGeometry(0.152, 0.167, 0.025, 14, 1, true), P.mat(acc, 0.9), 0, C + 0.065, -0.005);
   }
 
-  const tris = P.finish();
-  return { root, body, torso, head, legL: L.leg, legR: R.leg, kneeL: L.knee, kneeR: R.knee, armL, armR, tris };
+}
+
+/** окремий капелюх (знахідка на острові), низ тулії — на y=0 */
+export function buildHatModel(kind: HatKind, color: number, accent?: number): THREE.Group {
+  const P = new Parts();
+  const g = new THREE.Group();
+  addHat(P, g, kind, color, accent ?? 0xf4efe4, -0.08);
+  P.finish();
+  g.scale.setScalar(1.7);
+  return g;
 }
 
 /** стабільний хеш рядка */
@@ -415,7 +469,7 @@ export function hashStr(s: string): number {
 }
 
 /** образ гравця-капітана: дощовик його кольору, кашкет, решта — від seed */
-export function playerLook(color: number, seed: number): CharacterLook {
+export function playerLook(color: number, seed: number, hat?: { kind: HatKind; color: number; accent?: number }): CharacterLook {
   const r = mulberry32(seed * 9973 + 17);
   const pick = <T,>(a: readonly T[]) => a[Math.floor(r() * a.length) % a.length];
   const beard = pick(['full', 'full', 'mustache', 'none', 'goatee'] as const);
@@ -424,8 +478,9 @@ export function playerLook(color: number, seed: number): CharacterLook {
     jacketKind: 'rain',
     pants: pick([0x2b3340, 0x343a2c, 0x3a3230]),
     bib: r() < 0.35 ? pick([0x2c4a6e, 0x3d4a3a]) : undefined,
-    hat: 'captain',
-    hatColor: 0x1d2a44,
+    hat: hat?.kind ?? 'captain',
+    hatColor: hat?.color ?? 0x1d2a44,
+    hatAccent: hat?.accent,
     skin: pick(SKINS),
     hair: pick(['short', 'short', 'buzz', 'long'] as const),
     hairColor: pick(HAIRS),

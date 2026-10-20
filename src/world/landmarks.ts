@@ -3,6 +3,7 @@ import { rockGeo, ROCK_TOP } from './portTerrain';
 import { makeGullTexture } from './sky';
 import type { RockObstacle } from './boat';
 import type { Ocean } from '../core/ocean';
+import { ISLANDS } from './islandShape';
 
 // ─────────────────────────────────────────────────────────────
 // Пам'ятки в морі — те, заради чого варто відійти від берега:
@@ -29,6 +30,8 @@ export const LANDMARKS: Landmark[] = [
   { id: 'stack', name: 'Пташиний стовп', sub: 'тут гніздяться мартини', x: 545, z: 175, r: 60 },
   { id: 'arch', name: 'Кам\'яна арка', sub: 'пропливи крізь неї', x: 150, z: 660, r: 50 },
   { id: 'bell', name: 'Дзвоновий буй', sub: 'слухай його в тумані', x: -650, z: 250, r: 45 },
+  // острови (islandShape.ts) — на них можна зійти
+  ...ISLANDS.map((d) => ({ id: d.id, name: d.name, sub: d.sub, x: d.x, z: d.z, r: d.r * Math.sqrt(d.elong) + 45 })),
 ];
 
 export const LANDMARK_BY_ID: Record<string, Landmark> = Object.fromEntries(LANDMARKS.map((l) => [l.id, l]));

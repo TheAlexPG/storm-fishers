@@ -126,6 +126,8 @@ export class Coop {
   helmOwner: number | null = null;
   /** екіпаж: свій газ/кермо, поки тримає штурвал (знімки його не перетирають) */
   myHelm: [number, number] = [0, 0];
+  /** мій капелюх (бачать інші) */
+  myHat = 'captain';
   /** чия яхта — моя поточна (id власника) */
   myBoat = 0;
 
@@ -315,6 +317,11 @@ export class Coop {
         const r = this.peers.get(from);
         if (!r) return;
         r.state = d.s as NetPlayer;
+        // інший капелюх — перебудувати модель
+        if ((r.state.h ?? 'captain') !== r.avatar.hatId) {
+          r.avatar.dispose(this.scene);
+          r.avatar = new Avatar(this.scene, r.info.nick, colorForId(r.info.id), r.info.id, r.state.h);
+        }
         r.avatar.state = r.state;
         r.helm = (d.helm as [number, number] | undefined) ?? null;
         r.pump = d.pump === 1;
@@ -624,6 +631,7 @@ export class Coop {
         mv: player.moving ? 1 : 0,
         bo: this.myBoat,
       };
+      if (this.myHat !== 'captain') st.h = this.myHat;
       const fs = fishing.netState();
       if (fs) st.f = fs;
       const msg: GameMsg = { k: 'p', s: st };
