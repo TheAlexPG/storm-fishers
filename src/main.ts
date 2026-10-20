@@ -45,6 +45,7 @@ import { CameraRig } from './world/cameraRig';
 import { loadSettings, saveSettings, type Settings } from './game/settings';
 import { WindLines } from './world/windLines';
 import { FoamTrail } from './world/foamTrail';
+import { Jellies } from './world/jellies';
 import { FishJump } from './world/fishJump';
 import { DeckFish } from './world/deckFish';
 import { RadioSet, type RadioCtl, type RadioData } from './world/radioSet';
@@ -166,6 +167,7 @@ class Game {
   private settings: Settings = loadSettings();
   private windLines: WindLines;
   private foamTrail: FoamTrail;
+  private jellies: Jellies;
   private fishJump: FishJump;
   /** стрибок риби під час боротьби */
   private leapJump: FishJump;
@@ -310,6 +312,7 @@ class Game {
     this.particles = new ParticlePool(this.scene, 1100);
     this.windLines = new WindLines(this.scene);
     this.foamTrail = new FoamTrail(this.scene);
+    this.jellies = new Jellies(this.scene);
     this.fishJump = new FishJump(this.scene);
     this.leapJump = new FishJump(this.scene);
     this.scene.add(this.moorMark);
@@ -1668,6 +1671,8 @@ class Game {
     this.ocean.setHull(this.boat.group, this.boat.vel.length());
     // слід піни за кормою
     this.foamTrail.update(dt, t, this.boat.localToWorld(0, 0, -4.9, this._v), this.boat.heading, this.boat.vel.length(), this.ocean, this.camera.position, clamp(this.time.daylight + 0.15, 0, 1), clamp(this.weather.intensity - 0.4, 0, 1));
+    // нічне цвітіння медуз
+    this.jellies.update(dt, t, this.ocean, this.camera.position, 1 - this.time.daylight);
 
     // станції
     // відійшов від щогли — робота з фалами переривається
