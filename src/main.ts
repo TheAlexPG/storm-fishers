@@ -1856,6 +1856,7 @@ class Game {
     this.bots.update(dt, t, this.ocean, this.weather, this.time.daylight, [this.boat.pos, ...this.coop.fleetObstacles()], this.boat.pos);
     this.coop.myHat = this.game.hat;
     this.coop.tick(dt, this.boat, this.player, this.stations.active?.id === 'pump', this.fishing, this.ocean, t);
+    this.coop.syncRoute(dt, this.game.route);
 
     // ловля
     // з причалу/берега — берегова вудка (клює рідко й дрібне)
@@ -3232,6 +3233,11 @@ class Game {
     this.minimap.ais = has.radar;
     this.mapView.bots = has.radar ? bots : [];
     this.minimap.route = has.gps ? g.route : [];
+    // кооп: точки маршрутів екіпажу свого борту (лоція, стіл, мінімапа)
+    const crew = this.coop.active ? this.coop.crewRoutes() : [];
+    this.mapView.crew = crew;
+    this.minimap.crew = has.gps ? crew : [];
+    this.hud.crewWaypoint = this.coop.crewing ? crew.find((r) => r.captain)?.pts[0] ?? null : null;
     // риба під кілем: базово за зоною, біля зграй з радіозвітів — густіше
     const dist = Math.hypot(b.pos.x, b.pos.z);
     const zone = zoneFromDist(dist);

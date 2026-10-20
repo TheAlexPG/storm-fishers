@@ -37,6 +37,8 @@ export class Minimap {
   bots: Array<{ x: number; z: number; h: number; name?: string }> = [];
   /** маршрут (з GPS-картплотером, «Прилади» 3+) */
   route: Array<{ x: number; z: number }> = [];
+  /** кооп: маршрути інших гравців свого борту (колір гравця) */
+  crew: Array<{ color: string; captain: boolean; pts: Array<{ x: number; z: number }> }> = [];
   /** AIS (радар, «Прилади» 5): судна з іменами на всю мінікарту; без нього — лише ті, що видно оком */
   ais = true;
   private readonly scale = 0.42; // px/м → радіус ~190 м
@@ -162,6 +164,32 @@ export class Minimap {
         c.fillStyle = '#e9592f';
         c.fill();
       }
+    }
+
+    // маршрути екіпажу — тонко, кольором гравця (капітанський — від яхти)
+    for (const cr of this.crew) {
+      if (!cr.pts.length) continue;
+      c.strokeStyle = cr.color;
+      c.globalAlpha = 0.8;
+      c.lineWidth = 1.5;
+      c.setLineDash([2, 3]);
+      c.beginPath();
+      const [sx, sz] = cr.captain ? [cx, cx] : toMap(cr.pts[0].x, cr.pts[0].z);
+      c.moveTo(sx, sz);
+      for (const p of cr.pts) {
+        const [px, pz] = toMap(p.x, p.z);
+        c.lineTo(px, pz);
+      }
+      c.stroke();
+      c.setLineDash([]);
+      c.fillStyle = cr.color;
+      for (const p of cr.pts) {
+        const [px, pz] = toMap(p.x, p.z);
+        c.beginPath();
+        c.arc(px, pz, 2.3, 0, Math.PI * 2);
+        c.fill();
+      }
+      c.globalAlpha = 1;
     }
 
     // маршрут (GPS): від яхти через точки, пурпурний як на плотері

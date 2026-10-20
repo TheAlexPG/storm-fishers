@@ -127,6 +127,16 @@ export function moorSlotX(owner: number): number {
   return MOOR_SLOTS[(Math.max(1, owner) - 1) % MOOR_SLOTS.length];
 }
 
+/** маршрут члена екіпажу свого борту (для лоції, столу й мінімапи) */
+export interface CrewRoute {
+  id: number;
+  nick: string;
+  color: string;
+  /** власник яхти: його маршрут веде автопілот */
+  captain: boolean;
+  pts: Array<{ x: number; z: number }>;
+}
+
 export class Coop {
   session: NetSession | P2PSession | null = null;
   readonly peers = new Map<number, RemotePeer>();
@@ -273,6 +283,7 @@ export class Coop {
   }
 
   private dropPeer(id: number) {
+    this.peerRoutes.delete(id);
     const r = this.peers.get(id);
     if (!r) return;
     r.avatar.dispose(this.scene);
@@ -403,6 +414,17 @@ export class Coop {
         if (!s.isHost) return;
         const u = Number(d.u);
         if (typeof d.p === 'string' && typeof d.sp === 'string' && Number.isFinite(u) && u > 0 && u < 5) this.onMarketSale?.(d.p, d.sp, u);
+        break;
+      }
+      case 'rt': {
+        // маршрут гравця: показуємо лише екіпажу того самого борту (фільтр — у crewRoutes)
+        const raw = Array.isArray(d.r) ? (d.r as unknown[]).slice(0, 96) : [];
+        const pts: Array<{ x: number; z: number }> = [];
+        for (let i = 0; i + 1 < raw.length; i += 2) {
+          const x = Number(raw[i]), z = Number(raw[i + 1]);
+          if (Number.isFinite(x) && Number.isFinite(z)) pts.push({ x, z });
+        }
+        this.peerRoutes.set(from, { bo: Number(d.bo), pts });
         break;
       }
       case 'c': {
@@ -703,6 +725,35 @@ export class Coop {
       const b = bo === this.myBoat ? boat : this.fleet.get(bo)?.visual ?? null;
       r.avatar.update(dt, b, ocean, t);
     }
+  }
+
+  // ── спільна лоція екіпажу: кожен бачить точки маршруту свого борту своїм кольором ──
+  private peerRoutes = new Map<number, { bo: number; pts: Array<{ x: number; z: number }> }>();
+  private routeKey = '';
+  private routeT = 0;
+
+  /** свій маршрут — усім (при зміні й раз на 3 с, щоб його отримав і той, хто щойно прийшов на борт) */
+  syncRoute(dt: number, route: ReadonlyArray<{ x: number; z: number }>) {
+    if (!this.active || !this.session) return;
+    this.routeT -= dt;
+    const flat: number[] = [];
+    for (const p of route) flat.push(Math.round(p.x), Math.round(p.z));
+    const key = this.myBoat + ':' + flat.join(',');
+    if (key === this.routeKey && this.routeT > 0) return;
+    this.routeKey = key;
+    this.routeT = 3;
+    this.session.send({ k: 'rt', bo: this.myBoat, r: flat });
+  }
+
+  /** маршрути інших гравців на моєму борту (капітан — першим) */
+  crewRoutes(): CrewRoute[] {
+    const out: CrewRoute[] = [];
+    if (!this.active || !this.session) return out;
+    for (const [id, v] of this.peerRoutes) {
+      if (!this.peers.has(id) || v.bo !== this.myBoat || !v.pts.length) continue;
+      out.push({ id, nick: this.nickOf(id), color: this.colorOf(id), captain: id === this.myBoat, pts: v.pts });
+    }
+    return out.sort((a, b) => Number(b.captain) - Number(a.captain));
   }
 
   /** друзі для мапи/мінімапи: світова позиція, колір, нік, чи на борту, чи рибалить */
