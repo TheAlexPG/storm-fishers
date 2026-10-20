@@ -35,17 +35,24 @@ export interface Platform {
 }
 
 export interface PortPoint {
-  id: 'shop' | 'fuel' | 'repair' | 'house';
+  id: 'shop' | 'fuel' | 'repair' | 'house' | 'market' | 'office';
   x: number;
   z: number;
   label: string;
+  /** коротка назва для карти */
+  name: string;
+  icon: string;
 }
 
 export const PORT_POINTS: PortPoint[] = [
-  { id: 'shop', x: -10, z: -44.5, label: 'Магазин' },
-  { id: 'fuel', x: 8.5, z: -43, label: 'Заправка' },
-  { id: 'repair', x: 14, z: -49.5, label: 'Ремонт' },
-  { id: 'house', x: -2, z: -58.5, label: 'Хата (сон)' },
+  // кожне місце — лише свої послуги: рибу продають на біржі, речі — у крамниці,
+  // пальне — на заправці, корпус — на верфі, поліс — у конторі порту
+  { id: 'shop', x: -10, z: -44.5, label: 'Крамниця спорядження — каталог речей', name: 'Крамниця', icon: '🛠' },
+  { id: 'fuel', x: 8.5, z: -43, label: 'Заправка — пальне', name: 'Заправка', icon: '⛽' },
+  { id: 'repair', x: 14, z: -49.5, label: 'Верф — ремонт корпусу', name: 'Верф', icon: '🔧' },
+  { id: 'market', x: 34, z: -45.2, label: 'Рибна біржа — продати улов', name: 'Біржа', icon: '🐟' },
+  { id: 'office', x: 47, z: -47.6, label: 'Контора порту — страховка', name: 'Контора', icon: '🛡' },
+  { id: 'house', x: -2, z: -58.5, label: 'Хата (сон)', name: 'Хата', icon: '🏠' },
 ];
 
 const DECK_Y = 1.1;
@@ -827,7 +834,7 @@ export class Port {
       this.bench(-16.2, G, -47.6, 0);
       this.planter(-6.2, -48.0);
     }
-    this.sign('МАГАЗИН', -10.1, G + 3.95, -48.42, 3.0, '#1f4f7c');
+    this.sign('СПОРЯДЖЕННЯ', -10.1, G + 3.95, -48.42, 3.4, '#1f4f7c');
 
     // ── заправка: червоний кіоск + навіс з колонками ──
     this.house({
@@ -868,7 +875,7 @@ export class Port {
     this.bx(M.trim, 3.6, 3.3, 0.08, 14, G + 0.35 + 1.6, -50.96);
     this.bx(M.iron, 3.2, 3.0, 0.1, 14, G + 0.35 + 1.5, -50.92, 0, 1, 1);
     for (let i = 0; i < 10; i++) this.bx(M.metalGrey, 3.15, 0.04, 0.03, 14, G + 0.55 + i * 0.3, -50.86, 0, 1, 1);
-    this.sign('РЕМОНТ', 14, G + 0.35 + 3.45, -50.88, 3.6, '#3a4048');
+    this.sign('ВЕРФ', 14, G + 0.35 + 3.45, -50.88, 3.6, '#3a4048');
     {
       const lp = new THREE.Vector3(16.6, G + 3.4, -50.6);
       this.bx(M.iron, 0.5, 0.08, 0.4, lp.x, lp.y + 0.08, lp.z);
@@ -1125,7 +1132,7 @@ export class Port {
         for (const dx of [-0.85, 0.85]) this.bx(M.woodDark, 0.08, 0.9, 0.9, X + sx - 0.5 + dx, G + 0.45, Z + 0.6);
         this.fishBoxes(X + sx - 0.9, G + 0.94, Z + 0.6, 0);
       }
-      this.sign('РИБА', X, G + 3.0, Z + 2.25, 2.0, '#2a5a6e');
+      this.sign('РИБНА БІРЖА', X, G + 3.0, Z + 2.25, 3.2, '#2a5a6e');
       const lp = new THREE.Vector3(X, G + 3.1, Z);
       this.bx(M.lampGlass, 0.3, 0.3, 0.3, lp.x, lp.y, lp.z, 0, 1, 1, false);
       this.glow(lp.x, lp.y, lp.z, 2.4);
@@ -1137,7 +1144,7 @@ export class Port {
       x: 47, z: -52, w: 7, d: 6, h: 5.2, rh: 2.2, wall: M.sidingBlue, wallTile: 2, roof: M.roofDark,
       trim: true, door: 0, doorMat: M.whitePaint, front: [-2.2, 0, 2.2], back: [-2, 2], sideWin: true, chimney: [2.2, -1.4],
     });
-    this.sign('ПОРТ', 47, G + 0.35 + 3.0, -48.92, 2.0, '#1f3f5c');
+    this.sign('КОНТОРА ПОРТУ', 47, G + 0.35 + 3.0, -48.92, 3.4, '#1f3f5c');
     this.flagpole(24.5, -45.3);
 
     // ліхтарі набережної і вулиць
@@ -1370,7 +1377,12 @@ export class Port {
     g.lineWidth = 4;
     g.strokeRect(20, 20, 472, 88);
     g.fillStyle = '#f6ecd2';
-    g.font = 'bold 64px Georgia, "Times New Roman", serif';
+    let fs = 64;
+    g.font = `bold ${fs}px Georgia, "Times New Roman", serif`;
+    while (fs > 30 && g.measureText(text).width > 450) {
+      fs -= 2;
+      g.font = `bold ${fs}px Georgia, "Times New Roman", serif`;
+    }
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     g.fillText(text, 256, 68);

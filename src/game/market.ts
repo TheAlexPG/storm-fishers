@@ -22,7 +22,8 @@ export const MARKET_FLOOR = 0.3;
 export const MARKET_RECOVER = 0.5;
 /** як часто пишемо точку історії ціни (ігрові години) */
 export const MARKET_SAMPLE_H = 3;
-export const MARKET_HISTORY = 10;
+/** точок історії: 8 на добу × 6 діб — вистачає на графік біржі */
+export const MARKET_HISTORY = 48;
 
 export interface MarketEvent {
   speciesId: string;
@@ -163,6 +164,45 @@ export class FishMarket {
     const ev: MarketEvent = { speciesId: sp.id, mult: boost ? 1 + pct / 100 : 1 - pct / 100, until: day + dur - 1, text };
     this.events.push(ev);
     return ev;
+  }
+
+  /** скільки ігрових годин до повного попиту на вид */
+  recoverHours(speciesId: string): number {
+    const g = this.glut[speciesId] ?? 0;
+    return Math.max(0, (g - MARKET_FREE) / MARKET_RECOVER);
+  }
+
+  /**
+   * архів біржі: якщо історії мало (нова гра / старий сейв), домалювати
+   * попередні дні детерміновано від номера дня — графіки одразу живі.
+   * Ціна блукає навколо базової (тижневі хвилі + дрібний шум) і сходиться до поточної.
+   */
+  backfill(priceMult: Record<string, number>, day: number) {
+    for (const sp of FISH) {
+      const h = (this.hist[sp.id] ??= []);
+      const need = MARKET_HISTORY - h.length;
+      if (need <= 0) continue;
+      const base = sp.basePrice / avgKg(sp.id);
+      const end = h.length ? h[0] : this.perKg(sp.id, priceMult);
+      const rng = mulberry32(day * 7477 + sp.id.length * 131 + sp.id.charCodeAt(0) * 17);
+      const ph = rng() * Math.PI * 2;
+      const pre: number[] = [];
+      let walk = 0;
+      for (let i = 0; i < need; i++) {
+        // i = 0 — найстаріша точка
+        walk = walk * 0.85 + (rng() - 0.5) * 0.06;
+        const wave = 0.1 * Math.sin(ph + i * 0.26) + walk;
+        pre.push(base * (1 + wave));
+      }
+      // плавно звести кінець архіву до першої справжньої точки
+      const k = Math.min(8, need);
+      for (let j = 0; j < k; j++) {
+        const i = need - k + j;
+        const t = (j + 1) / (k + 1);
+        pre[i] = pre[i] * (1 - t) + end * t;
+      }
+      this.hist[sp.id] = [...pre.map((v) => Math.round(v * 10) / 10), ...h];
+    }
   }
 
   serialize(): MarketSave {

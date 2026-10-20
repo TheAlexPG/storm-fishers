@@ -21,7 +21,7 @@ import { Fishing } from './game/fishing';
 import { Hud, type FightHud } from './ui/hud';
 import { Minimap } from './ui/minimap';
 import { MapView } from './ui/map';
-import { Dialogs } from './ui/dialogs';
+import { Dialogs, type Venue } from './ui/dialogs';
 import { zoneFromDist, ZONE_NAMES } from './game/fish';
 
 /** м'яке навчання: крок → підказка; умова виконання — у Game.updateTutorial */
@@ -31,7 +31,7 @@ const TUTORIAL = [
   'Підніми паруси: біля щогли натисни E. Найкраще йти, коли вітер збоку',
   'Візьми вудку з носової стійки (E). Тримай ЛКМ і відпусти в зеленій зоні — закид',
   'Чекай, поки поплавок піде під воду, — клікни ЛКМ. Тягни Space у зеленій зоні, A/D — проти ривка. Рибу з палуби неси в трюм на баку',
-  'Повертайся в порт і продай улов у магазині',
+  'Повертайся в порт і продай улов на рибній біржі (навіс на східній набережній)',
 ];
 
 const ZONE_SUB: Record<string, string> = { shore: 'тихі води біля дому', mid: 'тут ходить скумбрія', open: 'далеко від берега' };
@@ -47,6 +47,7 @@ import { CabinDoor } from './world/cabinDoor';
 import { ChartTable, CHART_CENTER } from './world/chartTable';
 import { Nets, type NetsNet } from './world/nets';
 import { ShopCounter, type CounterTarget } from './world/shopCounter';
+import { ExchangeBoard } from './world/exchangeBoard';
 import { describeSave } from './game/saveTransfer';
 import { Highlighter } from './world/highlight';
 import { HOLDER_MOUNTS } from './world/upgradeParts';
@@ -141,6 +142,7 @@ class Game {
   private deckFish: DeckFish;
   private radio!: RadioSet;
   private shopCounter!: ShopCounter;
+  private exchangeBoard!: ExchangeBoard;
   private cabinDoor!: CabinDoor;
   private chart!: ChartTable;
   /** сітки (апгрейд «Сітки»): буї в морі, постановка/вибирання з корми */
@@ -229,6 +231,7 @@ class Game {
     this.sky = new Sky(this.scene);
     this.port = new Port(this.scene);
     this.shopCounter = new ShopCounter(this.scene, this.port.solids);
+    this.exchangeBoard = new ExchangeBoard(this.scene);
     // прибій уздовж берега бухти
     this.ocean.setShore(terrainHeight, -520, -780, 1040, 860, 2);
     this.particles = new ParticlePool(this.scene, 1100);
@@ -497,6 +500,7 @@ class Game {
     this.dialogs.onBoatPurchase = (p) => {
       if (p.fuel) this.coop.sendAction({ a: 'fuel', v: p.fuel });
       if (p.repair) this.coop.sendAction({ a: 'hullFull' });
+      if (p.patch) this.coop.sendAction({ a: 'repair', v: p.patch });
       if (p.upgrade) this.coop.sendAction({ a: 'upgrade', id: p.upgrade });
     };
     this.prevObjectives = { ...this.game.objectives };
@@ -857,7 +861,8 @@ class Game {
   private useCounter(t: CounterTarget) {
     const g = this.game;
     if (t === 'register' || t === 'insurance') {
-      this.openDialog('shop', t === 'register' ? 'fish' : 'insurance');
+      // каса — каталог крамниці; поліс оформлюють у конторі порту
+      this.openDialog(t === 'register' ? 'shop' : 'office');
       return;
     }
     const id = t.slice(3) as UpgradeId;
@@ -964,13 +969,14 @@ class Game {
     });
   }
 
-  private openDialog(kind: 'shop' | 'radio', tab?: 'fish' | 'insurance') {
+  private openDialog(kind: Venue | 'exchange' | 'radio') {
     this.phase = 'dialog';
     this.expectUnlock = true;
     document.exitPointerLock();
     this.saveTimer = 30;
-    if (kind === 'shop') this.dialogs.shop(this.game, tab ?? 'vitrine');
-    else this.dialogs.radio(this.game, this.weather, this.time);
+    if (kind === 'radio') this.dialogs.radio(this.game, this.weather, this.time);
+    else if (kind === 'exchange') this.dialogs.exchange(this.game);
+    else this.dialogs.shop(this.game, kind);
   }
 
   // ── штурвальна карта (M) ──
@@ -1313,6 +1319,7 @@ class Game {
     this.deckFish.update(dt, t, this.time.gameHourDelta(dt), this.boat.deckWater, g.hold, this.boat.hatchOpen);
     // радіо: текст станції й звук (чути в каюті, тихіше — з палуби)
     this.radio.update(dt);
+    this.exchangeBoard.update(dt, this.game);
     if ((this.chartMode || (this.player.mode === 'boat' && this.player.inCabin)) && this.chart.due(dt, this.chartMode)) {
       this.mapView.drawChart(this.chart.canvas, this.boat.pos.x, this.boat.pos.z, this.boat.heading, this.port.rocks, this.game);
       this.chart.textureUpdated();
@@ -1635,8 +1642,10 @@ class Game {
       this.useCounter(id.slice(5) as CounterTarget);
       return;
     }
-    if (id === 'port:shop' || id === 'port:fuel' || id === 'port:repair') {
-      this.openDialog('shop');
+    // кожне місце в порту — лише свої послуги
+    const venue = ({ 'port:shop': 'shop', 'port:fuel': 'fuel', 'port:repair': 'yard', 'port:office': 'office', 'port:market': 'exchange' } as const)[id as 'port:shop'];
+    if (venue) {
+      this.openDialog(venue);
       return;
     }
     // станції

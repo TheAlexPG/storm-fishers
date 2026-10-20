@@ -64,6 +64,7 @@ export class GameState {
     this.rollPrices();
     this.rollReports();
     this.market.sample(this.priceMult);
+    this.market.backfill(this.priceMult, this.priceWeek);
   }
 
   // ── Економіка ──
@@ -380,6 +381,7 @@ export class GameState {
     this.market.load(data.market);
     this.lastMarketEvent = null;
     if (!this.market.hist[FISH[0].id]?.length) this.market.sample(this.priceMult);
+    this.market.backfill(this.priceMult, this.priceWeek);
     const ok = (p: unknown): p is { x: number; z: number } => !!p && Number.isFinite((p as { x: number }).x) && Number.isFinite((p as { z: number }).z);
     this.route = [];
     if (Array.isArray(data.route)) this.route = data.route.filter(ok).slice(0, GameState.ROUTE_MAX).map((p) => ({ x: p.x, z: p.z }));
