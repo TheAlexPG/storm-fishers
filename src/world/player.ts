@@ -214,14 +214,16 @@ export class Player {
     }
   }
   private _bodyUp = new THREE.Vector3();
+  /** чутливість миші (при зумі — менша) */
+  lookScale = 1;
 
   /** свіжий кадр: миша + рух + переходи */
   update(dt: number, input: Input, boat: Boat, port: Port, ocean: Ocean, t: number) {
     this.doorShut = !boat.doorOpen;
     this.gang = boat.gangSide;
     const [mdx, mdy] = input.consumeMouse();
-    this.yaw -= mdx * 0.0021;
-    this.pitch = clamp(this.pitch - mdy * 0.0021, -1.35, 1.35);
+    this.yaw -= mdx * 0.0021 * this.lookScale;
+    this.pitch = clamp(this.pitch - mdy * 0.0021 * this.lookScale, -1.35, 1.35);
 
     const running = input.down('ShiftLeft') || input.down('ShiftRight');
     if (this.tK < 1) this.tK = Math.min(1, this.tK + dt / this.tDur);

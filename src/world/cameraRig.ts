@@ -66,6 +66,10 @@ export class CameraRig {
     this.dist = clamp(this.dist * Math.pow(1.12, steps), 7, 34);
   }
 
+  /** бінокль: бажане збільшення (ПКМ — 2) і поточне, плавне */
+  binoc = 1;
+  binocCur = 1;
+
   update(dt: number, c: CamInput) {
     const cam = this.camera;
     let fov = this.fovFp;
@@ -113,6 +117,9 @@ export class CameraRig {
       cam.quaternion.copy(this._q);
       fov = this.fromFov + (fov - this.fromFov) * e;
     }
+    // ПКМ — бінокль-зум: звужуємо кут (через тангенс, щоб ×2 було справді вдвічі ближче)
+    this.binocCur += (this.binoc - this.binocCur) * (1 - Math.exp(-dt * 12));
+    if (this.binocCur > 1.001) fov = (2 * Math.atan(Math.tan((fov * Math.PI) / 360) / this.binocCur) * 180) / Math.PI;
     if (Math.abs(cam.fov - fov) > 0.01) {
       cam.fov = fov;
       cam.updateProjectionMatrix();

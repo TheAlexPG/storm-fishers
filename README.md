@@ -112,6 +112,7 @@ explore islands, outrun Beaufort‑scale storms and come home with a hold full o
 |---|---|
 | **W A S D** | walk · throttle & rudder at the wheel |
 | **Mouse** | look around |
+| **Hold RMB** | binoculars ×2 — read the radio, scan the horizon |
 | **E** | interact (wheel, sails, doors, shops, chart table, nets…) · go ashore / back aboard |
 | **E at the mast** | sail wheel — drop, reef 2 (40 %), reef 1 (70 %), full, gennaker · pick with the mouse or **1–5**, haul with **LMB** / **E** |
 | **LMB** | cast / strike · place a route point on the chart |

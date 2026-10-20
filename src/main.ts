@@ -1857,6 +1857,10 @@ class Game {
     this.coop.myHat = this.game.hat;
     this.coop.tick(dt, this.boat, this.player, this.stations.active?.id === 'pump', this.fishing, this.ocean, t);
 
+    // ПКМ затиснута — бінокль ×2 (роздивитись радіо, берег, обрій); не там, де ПКМ має свою дію
+    const binocOk = locked && this.phase === 'play' && !this.dialogs.isOpen && !this.chartMode && !this.radioCtl && !this.sailMenuFrame && !this.photo;
+    this.rig.binoc = binocOk && input.down('Mouse2') ? 2 : 1;
+    this.player.lookScale = 1 / Math.max(1, this.rig.binocCur);
     // ловля
     // з причалу/берега — берегова вудка (клює рідко й дрібне)
     this.fishing.ashore = this.player.mode === 'port';
