@@ -397,7 +397,7 @@ export class Dialogs {
 
   // ── ПАУЗА ──
 
-  pause(opts: { onResume: () => void; onReset: () => void; onBeforeExport?: () => void; settings: Settings; onSettings: (s: Settings) => void; playTime: number; places?: Array<{ name: string; found: boolean }>; coop?: CoopPause; hats?: HatsPause; tent?: { owned: number; fit: number; onPick: (l: number) => void }; game?: GameState }) {
+  pause(opts: { onResume: () => void; onReset: () => void; onMenu: () => void; onBeforeExport?: () => void; settings: Settings; onSettings: (s: Settings) => void; playTime: number; places?: Array<{ name: string; found: boolean }>; coop?: CoopPause; hats?: HatsPause; tent?: { owned: number; fit: number; onPick: (l: number) => void }; game?: GameState }) {
     this.escAllowed = false;
     const tentHtml = opts.tent && opts.tent.owned > 0 ? `
       <h2>${L('Тент на яхті', 'Canvas on the yacht')}</h2>
@@ -408,6 +408,7 @@ export class Dialogs {
       <p class="sub">${opts.coop ? L('Світ живе далі — екіпаж у морі.', `The world goes on — the crew is at sea.`) : L('Час зупинений. Море чекає.', `Time has stopped. The sea is waiting.`)}</p>
       <div class="btn-row">
         <button class="btn primary" data-act="resume">Продовжити</button>
+        <button class="btn" data-act="menu">Головне меню</button>
         ${opts.coop ? '' : L('<button class="btn danger" data-act="reset">Скинути гру</button>', `<button class="btn danger" data-act="reset">Reset game</button>`)}
       </div>
       ${opts.coop ? L(`
@@ -494,6 +495,7 @@ export class Dialogs {
       <p class="sub">${opts.coop ? L('Світ живе далі — екіпаж у морі.', `The world goes on — the crew is at sea.`) : L('Час зупинений. Море чекає.', `Time has stopped. The sea is waiting.`)}</p>
       <div class="btn-row">
         <button class="btn primary" data-act="resume">Continue</button>
+        <button class="btn" data-act="menu">Main menu</button>
         ${opts.coop ? '' : L('<button class="btn danger" data-act="reset">Скинути гру</button>', `<button class="btn danger" data-act="reset">Reset game</button>`)}
       </div>
       ${opts.coop ? L(`
@@ -619,6 +621,23 @@ export class Dialogs {
       this.audio.click();
       this.close();
       opts.onResume();
+    });
+    // у головне меню: гра зберігається; капітан кімнати — у два натиски (закриє кімнату для всіх)
+    const menu = this.panel.querySelector<HTMLButtonElement>('[data-act="menu"]')!;
+    let menuArmed = false;
+    menu.addEventListener('click', () => {
+      this.audio.click();
+      if (opts.coop?.host && !menuArmed) {
+        menuArmed = true;
+        menu.textContent = L('Ще раз — закриє кімнату', 'Again — closes the room');
+        setTimeout(() => {
+          menuArmed = false;
+          menu.textContent = L('Головне меню', 'Main menu');
+        }, 3000);
+        return;
+      }
+      this.close();
+      opts.onMenu();
     });
     this.bindSaveTools(opts.onBeforeExport);
     this.addLangSwitch('pause', opts.onBeforeExport, !!opts.coop);
