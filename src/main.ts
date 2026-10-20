@@ -518,6 +518,11 @@ class Game {
       this.coop.sendEvent('toast', [`#sail${id}`, kind]);
     };
     this.fishing.onEvent = (msg, kind) => this.hud.toast(msg, kind, 4500);
+    // вода для закиду з берега: не суходіл, не настил причалу й не корпус яхти
+    this.fishing.waterAt = (x, z) =>
+      terrainHeight(x, z) < -0.5 &&
+      !this.port.platforms.some((p) => x > p.x0 - 0.4 && x < p.x1 + 0.4 && z > p.z0 - 0.4 && z < p.z1 + 0.4) &&
+      Math.hypot(x - this.boat.pos.x, z - this.boat.pos.z) > 5;
     this.fishing.onSplash = (pos, power) => {
       this.particles.splash(pos.x, pos.y, pos.z, power);
       this.audio.splash(power * 0.7);
@@ -1623,9 +1628,11 @@ class Game {
     this.coop.tick(dt, this.boat, this.player, this.stations.active?.id === 'pump', this.fishing, this.ocean, t);
 
     // ловля
+    // з причалу/берега — берегова вудка (клює рідко й дрібне)
+    this.fishing.ashore = this.player.mode === 'port';
     this.fishing.update(dt, t, this.boat, this.ocean, input, g, this.weather, this.time);
     // вудка в руках: ЛКМ — закид / підсічка, R — змотати
-    if (locked && this.phase === 'play' && !this.dialogs.isOpen && !this.photo && !this.chartMode && !this.kitchen.active && this.player.mode === 'boat' && !this.player.wheeling) {
+    if (locked && this.phase === 'play' && !this.dialogs.isOpen && !this.photo && !this.chartMode && !this.kitchen.active && ((this.player.mode === 'boat' && !this.player.wheeling) || this.player.mode === 'port')) {
       if (this.radioCtl && (input.pressed('Mouse0') || input.pressed('Mouse2'))) {
         // кнопки й ручки радіо
         this.radio.use(this.radioCtl, input.pressed('Mouse0') ? 1 : -1);
@@ -1666,6 +1673,8 @@ class Game {
         this.hud.catchCard(name, catched.kg, catched.speciesId, isNew, catched.storm ? L('штормова · на палубі', `storm catch · on deck`) : L('на палубі — неси в ящик', `on deck — carry it to the box`), trophy, record);
       } else if (g.storeFish(catched)) {
         this.hud.catchCard(name, catched.kg, catched.speciesId, isNew, catched.storm ? L('штормова', `storm catch`) : '', trophy, record);
+      } else {
+        this.hud.toast(L(`Трюм повний — ${name.toLowerCase()} повертається в море`, `The hold is full — the ${name.toLowerCase()} goes back to the sea`), 'warn', 3500);
       }
     }
     // риба на палубі: б'ється, псується, хвиля може змити
@@ -2995,7 +3004,7 @@ class Game {
       const n = this.player.nearest;
       return { text: n.label, bite: false };
     }
-    const fp = this.fishing.prompt();
+    const fp = this.fishing.prompt() ?? (this.player.mode === 'port' ? this.fishing.shorePrompt(this.player.wx, this.player.wz, this.player.yaw) : null);
     if (fp) return { text: fp, bite: false, key: L('ЛКМ', `LMB`) };
     return { text: null, bite: false };
   }

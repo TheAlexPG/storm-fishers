@@ -80,6 +80,10 @@ class Rod {
   fly = 1;
   flyFrom = new THREE.Vector3();
   shake = 0;
+  /** берегова вудка (з причалу / берега) — не з човна */
+  shore = false;
+  /** закинуто з берега: клює рідко й дрібне */
+  pier = false;
   constructor(readonly kind: RodKind, mesh: THREE.Object3D, tipY: number) {
     this.pivot.add(this.inner);
     this.pivot.userData.rod = true;
@@ -182,6 +186,12 @@ export class Fishing {
   private _q = new THREE.Quaternion();
 
   onEvent: ((msg: string, kind: 'warn' | 'bad' | 'good') => void) | null = null;
+  /** гравець на березі/причалі (не на човні) — рибалить береговою вудкою */
+  ashore = false;
+  /** чи є вода в точці (для закиду з берега) */
+  waterAt: ((x: number, z: number) => boolean) | null = null;
+  private shoreRod: Rod;
+  private pierTip = false;
   onSplash: ((pos: THREE.Vector3, power: number) => void) | null = null;
   onLeap: ((speciesId: string, kg: number, pos: THREE.Vector3) => void) | null = null;
 
@@ -207,6 +217,10 @@ export class Fishing {
     const main = boat.takeMainRod();
     this.rods.push(new Rod('main', main.group, main.len));
     for (const k of ['spin', 'donka', 'troll'] as const) this.rods.push(new Rod(k, rodModel(kit, k), 2));
+    // берегова вудка: з'являється в руках, коли рибалиш із причалу чи берега
+    this.shoreRod = new Rod('main', rodModel(kit, 'spin'), 2);
+    this.shoreRod.shore = true;
+    this.rods.push(this.shoreRod);
     for (const r of this.rods) {
       r.pivot.traverse((o) => {
         if ((o as THREE.Mesh).isMesh) o.castShadow = true;
@@ -225,7 +239,7 @@ export class Fishing {
   setOwned(holdersLvl: number) {
     const own: Record<RodKind, boolean> = { main: true, spin: holdersLvl >= 1, donka: holdersLvl >= 2, troll: holdersLvl >= 5 };
     this.rods.forEach((r, i) => {
-      if (own[r.kind] && r.where === 'none') this.toRack(r, i);
+      if (!r.shore && own[r.kind] && r.where === 'none') this.toRack(r, i);
     });
   }
 
@@ -333,15 +347,18 @@ export class Fishing {
 
   /** ЛКМ натиснуто */
   click(boat: Boat, game: GameState, weather: Weather, time: TimeCycle) {
+    // з берега без вудки в руках — береговa вудка сама опиняється в руках
+    if (this.ashore && !this.hand && !this.fightRod && !this.charging && this.shoreRod.where === 'none') this.toHand(this.shoreRod);
     const r = this.hand;
     if (!r || this.fightRod || this.charging) return;
     if (r.state === 'idle') {
-      if (Math.hypot(boat.pos.x, boat.pos.z) < 60) {
+      if (!this.ashore && Math.hypot(boat.pos.x, boat.pos.z) < 60) {
         this.onEvent?.(L('Занадто близько до причалу — відійди в море.', `Too close to the pier — head out to sea.`), 'warn');
         return;
       }
       if (game.energy < 2) {
         this.onEvent?.(L('Не вистачає енергії.', `Not enough energy.`), 'warn');
+        if (r.shore) this.dropShoreRod();
         return;
       }
       this.charging = true;
@@ -361,7 +378,18 @@ export class Fishing {
     if (this.hand && !this.fightRod) {
       this.reel(this.hand);
       this.charging = false;
+      if (this.hand.shore) this.dropShoreRod();
     }
+  }
+
+  /** сховати берегову вудку (змотано / повернувся на човен) */
+  private dropShoreRod() {
+    const r = this.shoreRod;
+    this.reel(r);
+    r.pier = false;
+    if (this.hand === r) this.hand = null;
+    r.where = 'none';
+    r.pivot.removeFromParent();
   }
 
   /** змотати все (сон, телепорт, затоплення) */
@@ -389,36 +417,54 @@ export class Fishing {
 
   private cast(r: Rod, boat: Boat, game: GameState, weather: Weather, power: number) {
     this.charging = false;
-    if (!game.spendEnergy(2)) return;
     const info = ROD_INFO[r.kind];
     const cs = this.easy ? CAST_SWEET_EASY : CAST_SWEET;
-    r.perfect = power >= cs.lo && power <= cs.hi;
+    const perfect = power >= cs.lo && power <= cs.hi;
     const k = power > 0.95 ? 0.75 : 0.45 + 0.6 * power;
-    r.castDist = eff.castDist(game.upgrades.rod) * info.cast * k * (r.perfect ? 1.1 : rand(0.9, 1.05));
+    const castDist = eff.castDist(game.upgrades.rod) * info.cast * k * (perfect ? 1.1 : rand(0.9, 1.05));
     // туди, куди дивишся (по горизонталі)
     r.tip.getWorldPosition(this.tipW);
     this.handGroup.getWorldQuaternion(this._q);
     const dir = this._d.set(0, 0, -1).applyQuaternion(this._q).setY(0);
     if (dir.lengthSq() < 1e-4) dir.set(Math.sin(boat.heading), 0, Math.cos(boat.heading));
     dir.normalize();
-    r.bobberPos.copy(this.tipW).addScaledVector(dir, r.castDist);
-    // поплавок має впасти за бортом
-    const bx = r.bobberPos.x - boat.pos.x, bz = r.bobberPos.z - boat.pos.z;
-    const bd = Math.hypot(bx, bz) || 1;
-    if (bd < 6.5) r.bobberPos.set(boat.pos.x + (bx / bd) * 6.5, 0, boat.pos.z + (bz / bd) * 6.5);
+    const pier = this.ashore;
+    const tx = this.tipW.x + dir.x * castDist, tz = this.tipW.z + dir.z * castDist;
+    // з берега — поплавок має впасти у воду, а не на причал чи пісок
+    if (pier && this.waterAt && !this.waterAt(tx, tz)) {
+      this.onEvent?.(L('Тут не закинеш — там немає води. Стань на край причалу й дивись на воду', `You can't cast here — there's no water there. Stand at the edge of the pier and face the water`), 'warn');
+      if (r.shore) this.dropShoreRod();
+      return;
+    }
+    if (!game.spendEnergy(2)) return;
+    r.perfect = perfect;
+    r.castDist = castDist;
+    r.pier = pier;
+    r.bobberPos.set(tx, 0, tz);
+    if (!pier) {
+      // поплавок має впасти за бортом
+      const bx = r.bobberPos.x - boat.pos.x, bz = r.bobberPos.z - boat.pos.z;
+      const bd = Math.hypot(bx, bz) || 1;
+      if (bd < 6.5) r.bobberPos.set(boat.pos.x + (bx / bd) * 6.5, 0, boat.pos.z + (bz / bd) * 6.5);
+    } else if (!this.pierTip) {
+      this.pierTip = true;
+      this.onEvent?.(L('🎣 Біля причалу й берега клює рідко й дрібне — справжня риба далі в морі', `🎣 Near the pier and the shore bites are rare and the fish are small — the real fish are out at sea`), 'warn');
+    }
     r.bobberPos.y = 0;
     r.flyFrom.copy(this.tipW);
     r.fly = 0;
     r.state = 'waiting';
     // далеко від берега й стай — довше, біля стаї — швидко (fish.ts fishingSpot)
     const spot = fishingSpot(r.bobberPos.x, r.bobberPos.z, game.reports);
-    if (r.where === 'hand') this.spot = spot;
+    if (r.where === 'hand') this.spot = pier ? { ...spot, hint: L('Біля причалу й берега — клює рідко, риба дрібна', `By the pier and the shore — rare bites, small fish`) } : spot;
     let t = rand(5, 15) * spot.wait;
     t /= eff.biteSpeed(game.upgrades.rod) * info.bite;
     if (weather.intensity > 0.6) t *= 0.75;
     if (r.perfect) t *= 0.6;
     t *= game.kitchen.mul('biteWait'); // смажена скумбрія — «рибальське щастя»
-    r.biteAt = Math.max(2.5, t);
+    // з причалу/берега — риба полохлива й рідка
+    if (pier) t *= 3.5;
+    r.biteAt = Math.max(pier ? 12 : 2.5, t);
     r.nibbleT = Math.min(r.biteAt * 0.5, rand(1.5, 4));
     r.nibble = 0;
     r.bobber.visible = true;
@@ -432,12 +478,13 @@ export class Fishing {
     const r = this.hand;
     if (!r || r.state !== 'bite') return;
     const info = ROD_INFO[r.kind];
-    const zone = zoneFromDist(Math.hypot(this.boat.pos.x, this.boat.pos.z));
+    const pier = r.pier;
+    const zone = pier ? 'shore' : zoneFromDist(Math.hypot(this.boat.pos.x, this.boat.pos.z));
     const day = !time.isNight;
     const pool = FISH.filter((f) => f.zones.includes(zone) && (day ? f.day : f.night));
     if (pool.length === 0) pool.push(...FISH.filter((f) => f.zones.includes(zone)));
     // ваги: рідкісність, радіо, шторм; «трофейні» вудки тягнуть рідкісну велику рибу
-    const off = offshore(this.boat.pos.x, this.boat.pos.z);
+    const off = pier ? 0 : offshore(this.boat.pos.x, this.boat.pos.z);
     const spot = fishingSpot(r.bobberPos.x, r.bobberPos.z, game.reports);
     const weights = pool.map((f) => {
       let w = 1 / f.rarity;
@@ -461,9 +508,10 @@ export class Fishing {
       }
     }
     this.fishSpeciesId = sp.id;
-    const roll = rollKg(sp, spot, info.trophy);
-    this.fishKg = roll.kg;
-    this.fishTrophy = roll.trophy;
+    const roll = rollKg(sp, spot, pier ? 0 : info.trophy);
+    // з причалу — дрібнота, без трофеїв
+    this.fishKg = pier ? Math.max(0.02, Math.round(roll.kg * rand(0.3, 0.45) * 100) / 100) : roll.kg;
+    this.fishTrophy = pier ? false : roll.trophy;
     r.tip.getWorldPosition(this.tipW);
     this.fightDir.set(r.bobberPos.x - this.tipW.x, 0, r.bobberPos.z - this.tipW.z);
     this.fightMaxDist = Math.max(6, this.fightDir.length() - 2);
@@ -545,14 +593,16 @@ export class Fishing {
     }
     const holderLvl = game.upgrades.holders ?? 0;
     // надто швидко — волосіні не втримати
-    if (speed > MAX_TROLL_SPEED && !this.fightRod && this.rods.some((r) => r.state !== 'idle')) {
-      for (const r of this.rods) this.reel(r);
+    // повернувся на човен із береговою вудкою — ховаємо її
+    if (!this.ashore && this.shoreRod.where === 'hand' && this.fightRod !== this.shoreRod && !this.charging) this.dropShoreRod();
+    if (speed > MAX_TROLL_SPEED && !this.fightRod && this.rods.some((r) => r.state !== 'idle' && !r.pier)) {
+      for (const r of this.rods) if (!r.pier) this.reel(r);
       this.onEvent?.(L('Човен іде надто швидко — вудки змотано. Троллінг — лише на малому ходу.', `The boat is going too fast — rods reeled in. Trolling works only at low speed.`), 'warn');
     }
     const trolling = speed > 1 && speed <= MAX_TROLL_SPEED;
     for (const r of this.rods) {
       if (r.state === 'idle' || r === this.fightRod) continue;
-      this.updateWaiting(r, dt, ocean, t, holderLvl, trolling);
+      this.updateWaiting(r, dt, ocean, t, holderLvl, trolling && !r.pier);
     }
     if (this.fightRod) this.fightStep(dt, t, boat, ocean, input, game, weather);
   }
@@ -605,7 +655,7 @@ export class Fishing {
         } else {
           // запізно — але наживка ціла: риба ще повернеться
           r.state = 'waiting';
-          r.biteAt = rand(3, 7) * (this.spot?.wait ?? 1);
+          r.biteAt = rand(3, 7) * (this.spot?.wait ?? 1) * (r.pier ? 3 : 1);
           r.nibbleT = rand(1, 2.5);
           r.nibble = 0;
           this.say(L('Запізно — риба зійшла. Наживка ціла, чекай наступного клювання', `Too late — the fish got away. The bait is fine, wait for the next bite`), 2.6);
@@ -826,6 +876,7 @@ export class Fishing {
     const r = this.fightRod;
     this.fightRod = null;
     if (r) this.reel(r);
+    if (r) r.pier = false;
     this.say('');
   }
 
@@ -911,6 +962,14 @@ export class Fishing {
   }
   holderObject(h: number): THREE.Object3D | null {
     return this.holders[h]?.pivot ?? null;
+  }
+
+  /** з берега: чи можна закинути в напрямку погляду (вода попереду) */
+  shorePrompt(x: number, z: number, yaw: number): string | null {
+    if (!this.ashore || this.hand || this.fightRod || this.shoreRod.where !== 'none' || !this.waterAt) return null;
+    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+    for (const d of [5, 9]) if (!this.waterAt(x + fx * d, z + fz * d)) return null;
+    return L('Закинути вудку з берега (клює рідко й дрібне)', `Cast a line from the shore (rare, small bites)`);
   }
 
   /** підказка для HUD, коли вудка в руках */
