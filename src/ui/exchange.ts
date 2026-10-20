@@ -1,14 +1,16 @@
 import { formatMoney } from '../core/math';
 import { FISH, FISH_BY_ID, ZONE_NAMES } from '../game/fish';
-import { avgKg, demandAt, glutUnits, MARKET_SAMPLE_H } from '../game/market';
+import { avgKg, glutUnits, stockFactor, FACTOR_MAX, FACTOR_MIN, MARKET_SAMPLE_H } from '../game/market';
 import type { GameState } from '../game/state';
 import type { FishItem } from '../core/types';
 
 // ─────────────────────────────────────────────────────────────
 // Рибна біржа: табло котирувань (картки з мініграфіками), великий графік
 // вибраного виду на «міліметрівці», попит і насичення, біжучий рядок подій,
-// трюм із прогнозом виторгу. Ціни — за типову рибину виду (₴/шт), бо
-// продаєш ти рибинами; історія — точка кожні 3 ігрові години.
+// трюм із прогнозом виторгу. Ціни — за типову свіжу рибину виду (₴/шт), бо
+// продаєш ти рибинами (game.quoteTypical — те саме, що радіо й продаж);
+// історія — точка кожні 3 ігрові години. Ринок живий: запас за видами
+// (місто їсть, рибалки й боти підвозять) — game/market.ts.
 // ─────────────────────────────────────────────────────────────
 
 const INK = '#22303b';
@@ -21,6 +23,14 @@ function esc(v: string): string {
 }
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
+/** шкала «ціна від запасу» 0..100 % (ліво — надлишок, право — дефіцит) */
+const meter = (d: number) => `${Math.round(((d - FACTOR_MIN) / (FACTOR_MAX - FACTOR_MIN)) * 100)}%`;
+/** запас словами: дефіцит / норма / надлишок */
+function stockWord(d: number): { cls: string; text: string } {
+  if (d > 1.03) return { cls: 'sea', text: `дефіцит +${Math.round((d - 1) * 100)}%` };
+  if (d < 0.97) return { cls: 'red', text: `надлишок −${Math.round((1 - d) * 100)}%` };
+  return { cls: '', text: 'норма' };
+}
 
 /** ціна типової рибини виду зараз і історія (₴/шт) */
 export function priceSeries(game: GameState, id: string, m = game.venueMarket): number[] {
@@ -79,7 +89,19 @@ function bestHint(game: GameState): string {
     }
   }
   if (best) return `💡 Росте в ціні: <b>${esc(FISH_BY_ID[best].name)}</b> (+${Math.round(bt * 100)}% за добу) — ${esc(ZONE_NAMES[FISH_BY_ID[best].zones[0]].toLowerCase())}`;
-  return '💡 Ринок рівний — вигідніше везти різну рибу: перші 2 рибини виду йдуть за повну ціну';
+  // дефіцит (після шторму рибалки сиділи в порту) — найголодніший вид
+  let hungry = '';
+  let hd = 1.1;
+  for (const sp of FISH) {
+    if (!game.discovered.includes(sp.id)) continue;
+    const d = m.demand(sp.id);
+    if (d > hd) {
+      hd = d;
+      hungry = sp.id;
+    }
+  }
+  if (hungry) return `💡 Дефіцит: <b>${esc(FISH_BY_ID[hungry].name)}</b> — риби на ринку мало, ціна +${Math.round((hd - 1) * 100)}%`;
+  return '💡 Ринок рівний — місто з’їдає те, що везуть. Велика партія одного виду збиває ціну, різна риба — ні';
 }
 
 export function exchangeHtml(game: GameState, sel: string): string {
@@ -96,7 +118,9 @@ export function exchangeHtml(game: GameState, sel: string): string {
   const evs = m.events.map((e) => `<span class="tk ev ${e.mult > 1 ? 'up' : 'down'}">${e.mult > 1 ? '📈' : '📉'} ${esc(e.text)}</span>`);
   // акції скупників (таверна, коптильня…) — щоб було видно, куди ще везти
   const promos = game.trade.tickerTexts(game.clockH).map((t) => `<span class="tk ev up">${esc(t)}</span>`);
-  const items = [...evs, ...promos, ...tick];
+  // підвіз: хто з рибалок що здав (боти «Шторму»)
+  const news = [...game.market.news].reverse().slice(0, 3).map((n) => `<span class="tk ev">🚢 «${esc(n.who)}» ${esc(n.text)}</span>`);
+  const items = [...evs, ...news, ...promos, ...tick];
   if (!items.length) items.push('<span class="tk">Біржа відкрита · спіймай першу рибу — з’явиться в котируваннях</span>');
   const strip = items.join('<span class="tk-sep">✦</span>');
   const ticker = `<div class="ex-ticker"><div class="ex-tk-run">${strip}<span class="tk-sep">✦</span>${strip}<span class="tk-sep">✦</span></div></div>`;
@@ -111,12 +135,12 @@ export function exchangeHtml(game: GameState, sel: string): string {
     const d = m.demand(id);
     const ev = m.eventFor(id);
     const hc = holdCount(id);
-    const cls = ['ex-card', id === sel ? 'sel' : '', known ? '' : 'unk', ev ? (ev.mult > 1 ? 'hot' : 'cold') : d < 0.75 ? 'cold' : ''].join(' ');
+    const cls = ['ex-card', id === sel ? 'sel' : '', known ? '' : 'unk', ev ? (ev.mult > 1 ? 'hot' : 'cold') : d < 0.85 ? 'cold' : d > 1.15 ? 'hot' : ''].join(' ');
     return `<button class="${cls}" data-sp="${id}">
         <span class="ex-c-top"><b>${known ? esc(sp.name) : '???'}</b>${ev ? `<span class="ex-flag ${ev.mult > 1 ? 'up' : 'down'}" title="${esc(ev.text)}">${ev.mult > 1 ? '+' : '−'}${Math.round(Math.abs(ev.mult - 1) * 100)}%</span>` : ''}${hc ? `<span class="ex-hc" title="у трюмі">${hc}</span>` : ''}</span>
         <span class="ex-c-mid"><span class="ex-c-p">${known ? `${Math.round(now)}<small> ₴</small>` : '—'}</span>${known ? arrow(tr) : ''}</span>
         <canvas class="ex-spark" data-spark="${id}" width="120" height="30"></canvas>
-        <span class="ex-dem" title="Попит: ${pct(d)}"><i style="width:${pct(d)}"></i></span>
+        <span class="ex-dem" title="Запас на ринку: ${stockWord(d).text}"><i style="width:${meter(d)}"></i></span>
       </button>`;
   }).join('');
 
@@ -135,14 +159,14 @@ export function exchangeHtml(game: GameState, sel: string): string {
   if (mine.length) {
     const q = game.quote(mine);
     const full = mine.reduce((a, f) => a + game.sellPrice(f), 0);
-    let gAfter = m.glut[sel] ?? 0;
+    let gAfter = m.stockOf(sel);
     for (const f of mine) gAfter += glutUnits(f);
-    const dAfter = demandAt(gAfter);
+    const dAfter = stockFactor(gAfter, m.target(sel));
     detail = `<div class="ex-mine">
         <div class="ex-mine-h"><b>У трюмі: ${mine.length} шт</b> · ${mine.reduce((a, f) => a + f.kg, 0).toFixed(1).replace('.', ',')} кг</div>
         <div class="ex-mine-row"><span>Продати всіх зараз</span><b class="gold">${formatMoney(q.total)}</b></div>
         ${q.total < full - 1 ? `<div class="ex-mine-row dim"><span>насичення з’їсть</span><span class="red">−${formatMoney(full - q.total)}</span></div>` : ''}
-        <div class="ex-mine-row dim"><span>попит після продажу</span><span>${pct(d)} → ${pct(dAfter)}</span></div>
+        <div class="ex-mine-row dim"><span>ціна від запасу після продажу</span><span>${pct(d)} → ${pct(dAfter)}</span></div>
         <div class="ex-mine-btns">
           <button class="btn" data-sell1="${sel}">Одну — ${formatMoney(q.prices[0] ?? 0)}</button>
           <button class="btn primary" data-sellgroup="${sel}">Усіх ${mine.length} — ${formatMoney(q.total)}</button>
@@ -167,7 +191,7 @@ export function exchangeHtml(game: GameState, sel: string): string {
       <div class="ex-stats">
         <div><small>мін. за 6 діб</small><b>${Math.round(lo)} ₴</b></div>
         <div><small>макс. за 6 діб</small><b>${Math.round(hi)} ₴</b></div>
-        <div><small>попит</small><b class="${d < 0.75 ? 'red' : ''}">${pct(d)}</b>${d < 0.999 ? `<em>повний за ${hours(rec)}</em>` : '<em>ринок голодний</em>'}</div>
+        <div><small>запас на ринку</small><b class="${stockWord(d).cls}">${d > 1.03 ? `+${Math.round((d - 1) * 100)}%` : d < 0.97 ? `−${Math.round((1 - d) * 100)}%` : 'норма'}</b><em>${d > 1.03 ? 'дефіцит · ' : d < 0.97 ? 'надлишок · ' : ''}${rec > 0.5 ? `норма за ~${hours(rec)}` : 'їдять стільки, скільки везуть'}</em></div>
         <div><small>новина</small><b class="${ev ? (ev.mult > 1 ? 'sea' : 'red') : ''}">${ev ? `${ev.mult > 1 ? '+' : '−'}${Math.round(Math.abs(ev.mult - 1) * 100)}%` : '—'}</b>${ev ? `<em>${esc(ev.text.replace(/:.*$/, ''))}</em>` : '<em>без подій</em>'}</div>
       </div>
       ${detail}
@@ -198,7 +222,7 @@ export function exchangeHtml(game: GameState, sel: string): string {
       ${focus}
       ${hold}
     </div>
-    <p class="ex-foot">Ціна — за рибину середньої ваги; свіжість, варення і штормовий улов (+25%) рахуються при продажу. Перші 2 рибини виду — за повну ціну, далі кожна дешевша; попит відновлюється ~12 рибин за добу.</p>`;
+    <p class="ex-foot">Ціна — за рибину середньої ваги; свіжість, варення і штормовий улов (+25%) рахуються при продажу. Ринок живий: місто щогодини їсть рибу, рибалки підвозять (у шторм — ніхто, і ціни ростуть). Твій продаж додає рибу в запас — партія одного виду збиває ціну, а за добу-дві місто її доїдає.</p>`;
 }
 
 /** намалювати мініграфіки й великий графік після вставки HTML */

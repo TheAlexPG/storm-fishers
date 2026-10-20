@@ -42,6 +42,8 @@ import type { ParticlePool } from '../world/particles';
 
 const SNAP_HZ = 20;
 const WORLD_HZ = 10;
+/** знімок запасів живої біржі від капітана кімнати, с */
+const MARKET_SEC = 2;
 const PLAYER_HZ = 15;
 /** затримка відтворення знімків: 2.4 пакети — переживає джитер Wi‑Fi */
 const INTERP_DELAY = 0.12;
@@ -147,6 +149,12 @@ export class Coop {
   /** човни-боти: капітан кімнати шле пози в пакеті світу, гості їх приймають */
   botState: (() => number[]) | null = null;
   onBots: ((a: unknown) => void) | null = null;
+  /** жива біржа: капітан кімнати шле запаси всіх бірж (раз на MARKET_SEC) */
+  marketState: (() => unknown) | null = null;
+  onMarket: ((d: unknown) => void) | null = null;
+  /** капітан: гість продав рибу (порт, вид, типові рибини) */
+  onMarketSale: ((portId: string, speciesId: string, units: number) => void) | null = null;
+  private marketTimer = 0;
   private worldFresh = false;
 
   constructor(private scene: THREE.Scene, private h: CoopHandlers) {}
@@ -380,6 +388,18 @@ export class Coop {
         this.h.onEvent(d.e as string, d.v);
         break;
       }
+      case 'm': {
+        // запаси бірж — лише від капітана кімнати
+        if (s.isHost || from !== s.hostId) return;
+        this.onMarket?.(d.m);
+        break;
+      }
+      case 'ms': {
+        if (!s.isHost) return;
+        const u = Number(d.u);
+        if (typeof d.p === 'string' && typeof d.sp === 'string' && Number.isFinite(u) && u > 0 && u < 5) this.onMarketSale?.(d.p, d.sp, u);
+        break;
+      }
       case 'c': {
         const text = String(d.text ?? '').slice(0, 160);
         if (text) this.h.onChat(s.nickOf(from), text, this.colorOf(from));
@@ -409,6 +429,13 @@ export class Coop {
   /** подія світу (блискавка, сон) — від капітана кімнати всім */
   sendWorldEvent(e: string, v?: unknown) {
     if (this.isHost) this.session!.send({ k: 'e', e, v, w: 1 });
+  }
+
+  /** гість продав рибу на біржі — капітан кімнати додасть її в запас (спільний ринок) */
+  sendMarketSale(portId: string, speciesId: string, units: number) {
+    const s = this.session;
+    if (!s || s.isHost) return;
+    s.send({ k: 'ms', p: portId, sp: speciesId, u: Math.round(units * 100) / 100 }, s.hostId);
   }
 
   sendChat(text: string) {
@@ -468,6 +495,12 @@ export class Coop {
           bt: this.botState?.(),
           tm: [r(time.hours, 1e4), time.dayCount],
         });
+      }
+      // жива біржа: запаси рідко змінюються — знімок раз на 2 с
+      this.marketTimer -= dt;
+      if (this.marketTimer <= 0 && this.marketState) {
+        this.marketTimer = MARKET_SEC;
+        this.session!.send({ k: 'm', m: this.marketState() });
       }
     }
     if (this.crewing) return;

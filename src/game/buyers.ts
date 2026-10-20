@@ -37,7 +37,7 @@ export interface BuyerDef {
   /** скільки «рибин» виду бере без знижки (Infinity — не насичується) */
   free: number;
   drop: number;
-  /** розсмоктування надлишку, рибин/ігрову годину */
+  /** базове споживання: надлишок розсмоктується на стільки рибин/ігрову годину (+ пропорційно, див. tick) */
   recover: number;
   /** партія від N риб — оптова надбавка */
   bulk?: [number, number];
@@ -493,7 +493,9 @@ export class FishTrade {
       for (const b of BUYERS) {
         const g = this.glut[b.id];
         for (const k of Object.keys(g)) {
-          const v = g[k] - b.recover * hours;
+          // базове споживання кухні (recover/год) + більший надлишок тане швидше
+          // (стала ~18 год) — велика партія не «вбиває» скупника на тиждень
+          const v = g[k] - (b.recover + g[k] / 18) * hours;
           if (v <= 0) delete g[k];
           else g[k] = v;
         }

@@ -1,29 +1,39 @@
 import { clamp, mulberry32 } from '../core/math';
 import { FISH, FISH_BY_ID } from './fish';
-import type { FishItem } from '../core/types';
+import type { FishItem, ZoneId } from '../core/types';
 
 // ─────────────────────────────────────────────────────────────
-// Біржа риби: насичення ринку за видами + випадкові події.
+// Жива біржа риби: запас × споживання × підвіз.
 //
-// Кожен проданий улов «засипає» ринок свого виду (glut, у «типових рибинах»).
-// Перші FREE рибин виду йдуть за повну ціну, далі кожна наступна — на DROP
-// дешевше (не нижче FLOOR). Ринок розсмоктується на RECOVER одиниць за
-// ігрову годину (≈ 12 рибин за добу) — різноманітний улов не страждає,
-// а 15 однакових тунців поспіль продаються з помітною знижкою.
+// Кожен ринок (біржа порту) тримає за видами ЗАПАС риби в «типових рибинах».
+// Норма запасу T залежить від виду (дешевої риби місто з'їдає більше) і розміру
+// порту. Місто їсть рибу щогодини (≈ T за MARKET_TAU год, удень і на вихідних —
+// більше), а підвозять її рибалки: фонова флотилія безперервно і боти-траулери
+// партіями, коли швартуються. У шторм не ловить ніхто — запас тане, ціна росте;
+// після довгого штилю рибу везуть усі — ціна сповзає.
+//
+// Ціна = базова × тижневий тренд × подія × f(запас / норма):
+//   f = √(T / S), у межах FACTOR_MIN…FACTOR_MAX. Одна продана рибина зсуває
+// запас на ~1/T — ледь помітно; 30 однакових рибин — помітно (−30…−45 % на хвості),
+// і надлишок місто доїдає за 1–2 ігрові доби.
 // ─────────────────────────────────────────────────────────────
 
-/** скільки «типових рибин» виду ринок бере без знижки */
-export const MARKET_FREE = 2;
-/** падіння попиту за кожну типову рибину понад FREE */
-export const MARKET_DROP = 0.08;
-/** найнижчий множник попиту */
-export const MARKET_FLOOR = 0.3;
-/** розсмоктування надлишку, од./ігрову годину */
-export const MARKET_RECOVER = 0.5;
+/** стала «з'їдання» надлишку, ігрові години */
+export const MARKET_TAU = 20;
+export const FACTOR_MIN = 0.55;
+export const FACTOR_MAX = 1.45;
+/** частка підвозу домашньої біржі, яку привозять видимі боти (решта — фонова флотилія) */
+const BOT_SHARE = 0.45;
+/** зони, де ловлять боти «Шторму» (bots.ts: 140–820 м від порту) */
+const BOT_ZONES: ZoneId[] = ['shore', 'mid'];
+/** фоновий «невиловлений боту» улов доходить на ринок за стільки годин */
+const POOL_LEAK_H = 30;
 /** як часто пишемо точку історії ціни (ігрові години) */
 export const MARKET_SAMPLE_H = 3;
 /** точок історії: 8 на добу × 6 діб — вистачає на графік біржі */
 export const MARKET_HISTORY = 48;
+/** новин про підвіз пам'ятаємо */
+const NEWS_MAX = 6;
 
 export interface MarketEvent {
   speciesId: string;
@@ -34,28 +44,52 @@ export interface MarketEvent {
   text: string;
 }
 
+/** новина про підвіз (бот здав улов) */
+export interface MarketNews {
+  /** ігровий час (абс. години), щоб не показувати двічі */
+  h: number;
+  who: string;
+  text: string;
+}
+
 export interface MarketSave {
-  glut: Record<string, number>;
+  /** запас за видами, типові рибини */
+  stock?: Record<string, number>;
+  /** ще не довезений улов фонової флотилії (його частку привозять боти) */
+  pool?: Record<string, number>;
+  /** старі сейви: надлишок над «повним попитом» */
+  glut?: Record<string, number>;
   hist: Record<string, number[]>;
   prev: Record<string, number>;
   events: MarketEvent[];
   acc: number;
+  news?: MarketNews[];
 }
 
-/** відмінки для оголошень: [знахідний, орудний] */
-const CASES: Record<string, [string, string]> = {
-  hamsa: ['шпрот', 'шпротом'],
-  balyk: ['оселедця', 'оселедцем'],
-  leschak: ['камбалу', 'камбалою'],
-  plyotka: ['пікшу', 'пікшею'],
-  makrel: ['скумбрію', 'скумбрією'],
-  sula: ['сайду', 'сайдою'],
-  krap: ['морського окуня', 'морським окунем'],
-  forel: ['лосося', 'лососем'],
-  lusk: ['тріску', 'тріскою'],
-  shoraga: ['палтуса', 'палтусом'],
-  tunets: ['тунця', 'тунцем'],
-  akula: ['акулу', 'акулою'],
+/** стан світу для кроку ринку */
+export interface MarketCtx {
+  /** година доби 0..24 */
+  hour: number;
+  /** номер дня (для вихідних) */
+  day: number;
+  /** сила погоди 0..~1.1 (Weather.base) */
+  weather: number;
+}
+
+/** відмінки для оголошень: [знахідний, орудний, родовий] */
+const CASES: Record<string, [string, string, string]> = {
+  hamsa: ['шпрот', 'шпротом', 'шпроту'],
+  balyk: ['оселедця', 'оселедцем', 'оселедця'],
+  leschak: ['камбалу', 'камбалою', 'камбали'],
+  plyotka: ['пікшу', 'пікшею', 'пікші'],
+  makrel: ['скумбрію', 'скумбрією', 'скумбрії'],
+  sula: ['сайду', 'сайдою', 'сайди'],
+  krap: ['морського окуня', 'морським окунем', 'морського окуня'],
+  forel: ['лосося', 'лососем', 'лосося'],
+  lusk: ['тріску', 'тріскою', 'тріски'],
+  shoraga: ['палтуса', 'палтусом', 'палтуса'],
+  tunets: ['тунця', 'тунцем', 'тунця'],
+  akula: ['акулу', 'акулою', 'акули'],
 };
 
 const BUYERS = ['Ресторан «Маяк» скуповує', 'Рибзавод шукає', 'Готель «Хвиля» замовив', 'Ярмарок у місті — розбирають'];
@@ -71,23 +105,84 @@ export function glutUnits(item: FishItem): number {
   return clamp(Math.sqrt(item.kg / avgKg(item.speciesId)), 0.6, 1.6);
 }
 
-/** множник попиту при заданому надлишку */
-export function demandAt(glut: number): number {
-  return clamp(1 - MARKET_DROP * Math.max(0, glut - MARKET_FREE), MARKET_FLOOR, 1);
+/** норма запасу виду на домашній біржі (типові рибини): дешевої риби місто їсть більше */
+export function marketTarget(speciesId: string): number {
+  const sp = FISH_BY_ID[speciesId];
+  return sp ? 52 / Math.sqrt(sp.basePrice / 9) : 20;
+}
+
+/** множник ціни від запасу: дефіцит — дорожче, надлишок — дешевше */
+export function stockFactor(stock: number, target: number): number {
+  return clamp(Math.sqrt(target / Math.max(stock, target * 0.2)), FACTOR_MIN, FACTOR_MAX);
+}
+
+/** чи ловить хтось у таку погоду: штиль — уся флотилія в морі, шторм — ніхто */
+export function fishingFactor(weather: number): number {
+  // середнє за погодний цикл (тиша ~45 %, вітер ~30 %, шторм ~25 %) ≈ 1 — ціна в середньому «звична»
+  if (weather < 0.3) return 1.5;
+  if (weather < 0.58) return 1.5 - ((weather - 0.3) / 0.28) * 0.85;
+  return 0;
+}
+
+/** споживання: удень і ввечері їдять більше, на вихідних — ще більше, у шторм — менше */
+export function consumeMult(ctx: MarketCtx): number {
+  const dayCurve = 1 + 0.45 * Math.sin(((ctx.hour - 9) / 24) * Math.PI * 2);
+  const dow = ((ctx.day % 7) + 7) % 7;
+  const weekend = dow === 0 || dow === 6 ? 1.2 : 1;
+  const storm = ctx.weather > 0.75 ? 0.85 : 1;
+  return dayCurve * weekend * storm;
+}
+
+export function isWeekend(day: number): boolean {
+  const dow = ((day % 7) + 7) % 7;
+  return dow === 0 || dow === 6;
+}
+
+/** назва виду в родовому відмінку («тріски») */
+export function speciesGen(speciesId: string): string {
+  return CASES[speciesId]?.[2] ?? (FISH_BY_ID[speciesId]?.name ?? speciesId).toLowerCase();
 }
 
 export class FishMarket {
-  glut: Record<string, number> = {};
+  /** запас за видами (типові рибини); немає запису — норма */
+  stock: Record<string, number> = {};
+  /** частка улову фонової флотилії, яку довезуть боти (лише домашня біржа) */
+  pool: Record<string, number> = {};
   /** історія ціни ₴/кг за видом (старі → нові) */
   hist: Record<string, number[]> = {};
   /** тижневий множник попереднього дня — для стрілки тренду */
   prev: Record<string, number> = {};
   events: MarketEvent[] = [];
+  /** хто що здав (біжучий рядок біржі, канал 16) */
+  news: MarketNews[] = [];
+  /** розмір ринку: множник норми й споживання (село — менше, курорт — більше) */
+  scale = 1;
+  /** кооп-гість: запаси приходять від капітана кімнати — свого підвозу/споживання немає */
+  remote = false;
   /** накопичені години до наступної точки історії */
-  private acc = 0;
+  protected acc = 0;
 
+  /** частка улову виду, яку фонова флотилія везе саме сюди (місцеві види — більше) */
+  supplyBias(_speciesId: string): number {
+    return 1;
+  }
+
+  /** чи привозять сюди боти (домашня біржа «Шторму») */
+  get hasBots(): boolean {
+    return true;
+  }
+
+  target(speciesId: string): number {
+    return marketTarget(speciesId) * this.scale;
+  }
+
+  stockOf(speciesId: string): number {
+    return this.stock[speciesId] ?? this.target(speciesId) * this.supplyBias(speciesId);
+  }
+
+  /** множник ціни від запасу (дефіцит > 1, надлишок < 1) */
   demand(speciesId: string): number {
-    return demandAt(this.glut[speciesId] ?? 0);
+    return stockFactor(this.stockOf(speciesId), this.target(speciesId));
   }
 
   eventMult(speciesId: string): number {
@@ -100,17 +195,17 @@ export class FishMarket {
     return this.events.find((e) => e.speciesId === speciesId);
   }
 
-  /** множник ринку (подія × попит) поверх тижневого тренду */
+  /** множник ринку (подія × запас) поверх тижневого тренду */
   factor(speciesId: string): number {
     return this.eventMult(speciesId) * this.demand(speciesId);
   }
 
-  /** множник ринку при заданому надлишку (прорахунок кількох продажів поспіль) */
-  factorWith(speciesId: string, glut: number): number {
-    return this.eventMult(speciesId) * demandAt(glut);
+  /** множник ринку при заданому запасі (прорахунок кількох продажів поспіль) */
+  factorAt(speciesId: string, stock: number): number {
+    return this.eventMult(speciesId) * stockFactor(stock, this.target(speciesId));
   }
 
-  /** ціна за кг «зараз» (без свіжості/шторму) */
+  /** ціна за кг «зараз» для свіжої риби (без свіжості/шторму) */
   perKg(speciesId: string, priceMult: Record<string, number>): number {
     const sp = FISH_BY_ID[speciesId];
     if (!sp) return 0;
@@ -119,17 +214,21 @@ export class FishMarket {
 
   /** записати продаж у ринок */
   recordSale(item: FishItem) {
-    this.glut[item.speciesId] = (this.glut[item.speciesId] ?? 0) + glutUnits(item);
+    this.addStock(item.speciesId, glutUnits(item));
   }
 
-  /** хід часу (ігрові години): надлишок розсмоктується, пишеться історія */
-  tick(hours: number, priceMult: Record<string, number>) {
+  addStock(speciesId: string, units: number) {
+    if (!FISH_BY_ID[speciesId] || !(units > 0)) return;
+    this.stock[speciesId] = this.stockOf(speciesId) + units;
+  }
+
+  /**
+   * хід часу (ігрові години): споживання й підвіз (якщо ctx і не гість),
+   * запис історії ціни
+   */
+  tick(hours: number, priceMult: Record<string, number>, ctx?: MarketCtx) {
     if (!(hours > 0)) return;
-    for (const id of Object.keys(this.glut)) {
-      const g = this.glut[id] - MARKET_RECOVER * hours;
-      if (g <= 0) delete this.glut[id];
-      else this.glut[id] = g;
-    }
+    if (ctx && !this.remote) this.simulate(hours, ctx);
     this.acc += hours;
     // сон пропускає багато годин — пишемо не більше кількох точок
     let n = 0;
@@ -139,6 +238,64 @@ export class FishMarket {
       n++;
     }
     if (this.acc >= MARKET_SAMPLE_H) this.acc = 0;
+  }
+
+  /** споживання міста й підвіз флотилії (крок ≤ 1 год, щоб сон не «перескакував» рівновагу) */
+  protected simulate(hours: number, ctx: MarketCtx) {
+    let left = hours;
+    let h = ctx.hour;
+    while (left > 1e-6) {
+      const dt = Math.min(1, left);
+      const c: MarketCtx = { ...ctx, hour: h % 24 };
+      const cm = consumeMult(c);
+      const ff = fishingFactor(ctx.weather);
+      for (const sp of FISH) {
+        const id = sp.id;
+        // боти «Шторму» ловлять біля берега й на середині — рибу відкритого моря везе лише фонова флотилія
+        const bots = this.hasBots && sp.zones.some((z) => BOT_ZONES.includes(z)) ? BOT_SHARE : 0;
+        const T = this.target(id);
+        const base = T / MARKET_TAU; // рибин/год у нормі
+        const bias = this.supplyBias(id);
+        let S = this.stockOf(id);
+        // фонова флотилія — одразу на ринок; частка ботів — у «пул», який вони привезуть партіями
+        S += base * ff * bias * (1 - bots) * dt;
+        if (bots) {
+          const p = (this.pool[id] ?? 0) + base * ff * bias * bots * dt;
+          // що не забрали боти (чужі зони, ніхто не вийшов) — однаково доходить, але повільно
+          const leak = (p * dt) / POOL_LEAK_H;
+          this.pool[id] = p - leak;
+          S += leak;
+        }
+        // місто їсть: пропорційно запасу (надлишок тане, дефіцит — повільніше)
+        S -= base * cm * (S / T) * dt;
+        this.stock[id] = Math.max(T * 0.05, S);
+      }
+      left -= dt;
+      h += dt;
+    }
+  }
+
+  /**
+   * бот пришвартувався й здає улов: забирає частку «пулу» видів своєї зони.
+   * Повертає [вид, типові рибини] по спаданню — для новини.
+   */
+  botUnload(zones: ZoneId[], share: number): Array<[string, number]> {
+    const out: Array<[string, number]> = [];
+    for (const sp of FISH) {
+      if (!sp.zones.some((z) => zones.includes(z))) continue;
+      const p = this.pool[sp.id] ?? 0;
+      const take = p * clamp(share, 0, 1);
+      if (take < 0.05) continue;
+      this.pool[sp.id] = p - take;
+      this.addStock(sp.id, take);
+      out.push([sp.id, take]);
+    }
+    return out.sort((a, b) => b[1] * avgKg(b[0]) - a[1] * avgKg(a[0]));
+  }
+
+  pushNews(n: MarketNews) {
+    this.news.push(n);
+    if (this.news.length > NEWS_MAX) this.news.splice(0, this.news.length - NEWS_MAX);
   }
 
   sample(priceMult: Record<string, number>) {
@@ -171,10 +328,16 @@ export class FishMarket {
     return ev;
   }
 
-  /** скільки ігрових годин до повного попиту на вид */
+  /** скільки ігрових годин, доки запас повернеться до норми (±5 %) без нового підвозу */
   recoverHours(speciesId: string): number {
-    const g = this.glut[speciesId] ?? 0;
-    return Math.max(0, (g - MARKET_FREE) / MARKET_RECOVER);
+    const T = this.target(speciesId);
+    const dev = Math.abs(this.stockOf(speciesId) - T) / T;
+    return dev < 0.05 ? 0 : MARKET_TAU * Math.log(dev / 0.05);
+  }
+
+  /** запас відносно норми: 1 — норма, 1.5 — надлишок, 0.6 — дефіцит */
+  stockRatio(speciesId: string): number {
+    return this.stockOf(speciesId) / this.target(speciesId);
   }
 
   /**
@@ -210,19 +373,36 @@ export class FishMarket {
     }
   }
 
+  /** запаси в масиві за порядком FISH (кооп-знімок) */
+  packStock(): number[] {
+    return FISH.map((sp) => Math.round(this.stockOf(sp.id) * 100) / 100);
+  }
+
+  unpackStock(a: unknown) {
+    if (!Array.isArray(a)) return;
+    FISH.forEach((sp, i) => {
+      const v = a[i];
+      if (typeof v === 'number' && Number.isFinite(v) && v >= 0) this.stock[sp.id] = v;
+    });
+  }
+
   serialize(): MarketSave {
-    return { glut: { ...this.glut }, hist: this.hist, prev: this.prev, events: this.events, acc: this.acc };
+    const r = (o: Record<string, number>) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, Math.round(v * 100) / 100]));
+    return { stock: r(this.stock), pool: r(this.pool), hist: this.hist, prev: this.prev, events: this.events, acc: this.acc, news: this.news };
   }
 
   load(d: Partial<MarketSave> | undefined) {
-    this.glut = {};
+    this.stock = {};
+    this.pool = {};
     this.hist = {};
     this.prev = {};
     this.events = [];
+    this.news = [];
     this.acc = 0;
     if (!d || typeof d !== 'object') return;
-    const num = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
-    if (d.glut) for (const [k, v] of Object.entries(d.glut)) if (FISH_BY_ID[k] && num(v) && v > 0) this.glut[k] = v;
+    const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+    this.loadStock(d.stock, d.glut);
+    if (d.pool) for (const [k, v] of Object.entries(d.pool)) if (FISH_BY_ID[k] && num(v) && v >= 0) this.pool[k] = v;
     if (d.hist) {
       for (const [k, v] of Object.entries(d.hist)) {
         if (FISH_BY_ID[k] && Array.isArray(v)) this.hist[k] = v.filter(num).slice(-MARKET_HISTORY);
@@ -234,31 +414,46 @@ export class FishMarket {
         (e) => e && FISH_BY_ID[e.speciesId] && num(e.mult) && num(e.until) && typeof e.text === 'string',
       );
     }
-    if (num(d.acc)) this.acc = d.acc!;
+    if (Array.isArray(d.news)) this.news = d.news.filter((n) => n && num(n.h) && typeof n.text === 'string' && typeof n.who === 'string').slice(-NEWS_MAX);
+    if (num(d.acc)) this.acc = d.acc;
+  }
+
+  /** запаси з сейву; старі сейви — «надлишок над нормою» (glut) → норма + надлишок */
+  loadStock(stock: Record<string, number> | undefined, glut?: Record<string, number>) {
+    const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+    if (stock && typeof stock === 'object') {
+      for (const [k, v] of Object.entries(stock)) if (FISH_BY_ID[k] && num(v) && v >= 0) this.stock[k] = v;
+    } else if (glut && typeof glut === 'object') {
+      for (const [k, v] of Object.entries(glut)) if (FISH_BY_ID[k] && num(v) && v > 0) this.stock[k] = this.target(k) + v;
+    }
   }
 }
 
 /**
- * Біржа іншого порту: власне насичення (свій glut), місцеві множники видів;
- * події й історія — спільні з домашньою біржею (новини ті самі), але ціни
- * в історії — у місцевому масштабі.
+ * Біржа іншого порту: свої запаси й споживання (розмір порту), свої місцеві
+ * ціни видів і свій підвіз (фонова флотилія порту — більше «місцевої» риби);
+ * події — спільні з домашньою біржею (новини ті самі). Історія — своя
+ * (на старті — домашня в місцевому масштабі).
  */
 export class PortMarket extends FishMarket {
-  constructor(private home: FishMarket, private local: (speciesId: string) => number, glut: Record<string, number>) {
+  constructor(
+    private home: FishMarket,
+    private local: (speciesId: string) => number,
+    scale: number,
+    private bias: (speciesId: string) => number,
+  ) {
     super();
-    this.glut = glut;
+    this.scale = scale;
     Object.defineProperty(this, 'events', { get: () => home.events });
     Object.defineProperty(this, 'prev', { get: () => home.prev });
-    Object.defineProperty(this, 'hist', {
-      get: () => {
-        const out: Record<string, number[]> = {};
-        for (const [id, h] of Object.entries(home.hist)) {
-          const k = local(id);
-          out[id] = h.map((v) => v * k);
-        }
-        return out;
-      },
-    });
+  }
+
+  override get hasBots(): boolean {
+    return false;
+  }
+
+  override supplyBias(speciesId: string): number {
+    return this.bias(speciesId);
   }
 
   override eventMult(speciesId: string): number {
@@ -270,19 +465,19 @@ export class PortMarket extends FishMarket {
   }
 
   override factor(speciesId: string): number {
-    return this.home.eventMult(speciesId) * this.demand(speciesId) * this.local(speciesId);
+    return super.factor(speciesId) * this.local(speciesId);
   }
 
-  override factorWith(speciesId: string, glut: number): number {
-    return this.home.eventMult(speciesId) * demandAt(glut) * this.local(speciesId);
+  override factorAt(speciesId: string, stock: number): number {
+    return super.factorAt(speciesId, stock) * this.local(speciesId);
   }
-}
 
-/** розсмоктати надлишок (ігрові години) — для бірж інших портів */
-export function recoverGlut(glut: Record<string, number>, hours: number) {
-  for (const id of Object.keys(glut)) {
-    const g = glut[id] - MARKET_RECOVER * hours;
-    if (g <= 0) delete glut[id];
-    else glut[id] = g;
+  /** історія: якщо своєї немає — домашня в місцевому масштабі */
+  seedHistory() {
+    for (const [id, h] of Object.entries(this.home.hist)) {
+      if (this.hist[id]?.length) continue;
+      const k = this.local(id);
+      this.hist[id] = h.map((v) => Math.round(v * k * 10) / 10);
+    }
   }
 }

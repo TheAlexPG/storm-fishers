@@ -65,6 +65,8 @@ interface Bot {
   nrm: THREE.Vector3;
   /** гість: мережева ціль */
   net: { x: number; z: number; h: number; spd: number; at: number } | null;
+  /** скільки секунд ловив у цьому рейсі (улов здає на біржу, коли пришвартується) */
+  fishT: number;
 }
 
 const _n = new THREE.Vector3();
@@ -88,6 +90,8 @@ export class Bots {
   onChatter: ((name: string, text: string) => void) | null = null;
   /** гудок поруч із гравцем */
   onHorn: ((vol: number) => void) | null = null;
+  /** пришвартувався після лову: здає улов на біржу (зона лову за відстанню, секунди лову) */
+  onUnload: ((name: string, zoneR: [number, number], fishSec: number) => void) | null = null;
   readonly list: Bot[] = [];
   private lights: THREE.Points;
   private lightPos: Float32Array;
@@ -126,7 +130,7 @@ export class Bots {
         // розійтись у часі: хтось одразу в морі
         timer: 15 + i * 35 + Math.random() * 30,
         avoidSide: i % 2 ? 1 : -1, stuckT: 0, lastD: 1e9, roll: 0,
-        nrm: new THREE.Vector3(0, 1, 0), net: null,
+        nrm: new THREE.Vector3(0, 1, 0), net: null, fishT: 0,
       };
       this.list.push(b);
     });
@@ -220,6 +224,7 @@ export class Bots {
         case 'fishing': {
           // повільний дрейф колом
           b.spd += (0.7 - b.spd) * Math.min(1, dt * 0.5);
+          b.fishT += dt;
           b.h += dt * 0.05 * b.avoidSide;
           b.x += Math.sin(b.h) * b.spd * dt;
           b.z += Math.cos(b.h) * b.spd * dt;
@@ -242,6 +247,8 @@ export class Bots {
             b.state = 'moored';
             b.spd = 0;
             b.timer = storm ? 60 : 90 + Math.random() * 180;
+            if (b.fishT > 5) this.onUnload?.(b.d.name, b.d.zone, b.fishT);
+            b.fishT = 0;
           }
           break;
         }
