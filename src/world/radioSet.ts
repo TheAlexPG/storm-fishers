@@ -52,6 +52,8 @@ export interface RadioData {
   stormSoon: boolean;
   /** що клює тут і зараз (зона гравця, день/ніч) */
   tip?: string;
+  /** жива біржа: хто з рибалок здав улов (канал 16 переказує нові) */
+  news?: Array<{ who: string; text: string; h: number }>;
 }
 
 /** локальні координати яхти: панель на борту над штурманським столом */
@@ -96,6 +98,8 @@ export class RadioSet {
   private page = 0;
   private pageT = 0;
   private chatLog: Array<{ who: string; text: string; at: number }> = [];
+  /** до якої новини біржі вже переказали (ігрові години) */
+  private newsH = 0;
   private chatT = 0;
   private _ray = new THREE.Raycaster();
   private _c = new THREE.Vector2();
@@ -710,6 +714,15 @@ export class RadioSet {
     if (this.chatT > 0) return;
     this.chatT = 5 + Math.random() * 6;
     const d = this.data;
+    // свіжа новина біржі (бот здав улов) — у ефір першою (старі з сейву — лише остання)
+    if (!this.newsH && d?.news?.length) this.newsH = d.news[d.news.length - 1].h - 1e-3;
+    const fresh = d?.news?.find((n) => n.h > this.newsH);
+    if (fresh) {
+      this.newsH = fresh.h;
+      this.chatLog.push({ who: fresh.who, text: fresh.text, at: this.t });
+      if (this.chatLog.length > 12) this.chatLog.shift();
+      return;
+    }
     const who = ['«Чайка-2»', '«Ластівка»', '«Буревісник»', '«Дельфін»', 'Портова служба', '«Стара Марта»', '«Кит»'];
     const w = who[Math.floor(Math.random() * who.length)];
     const pool: string[] = [

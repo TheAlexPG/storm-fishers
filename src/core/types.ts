@@ -88,8 +88,10 @@ export interface SaveData {
   places?: string[];
   /** знахідки на островах */
   finds?: string[];
-  /** насичення бірж інших портів (portSites.ts) */
+  /** старі сейви: насичення бірж інших портів (portSites.ts) */
   portGlut?: Record<string, Record<string, number>>;
+  /** біржі інших портів: запаси й історія цін (game/market.ts) */
+  portMarkets?: Record<string, { stock?: Record<string, number>; hist?: Record<string, number[]> }>;
   /** порт, біля якого стояли (для послуг і повернення) */
   port?: string;
   /** вибраний капелюх */

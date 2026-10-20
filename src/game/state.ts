@@ -1,8 +1,8 @@
 import { clamp, mulberry32 } from '../core/math';
-import { FISH, FISH_BY_ID, fishSellPrice } from './fish';
-import { demandAt, FishMarket, PortMarket, glutUnits, recoverGlut, type MarketEvent } from './market';
+import { FISH, FISH_BY_ID, fishSellPrice, zoneFromDist } from './fish';
+import { avgKg, FishMarket, PortMarket, glutUnits, speciesGen, type MarketCtx, type MarketEvent, type MarketSave } from './market';
 import { BUYER_BY_ID, contractNeed, fitsContract, FishTrade, type BuyerId, type Contract, type TradeSave } from './buyers';
-import { PORT_SITE_BY_ID } from '../world/portSites';
+import { PORT_SITES, PORT_SITE_BY_ID, type PortSite } from '../world/portSites';
 import { defaultUpgrades, eff, UPGRADES, MAX_LEVEL, upgradeCost, upgradeLock } from './upgrades';
 import type {
   FishItem,
@@ -60,20 +60,42 @@ export class GameState {
   clockH = 32;
   /** порт, де зараз послуги (біржа, пальне, верф): 'home' — «Шторм» (portSites.ts) */
   portId = 'home';
-  /** насичення бірж інших портів за видами */
-  portGlut: Record<string, Record<string, number>> = {};
+  /** біржі інших портів: свої запаси, споживання й підвіз (game/market.ts) */
   private portMarkets: Record<string, PortMarket> = {};
+  /** кооп-гість продав рибу: капітан кімнати має врахувати її в запасах біржі */
+  saleHook: ((portId: string, speciesId: string, units: number) => void) | null = null;
 
-  /** біржа порту, де ти зараз (домашня — market) */
-  get venueMarket(): FishMarket {
-    const site = PORT_SITE_BY_ID[this.portId];
+  /** біржа порту за id ('home' — «Шторм») */
+  marketOf(portId: string): FishMarket {
+    const site = PORT_SITE_BY_ID[portId];
     if (!site) return this.market;
     let m = this.portMarkets[site.id];
     if (!m) {
-      const glut = (this.portGlut[site.id] ??= {});
-      m = this.portMarkets[site.id] = new PortMarket(this.market, (id) => site.econ.species[id] ?? site.econ.fish, glut);
+      m = this.portMarkets[site.id] = makePortMarket(this.market, site);
+      m.remote = this.market.remote;
+      m.seedHistory();
     }
     return m;
+  }
+
+  /** усі біржі: [id, біржа] */
+  allMarkets(): Array<[string, FishMarket]> {
+    return [['home', this.market], ...PORT_SITES.map((p) => [p.id, this.marketOf(p.id)] as [string, FishMarket])];
+  }
+
+  /** біржа порту, де ти зараз (домашня — market) */
+  get venueMarket(): FishMarket {
+    return this.marketOf(this.portId);
+  }
+
+  /** ціна за кг свіжої риби виду тут (біржа, де ти зараз) — одна для радіо, біржі й продажу */
+  quotePerKg(speciesId: string, portId = this.portId): number {
+    return this.marketOf(portId).perKg(speciesId, this.priceMult);
+  }
+
+  /** ціна свіжої рибини середньої ваги — скільки дасть біржа за типову рибину зараз */
+  quoteTypical(speciesId: string, portId = this.portId): number {
+    return Math.round(this.quotePerKg(speciesId, portId) * avgKg(speciesId));
   }
 
   /** назва порту послуг */
@@ -195,13 +217,13 @@ export class GameState {
   /** чесний прорахунок продажу кількох риб поспіль: ціни по черзі й сума */
   quote(items: FishItem[]): { total: number; prices: number[] } {
     const vm = this.venueMarket;
-    const glut: Record<string, number> = { ...vm.glut };
+    const stock: Record<string, number> = {};
     const prices: number[] = [];
     let total = 0;
     for (const f of this.sellOrder(items)) {
-      const g = glut[f.speciesId] ?? 0;
-      const v = fishSellPrice(f, this.priceMult, vm.factorWith(f.speciesId, g));
-      glut[f.speciesId] = g + glutUnits(f);
+      const g = stock[f.speciesId] ?? vm.stockOf(f.speciesId);
+      const v = fishSellPrice(f, this.priceMult, vm.factorAt(f.speciesId, g));
+      stock[f.speciesId] = g + glutUnits(f);
       prices.push(v);
       total += v;
     }
@@ -228,6 +250,7 @@ export class GameState {
     const v = this.sellPrice(f);
     this.removeFish(uid);
     this.venueMarket.recordSale(f);
+    this.saleHook?.(this.portId, f.speciesId, glutUnits(f));
     this.money += v;
     this.stats.totalEarned += v;
     this.objectives.firstSale = true;
@@ -315,10 +338,58 @@ export class GameState {
     this.lastMarketEvent = this.market.newDay(old, this.priceWeek);
   }
 
-  /** хід ігрового часу для біржі (годин) */
-  tickMarket(dtHours: number) {
-    this.market.tick(dtHours, this.priceMult);
-    for (const g of Object.values(this.portGlut)) recoverGlut(g, dtHours);
+  /** хід ігрового часу для бірж (годин): споживання, підвіз флотилій, історія */
+  tickMarket(dtHours: number, ctx?: MarketCtx) {
+    for (const [, m] of this.allMarkets()) m.tick(dtHours, this.priceMult, ctx);
+  }
+
+  /**
+   * бот пришвартувався в «Штормі» й здає улов (зони, де ловив; share — частка
+   * «пулу» — більша, якщо довго ловив у гарну погоду). Повертає текст новини або null.
+   */
+  botUnload(who: string, zones: ZoneId[], share: number): string | null {
+    const got = this.market.botUnload(zones, share);
+    if (!got.length) return null;
+    const kg = got.reduce((a, [id, u]) => a + u * avgKg(id), 0);
+    if (kg < 3) return null;
+    const [top] = got[0];
+    const more = got.length > 1 ? ` і ще ${got.length - 1} ${got.length - 1 === 1 ? 'вид' : got.length - 1 < 5 ? 'види' : 'видів'}` : '';
+    const drop = this.market.demand(top) < 0.97;
+    const verb = /[ая]$/.test(who) ? 'здала' : 'здав'; // «Чайка» здала, «Дельфін» здав
+    const text = `${verb} ${Math.round(kg)} кг риби — найбільше ${speciesGen(top)}${more}${drop ? ` · ціна на ${speciesGen(top)} падає` : ''}`;
+    this.market.pushNews({ h: this.clockH, who, text });
+    return text;
+  }
+
+  /** кооп: компактний знімок запасів усіх бірж + новини (від капітана кімнати) */
+  marketSnapshot(): { s: Record<string, number[]>; n: Array<[number, string, string]> } {
+    const s: Record<string, number[]> = {};
+    for (const [id, m] of this.allMarkets()) s[id] = m.packStock();
+    return { s, n: this.market.news.map((n) => [Math.round(n.h * 100) / 100, n.who, n.text]) };
+  }
+
+  /** кооп-гість: прийняти знімок запасів; повертає нові новини (щоб показати) */
+  applyMarketSnapshot(d: unknown): Array<{ who: string; text: string }> {
+    const fresh: Array<{ who: string; text: string }> = [];
+    if (!d || typeof d !== 'object') return fresh;
+    const o = d as { s?: Record<string, unknown>; n?: unknown };
+    if (o.s && typeof o.s === 'object') for (const [id, a] of Object.entries(o.s)) if (id === 'home' || PORT_SITE_BY_ID[id]) this.marketOf(id).unpackStock(a);
+    if (Array.isArray(o.n)) {
+      const seen = new Set(this.market.news.map((n) => `${n.h}|${n.who}`));
+      for (const r of o.n) {
+        if (!Array.isArray(r) || typeof r[0] !== 'number' || typeof r[1] !== 'string' || typeof r[2] !== 'string') continue;
+        const key = `${r[0]}|${r[1]}`;
+        if (seen.has(key)) continue;
+        this.market.pushNews({ h: r[0], who: r[1], text: r[2] });
+        fresh.push({ who: r[1], text: r[2] });
+      }
+    }
+    return fresh;
+  }
+
+  /** кооп-гість: запаси від капітана (без свого підвозу/споживання) */
+  setMarketRemote(on: boolean) {
+    for (const [, m] of this.allMarkets()) m.remote = on;
   }
 
   /** свіжий радіо-звіт дня: 2–3 види в зонах */
@@ -433,7 +504,7 @@ export class GameState {
       priceMult: this.priceMult,
       market: this.market.serialize(),
       trade: this.trade.serialize(),
-      portGlut: this.portGlut,
+      portMarkets: Object.fromEntries(Object.entries(this.portMarkets).map(([id, m]) => [id, { stock: m.serialize().stock, hist: m.hist }])),
       port: this.portId,
       stats: this.stats,
       boatX: 0,
@@ -509,13 +580,20 @@ export class GameState {
     if (data.priceMult) this.priceMult = data.priceMult;
     // біржа: старі сейви — повний попит, без подій; історія стартує з поточної ціни
     this.market.load(data.market);
+    const remote = this.market.remote;
     this.portMarkets = {};
-    this.portGlut = {};
-    if (data.portGlut && typeof data.portGlut === 'object') {
-      for (const [id, g] of Object.entries(data.portGlut)) {
-        if (!PORT_SITE_BY_ID[id] || !g || typeof g !== 'object') continue;
-        this.portGlut[id] = Object.fromEntries(Object.entries(g).filter(([, v]) => Number.isFinite(v)));
+    // біржі інших портів: нові сейви — запаси й історія; старі — «надлишок» (portGlut) → норма + надлишок
+    const pm = (data.portMarkets && typeof data.portMarkets === 'object' ? data.portMarkets : {}) as Record<string, Partial<MarketSave>>;
+    const pg = (data.portGlut && typeof data.portGlut === 'object' ? data.portGlut : {}) as Record<string, Record<string, number>>;
+    for (const site of PORT_SITES) {
+      const m = this.marketOf(site.id) as PortMarket;
+      m.remote = remote;
+      const d = pm[site.id];
+      m.loadStock(d?.stock, d ? undefined : pg[site.id]);
+      if (d?.hist && typeof d.hist === 'object') {
+        for (const [k, v] of Object.entries(d.hist)) if (FISH_BY_ID[k] && Array.isArray(v)) m.hist[k] = v.filter((x) => Number.isFinite(x)).slice(-48);
       }
+      m.seedHistory();
     }
     this.portId = typeof data.port === 'string' && PORT_SITE_BY_ID[data.port] ? data.port : 'home';
     this.lastMarketEvent = null;
@@ -567,4 +645,18 @@ export class GameState {
   speciesName(id: string): string {
     return FISH_BY_ID[id]?.name ?? id;
   }
+}
+
+/** розмір ринку порту → множник норми запасу й споживання */
+const PORT_SCALE: Record<PortSite['size'], number> = { tiny: 0.45, medium: 0.8, large: 1.1, outpost: 0.55 };
+
+/** біржа іншого порту: місцеві ціни видів, розмір, улов місцевої флотилії (риба «своєї» зони — більше) */
+function makePortMarket(home: FishMarket, site: PortSite): PortMarket {
+  const zone = zoneFromDist(Math.hypot(site.x, site.z));
+  return new PortMarket(
+    home,
+    (id) => site.econ.species[id] ?? site.econ.fish,
+    PORT_SCALE[site.size] ?? 1,
+    (id) => (FISH_BY_ID[id]?.zones.includes(zone) ? 1.15 : 0.9),
+  );
 }

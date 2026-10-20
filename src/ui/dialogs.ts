@@ -1,6 +1,5 @@
 import { formatMoney } from '../core/math';
 import { fishSellPrice, FISH, FISH_BY_ID, ZONE_NAMES } from '../game/fish';
-import { demandAt, glutUnits } from '../game/market';
 import { UPGRADES, UPGRADE_BY_ID, MAX_LEVEL, upgradeCost, upgradeLock } from '../game/upgrades';
 import { PartPreview } from './partPreview';
 import { PLANS, boatValue, dailyPremium, type SinkReport } from '../game/insurance';

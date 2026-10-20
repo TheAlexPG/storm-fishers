@@ -47,6 +47,7 @@ import { FoamTrail } from './world/foamTrail';
 import { FishJump } from './world/fishJump';
 import { DeckFish } from './world/deckFish';
 import { RadioSet, type RadioCtl, type RadioData } from './world/radioSet';
+import type { MarketCtx } from './game/market';
 import { forecast3 } from './game/forecast';
 import { CabinDecor } from './world/cabinDecor';
 import { CabinDoor } from './world/cabinDoor';
@@ -329,6 +330,12 @@ class Game {
     this.nets = new Nets(this.scene);
     this.bots = new Bots(this.scene, this.port.platforms, this.port.rocks);
     this.bots.onChatter = (name, text) => this.hud.toast(`📻 «${name}»: ${text}`, 'warn', 4200);
+    // жива біржа: бот пришвартувався — здає улов (чим довше ловив, тим більшу частку «пулу» зони)
+    this.bots.onUnload = (name, zr, sec) => {
+      const zones = [...new Set([zoneFromDist(zr[0]), zoneFromDist(zr[1])])];
+      const text = this.game.botUnload(name, zones, Math.min(0.85, 0.3 + sec / 500));
+      if (text) this.marketNewsToast(name, text);
+    };
     this.bots.onHorn = (v) => this.audio.horn(v);
     this.nets.onEvent = (msg, kind) => this.hud.toast(msg, kind, 4000);
     this.nets.onSound = (k, p) => (k === 'splash' ? this.audio.splash(p) : k === 'winch' ? this.audio.click() : this.audio.thump(p));
@@ -374,6 +381,12 @@ class Game {
     });
     this.coop.botState = () => this.bots.netState();
     this.coop.onBots = (a) => this.bots.applyNet(a);
+    // жива біржа: запаси симулює капітан кімнати, гості отримують знімок і шлють йому свої продажі
+    this.coop.marketState = () => this.game.marketSnapshot();
+    this.coop.onMarket = (d) => {
+      for (const n of this.game.applyMarketSnapshot(d)) this.marketNewsToast(n.who, n.text);
+    };
+    this.coop.onMarketSale = (portId, sp, u) => this.game.marketOf(portId).addStock(sp, u);
 
     this.hud = new Hud();
     this.minimap = new Minimap();
@@ -1009,6 +1022,21 @@ class Game {
     this.saveGame();
   }
 
+  /** стан світу для кроку живої біржі: година, день (вихідні), погода (хто в морі) */
+  private marketCtx(hour = this.time.hours): MarketCtx {
+    return { hour: ((hour % 24) + 24) % 24, day: this.time.dayCount, weather: this.weather.base };
+  }
+
+  /** новина біржі (бот здав улов): у порту — коротке повідомлення, не частіше ніж раз на 45 с */
+  private marketNewsT = -1e9;
+  private marketNewsToast(who: string, text: string) {
+    const now = performance.now() / 1000;
+    if (now - this.marketNewsT < 45 || this.phase !== 'play') return;
+    if (Math.hypot(this.boat.pos.x, this.boat.pos.z) > 200 && this.player.mode === 'boat') return;
+    this.marketNewsT = now;
+    this.hud.toast(`🚢 «${who}» ${text}`, 'warn', 4200);
+  }
+
   /** дані для екрана радіо: прогноз, біржа, звіти, трюм */
   private radioData(): RadioData {
     const g = this.game, w = this.weather;
@@ -1019,14 +1047,16 @@ class Game {
       clock: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')} · день ${this.time.dayCount}`,
       now: { bf: bf.b, name: bf.name, ms: w.windMs, wave: Math.round((0.2 + w.intensity * w.intensity * 4.2) * 10) / 10, dir: w.windDir },
       forecast: forecast3(w.base, snap.forecast, w.windDir, this.time.dayCount),
+      // ціни — та сама функція, що й біржа та продаж (біржа порту, де ти зараз; свіжа риба)
       market: FISH.map((sp) => ({
         name: sp.name,
-        price: g.market.perKg(sp.id, g.priceMult),
-        hist: g.market.hist[sp.id] ?? [],
-        demand: g.market.demand(sp.id),
-        event: g.market.eventFor(sp.id)?.text,
+        price: g.quotePerKg(sp.id),
+        hist: g.venueMarket.hist[sp.id] ?? [],
+        demand: g.venueMarket.demand(sp.id),
+        event: g.venueMarket.eventFor(sp.id)?.text,
       })),
-      events: [...g.market.events.map((e) => `${e.mult > 1 ? '▲' : '▼'} ${e.text}`), ...g.trade.tickerTexts(g.clockH)],
+      events: [...g.market.events.map((e) => `${e.mult > 1 ? '▲' : '▼'} ${e.text}`), ...g.market.news.slice(-2).map((n) => `🚢 «${n.who}» ${n.text}`), ...g.trade.tickerTexts(g.clockH)],
+      news: g.market.news.map((n) => ({ who: `«${n.who}»`, text: n.text, h: n.h })),
       reports: g.reports.map((r) => ({ zone: ZONE_NAMES[r.zone], name: g.speciesName(r.speciesId), boost: r.boost })),
       hold: { count: g.hold.length, cap: g.holdCap, value: g.hold.reduce((a, f) => a + g.sellPrice(f), 0) },
       stormSoon: w.stormEta != null || snap.forecast > 0.74 || w.base > 0.74,
@@ -1463,6 +1493,9 @@ class Game {
     this.coop.updateFleet(dt, t, this.ocean, this.weather, g, this.particles, this.time.daylight);
     // боти: симулює соло-гравець або капітан кімнати; гості доганяють пози
     this.bots.remote = this.coop.isClient;
+    // жива біржа: гість не симулює запаси (вони від капітана), а свої продажі шле йому
+    if (this.game.market.remote !== this.coop.isClient) this.game.setMarketRemote(this.coop.isClient);
+    this.game.saleHook = this.coop.isClient ? (p, sp, u) => this.coop.sendMarketSale(p, sp, u) : null;
     this.bots.update(dt, t, this.ocean, this.weather, this.time.daylight, [this.boat.pos, ...this.coop.fleetObstacles()], this.boat.pos);
     this.coop.myHat = this.game.hat;
     this.coop.tick(dt, this.boat, this.player, this.stations.active?.id === 'pump', this.fishing, this.ocean, t);
@@ -1561,7 +1594,7 @@ class Game {
 
     // свіжість
     g.decayFreshness(this.time.gameHourDelta(dt));
-    g.tickMarket(this.time.gameHourDelta(dt));
+    g.tickMarket(this.time.gameHourDelta(dt), this.marketCtx());
     this.tickTrade(this.time.gameHourDelta(dt));
     this.stalls.update(dt, g.trade, g.clockH, 1 - this.time.daylight, this.player.mode === 'boat' ? undefined : this.player.head);
     this.ordersT -= dt;
@@ -1969,7 +2002,7 @@ class Game {
       this.lastHours = this.time.hours;
       this.game.addEnergy(100);
       this.game.decayFreshness(delta);
-      this.game.tickMarket(delta);
+      this.game.tickMarket(delta, this.marketCtx(this.time.hours - delta));
       this.tickTrade(delta);
       this.fade.classList.remove('on');
       this.dawnCard();
