@@ -1189,9 +1189,18 @@ export class YachtBuilder {
     // кормовий прапор на флагштоку: вертикальне древко з наконечником, полотнище —
     // сітка з кольорами вершин (синій верх, жовтий низ); форму щокадру задає
     // Boat.updateFlag за вимпельним вітром
-    const fx = 0.95, fz = -4.62, fy0 = sheerY(-4.5);
+    // стоїть на палубі в кормовому куті, одразу за кормовим пульпітом (раніше — за транцем, у повітрі)
+    const fx = 0.95, fz = -4.47, fy0 = sheerY(fz);
     const staff = this.rod(g, new THREE.Vector3(fx, fy0 - 0.05, fz), new THREE.Vector3(fx, fy0 + 1.45, fz), 0.022, this.mat(TEAK, 0.6));
     staff.castShadow = true;
+    // хомути до верхнього й нижнього леєрів пульпіта
+    {
+      const pz = -HALF_LEN + 0.12;
+      for (const dy of [0.62, 0.32]) {
+        this.rod(g, new THREE.Vector3(fx, fy0 + dy, fz), new THREE.Vector3(fx, fy0 + dy, pz), 0.012, this.mat(STEEL, 0.25, 0.9), 6);
+        this.cyl(g, 0.03, 0.03, 0.035, fx, fy0 + dy, fz, this.mat(STEEL, 0.25, 0.9), 8);
+      }
+    }
     this.cyl(g, 0.035, 0.035, 0.05, fx, fy0 + 1.47, fz, this.mat(0xc9a227, 0.35, 0.8), 10);
     this.cyl(g, 0.028, 0.032, 0.08, fx, fy0 + 0.02, fz, this.mat(STEEL, 0.25, 0.9), 10);
     const geo = new THREE.PlaneGeometry(1, 1, FLAG_NU, FLAG_NV);

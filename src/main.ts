@@ -187,6 +187,8 @@ class Game {
   private netsSyncMode = 'idle';
   /** гравець схилився над штурманським столом */
   private chartMode = false;
+  /** ПКМ над картою: скільки протягнуто (−1 — не затиснута) */
+  private chartDrag = -1;
   private chartK = 0;
   private _chEye = new THREE.Vector3();
   private _chAt = new THREE.Vector3();
@@ -1417,18 +1419,38 @@ class Game {
     if (locked && this.phase === 'play' && !this.photo && this.chartMode) {
       // над картою: миша водить олівцем (біля краю карта їде), коліщатко — зум,
       // ЛКМ — точка маршруту, ПКМ — прибрати точку під олівцем (або останню)
+      // ПКМ затиснута й тягнеш — карта їде за мишею (олівець на місці); короткий клік ПКМ — прибрати точку
       const [mdx, mdy] = input.consumeMouse();
-      this.chart.moveCursor(mdx, mdy);
-      this.chartEdgePan(dt);
-      if (input.pressed('Mouse0')) this.chartClick();
-      if (input.pressed('Mouse2') && this.game.route.length) {
-        const [cw, ch] = this.chart.size;
-        const i = this.mapView.chartHit(this.chart.u, this.chart.v, cw, ch, this.game.route);
-        this.game.removeRoutePoint(i >= 0 ? i : this.game.route.length - 1);
-        this.audio.click();
-        this.chart.markDirty();
-        this.saveGame();
+      const [cw, ch] = this.chart.size;
+      if (input.pressed('Mouse2')) this.chartDrag = 0;
+      if (this.chartDrag >= 0 && input.down('Mouse2')) {
+        this.chartDrag += Math.abs(mdx) + Math.abs(mdy);
+        if (this.chartDrag > 8) {
+          this.mapView.chartPan(mdx * 0.71, mdy * 0.71, cw, ch);
+          this.chart.markDirty();
+        }
+      } else {
+        this.chart.moveCursor(mdx, mdy);
+        this.chartEdgePan(dt);
       }
+      if (this.chartDrag >= 0 && !input.down('Mouse2')) {
+        if (this.chartDrag <= 8 && this.game.route.length) {
+          const i = this.mapView.chartHit(this.chart.u, this.chart.v, cw, ch, this.game.route);
+          this.game.removeRoutePoint(i >= 0 ? i : this.game.route.length - 1);
+          this.audio.click();
+          this.saveGame();
+        }
+        this.chart.markDirty();
+        this.chartDrag = -1;
+      }
+      // WASD / стрілки — рухати карту
+      const kx = (input.down('KeyA') || input.down('ArrowLeft') ? 1 : 0) - (input.down('KeyD') || input.down('ArrowRight') ? 1 : 0);
+      const kz = (input.down('KeyW') || input.down('ArrowUp') ? 1 : 0) - (input.down('KeyS') || input.down('ArrowDown') ? 1 : 0);
+      if (kx || kz) {
+        this.mapView.chartPan(kx * 320 * dt, kz * 320 * dt, cw, ch);
+        this.chart.markDirty();
+      }
+      if (input.pressed('Mouse0')) this.chartClick();
       this.boat.localToWorld(this.player.localX, this.player.floorY + 1.62, this.player.localZ, this.player.head);
     } else if (locked && this.phase === 'play' && !this.photo) {
       const crewHelm = this.coop.crewing && this.player.wheeling;
@@ -2780,7 +2802,7 @@ class Game {
       const [cw, ch] = this.chart.size;
       const w = this.mapView.uvToWorld(this.chart.u, this.chart.v, cw, ch);
       const d = w ? ` (${this.mapView.fmtDist(Math.hypot(w[0] - this.boat.pos.x, w[1] - this.boat.pos.z))})` : '';
-      return { text: `Точка маршруту${d} · ПКМ — прибрати · коліщатко — зум · E — встати`, bite: false, key: 'ЛКМ' };
+      return { text: `Точка маршруту${d} · ПКМ — прибрати, затиснути й тягти — рухати карту (або WASD) · коліщатко — зум · E — встати`, bite: false, key: 'ЛКМ' };
     }
     const np = this.player.mode === 'boat' ? this.nets.prompt(this.boat) : null;
     if (np && this.fishing.state !== 'fight' && this.fishing.state !== 'bite') return { text: np, bite: false };
