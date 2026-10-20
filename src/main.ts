@@ -74,7 +74,7 @@ import { OrdersChip } from './ui/buyers';
 import { BUYER_BY_ID, contractTitle, shortName, type BuyerId } from './game/buyers';
 import { describeSave } from './game/saveTransfer';
 import { Highlighter } from './world/highlight';
-import { HOLDER_MOUNTS } from './world/upgradeParts';
+import { HOLDER_MOUNTS, RACK_SLOTS } from './world/upgradeParts';
 import { DECK_Y as Y_DECK, HOUSE as L_HOUSE, RIG as L_RIG, SOLE_Y as Y_SOLE } from './world/yachtLayout';
 import { HELM_DZ } from './world/yachtModel';
 import { PLANS, applySinkToUpgrades, dailyPremium, type SinkReport } from './game/insurance';
@@ -1113,6 +1113,18 @@ class Game {
         : s.id === 'st:sails' ? [...(this.stationObjects(s.id)[1] ?? []), ...this.boat.sails.pickables(), ...this.mastMesh()]
         : this.stationObjects(s.id)[1];
       if (!objs) continue;
+      // носова стійка — це самі вудки в ній; коли остання в руках, цілимось у порожні гнізда для вудок
+      if (s.id === 'st:rod') {
+        for (const sl of RACK_SLOTS) {
+          const pt = this.boat.localToWorld(sl.p[0], sl.p[1], sl.p[2], this._pickV);
+          if (this._ray.ray.distanceToPoint(pt) > 0.2) continue;
+          const dp = pt.distanceTo(this._ray.ray.origin);
+          if (dp <= this._ray.far && dp < bestD) {
+            bestD = dp;
+            best = s;
+          }
+        }
+      }
       const hit = this._ray.intersectObjects(objs, true).find((h) => shown(h.object));
       if (hit) {
         if (hit.distance < bestD) {
