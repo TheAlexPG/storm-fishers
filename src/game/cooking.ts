@@ -36,13 +36,17 @@ export const STEP_INFO: Record<CookStep, { name: Txt; hint: Txt }> = {
   simmer: { name: ['Томити', 'Simmer'], hint: ['E — зняти з вогню, коли смужка в зеленому', 'E to take it off the heat in the green'] },
 };
 
-export type BuffId = 'warm' | 'hearty' | 'luck' | 'strength';
+export type BuffId = 'warm' | 'hearty' | 'luck' | 'strength' | 'fortune';
+
+/** «Капітанський фарт» (лише за ідеальний чай): додається до «трофейності» вудки — як ще одна троллінгова */
+export const FORTUNE_TROPHY = 0.6;
 
 export const BUFF_INFO: Record<BuffId, { icon: string; name: Txt; desc: Txt }> = {
   warm: { icon: '☕', name: ['Зігрівся', 'Warmed up'], desc: ['праця втомлює на 35% менше', 'work tires you 35% less'] },
   hearty: { icon: '🍲', name: ['Ситий', 'Well fed'], desc: ['енергія повільно відновлюється', 'energy slowly regenerates'] },
   luck: { icon: '🍀', name: ['Рибальське щастя', 'Angler\'s luck'], desc: ['клює на 20% швидше', 'bites 20% sooner'] },
   strength: { icon: '💪', name: ['Сила', 'Strength'], desc: ['рибу підтягуєш на 25% швидше', 'reel fish 25% faster'] },
+  fortune: { icon: '✨', name: ['Капітанський фарт', 'Skipper\'s fortune'], desc: ['клює рідкісніша й більша риба, частіше трофеї', 'rarer and bigger fish bite, more trophies'] },
 };
 
 export interface Recipe {
