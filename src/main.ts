@@ -2301,6 +2301,8 @@ class Game {
     this.port.update(simDt, t);
     this.ports.setNight(1 - time.daylight);
     this.ports.update(t, this.camera.position);
+    // бризки, сплески, дим: рух і згасання (без цього частинки ніколи не малювались і забивали пул)
+    this.particles.update(simDt);
 
     // каюта: тепле світло вночі та у шторм
     this.boat.setInteriorLight(time.daylight, this.weather.intensity);
