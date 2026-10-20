@@ -734,7 +734,7 @@ export class Player {
       return null;
     }
     if (n.id === 'climb-dock') {
-      const dock = this.dockNear(port) ?? port.platforms[0];
+      const dock = this.dockNear(port) ?? port.quay;
       this.wx = clamp(this.wx, dock.x0 + 0.5, dock.x1 - 0.5);
       this.wz = clamp(this.wz, dock.z0 + 0.5, dock.z1 - 0.5);
       this.wy = dock.y;
