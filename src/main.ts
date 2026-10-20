@@ -486,6 +486,7 @@ class Game {
       this.coop.sendEvent('stall');
     };
     this.boat.onSunk = () => this.handleSunk();
+    this.boat.onDockPump = () => this.hud.toast('⚓ У порту воду з трюму відкачують з причалу — пришвартована яхта не потоне (на якорі — може!)', 'good', 3500);
     this.player.onStep = (surf, run) => this.audio.step(surf, run);
 
     // звук стартує з першого жесту (політика автоплею) — музика грає вже в заставці

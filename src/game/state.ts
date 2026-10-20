@@ -165,8 +165,12 @@ export class GameState {
     return true;
   }
 
+  /** нижня межа корпусу: біля причалу (пришвартовано) яхта не тоне — див. Boat.update */
+  hullFloor = 0;
+
   damage(amount: number) {
-    this.hull = clamp(this.hull - amount, 0, this.maxHull);
+    if (this.hull <= this.hullFloor) return;
+    this.hull = clamp(this.hull - amount, this.hullFloor, this.maxHull);
   }
   repair(amount: number) {
     this.hull = clamp(this.hull + amount, 0, this.maxHull);
