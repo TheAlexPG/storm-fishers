@@ -28,6 +28,8 @@ export interface FishItem {
   cooked: boolean;
   /** піймана під час шторму/сильного вітру → +25 % ціни */
   storm: boolean;
+  /** множник ціни темпу гри на момент улову (game/pace.ts); старі сейви — без нього */
+  pm?: number;
 }
 
 export type UpgradeId =

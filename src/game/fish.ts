@@ -160,6 +160,8 @@ export function makeFish(speciesId: string, kg: number, storm: boolean): FishIte
     freshness: 100,
     cooked: false,
     storm,
+    // темп фіксується на улові: не можна ловити на «динамічному», а продати за ціною «спокійного»
+    pm: Math.round(paceMul() * 1000) / 1000,
   };
 }
 
@@ -172,8 +174,8 @@ export function fishPrice(item: FishItem, priceMult: Record<string, number>): nu
   let v = item.kg * perKg * mult;
   v *= item.cooked ? 1.5 : 1.0;
   if (item.storm) v *= 1.25;
-  // темп гри: динамічний — риба дешевша, спокійний — дорожча
-  v *= paceMul();
+  // темп гри: динамічний — риба дешевша, спокійний — дорожча (той, що був на улові)
+  v *= item.pm ?? paceMul();
   return v;
 }
 
