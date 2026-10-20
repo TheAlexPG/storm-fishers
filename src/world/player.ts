@@ -594,7 +594,11 @@ export class Player {
 
   private stationLabel(id: string, boat: Boat): string {
     switch (id) {
-      case 'wheel': return this.wheeling ? (boat.instrLevel >= 5 ? (boat.autopilot ? 'Вийти зі штурвала (автопілот кермує) · T — вимкнути автопілот' : 'Вийти зі штурвала · T — автопілот') : 'Вийти зі штурвала') : 'Стати за штурвал (газ W/S, кермо A/D)';
+      case 'wheel': {
+        if (!this.wheeling) return 'Стати за штурвал (газ W/S, кермо A/D)';
+        const ign = boat.engineOn ? ' · X — заглушити двигун' : boat.engineKilled ? ' · X — запустити двигун' : '';
+        return (boat.instrLevel >= 5 ? (boat.autopilot ? 'Вийти зі штурвала (автопілот кермує) · T — вимкнути автопілот' : 'Вийти зі штурвала · T — автопілот') : 'Вийти зі штурвала') + ign;
+      }
       case 'sails': return boat.sails.mode === 0 ? 'Фал на щоглі — підняти паруси' : boat.sails.mode === 2 ? 'Риф-шкентель — взяти риф' : 'Фал — спустити паруси';
       case 'rod': return this.stationText?.('rod') ?? 'Стійка з вудками';
       case 'fishbox': return this.stationText?.('fishbox') ?? 'Рибний ящик';

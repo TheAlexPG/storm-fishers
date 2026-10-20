@@ -6,6 +6,7 @@ import { makeGullTexture } from './sky';
 import { mulberry32 } from '../core/math';
 import { buildHatModel } from './character';
 import { HAT_BY_ID } from '../game/hats';
+import { terrainHeight } from './portTerrain';
 import { ISLANDS, ISLAND_SOLIDS, islandHeight, islandHeightOf, type IslandDef } from './islandShape';
 import type { Boat } from './boat';
 import type { GameState } from '../game/state';
@@ -493,12 +494,13 @@ export class Islands {
       for (const [lx, lz] of pts) {
         const px = boat.pos.x + lx * ch + lz * sh;
         const pz = boat.pos.z - lx * sh + lz * ch;
-        const h = islandHeight(px, pz);
+        // увесь рельєф: острови, суходоли портів і берег домашньої бухти
+        const h = terrainHeight(px, pz);
         if (h <= KEEL) continue;
         // нормаль — униз схилом
         const e = 1;
-        let nx = islandHeight(px - e, pz) - islandHeight(px + e, pz);
-        let nz = islandHeight(px, pz - e) - islandHeight(px, pz + e);
+        let nx = terrainHeight(px - e, pz) - terrainHeight(px + e, pz);
+        let nz = terrainHeight(px, pz - e) - terrainHeight(px, pz + e);
         const l = Math.hypot(nx, nz) || 1;
         nx /= l;
         nz /= l;

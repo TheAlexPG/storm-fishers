@@ -177,7 +177,7 @@ export class Hud {
       <div class="controls-hint">
         <kbd>WASD</kbd> рух · <kbd>Миша</kbd> погляд · <kbd>Shift</kbd> біг · <kbd>Space</kbd> стрибок · <kbd>E</kbd> дія з тим, що світиться<br>
         вудка в руках: <kbd>ЛКМ</kbd> закид/підсічка · <kbd>R</kbd> змотати · боротьба: <kbd>Space</kbd> тягти, <kbd>A/D</kbd> нахил<br>
-        <kbd>M</kbd> карта · <kbd>Esc</kbd> меню · штурвал: <kbd>W/S</kbd> газ, <kbd>A/D</kbd> кермо, <kbd>V</kbd> вигляд · <kbd>H</kbd> сховати інтерфейс · <kbd>F1</kbd> підказки
+        <kbd>M</kbd> карта · <kbd>Esc</kbd> меню · штурвал: <kbd>W/S</kbd> газ, <kbd>A/D</kbd> кермо, <kbd>X</kbd> двигун, <kbd>V</kbd> вигляд · <kbd>H</kbd> сховати інтерфейс · <kbd>F1</kbd> підказки
       </div>
       <div class="lock-hint">🖱️ Клікни по екрану, щоб захопити мишу</div>
     `;

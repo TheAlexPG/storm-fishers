@@ -900,7 +900,7 @@ export class Boat {
     return [
       r(this.pos.x), r(this.pos.y), r(this.pos.z), r(this.heading, 1e4), r(this.pitch, 1e4), r(this.roll, 1e4),
       r(this.vel.x, 100), r(this.vel.y, 100), r(this.vel.z, 100), r(this.throttle, 100), r(this.rudder, 100),
-      this.engineOn ? 1 : 0, r(this.deckWater, 10), this.sails.mode, this.sinking ? 1 : 0,
+      this.engineOn ? 1 : this.engineKilled ? 2 : 0, r(this.deckWater, 10), this.sails.mode, this.sinking ? 1 : 0,
       this.hatchOpen ? 1 : 0, r(this.bilge, 10), this.doorOpen ? 1 : 0,
       ...this.anchor.netState(),
     ];
@@ -916,6 +916,7 @@ export class Boat {
     this.throttle = b[9];
     this.rudder = b[10];
     this.engineOn = b[11] === 1;
+    this.engineKilled = b[11] === 2;
     this.deckWater = b[12];
     this.sails.mode = b[13] as 0 | 1 | 2;
     this.sinking = b[14] === 1;
@@ -1049,6 +1050,23 @@ export class Boat {
   /** перезапустити двигун */
   restartEngine() {
     this.engineOn = true;
+    this.engineKilled = false;
+  }
+
+  /** заглушено ключем (а не заглох у шторм) — запускається тим самим ключем з-за штурвала */
+  engineKilled = false;
+
+  /** ключ запалювання біля штурвала: заглушити / запустити; повертає, що сталося */
+  toggleIgnition(): 'off' | 'on' | 'stalled' {
+    if (this.engineOn) {
+      this.engineOn = false;
+      this.engineKilled = true;
+      this.throttle = 0;
+      return 'off';
+    }
+    if (!this.engineKilled) return 'stalled';
+    this.restartEngine();
+    return 'on';
   }
 
   /** повне відновлення (затоплення) */

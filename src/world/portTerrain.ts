@@ -28,8 +28,12 @@ export function terrainHeight(x: number, z: number): number {
   // заглиблення під сходи з причалу на набережну
   if (ax <= 25 && z <= PLATEAU.z1 && z >= -41.55) return 1.1;
   if (ax <= PLATEAU.x1 && z >= PLATEAU.z0 && z <= PLATEAU.z1) return GROUND_Y;
-  // дно перед набережною
-  if (ax <= PLATEAU.x1 && z > PLATEAU.z1) return -4.5;
+  // дно перед набережною (гавань); далі в морі — глибшає, і там можуть бути
+  // острови та суходоли інших портів (раніше смуга до краю мапи їх «стирала»)
+  if (ax <= PLATEAU.x1 && z > PLATEAU.z1) {
+    const h = -4.5 - 2.5 * smoothstep(PLATEAU.z1 + 120, PLATEAU.z1 + 260, z);
+    return z < PLATEAU.z1 + 120 ? h : Math.max(h, islandHeight(x, z));
+  }
   const dx = Math.max(0, ax - PLATEAU.x1);
   const dz = Math.max(0, PLATEAU.z0 - z, z - PLATEAU.z1);
   const d = Math.hypot(dx, dz);
@@ -48,7 +52,7 @@ export function terrainHeight(x: number, z: number): number {
   const e = smoothstep(EXT_X, EXT_X - 170, ax) * smoothstep(EXT_Z1, EXT_Z1 + 160, z);
   h = -7 + (h + 7) * e;
   // острови в морі (islandShape.ts)
-  return h > -6.5 ? h : Math.max(h, islandHeight(x, z));
+  return Math.max(h, islandHeight(x, z));
 }
 
 const C = (hex: number) => new THREE.Color(hex);

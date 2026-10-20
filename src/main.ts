@@ -721,6 +721,9 @@ class Game {
       case 'anchor':
         this.anchorResult(this.boat.anchor.toggle(this.boat), nick);
         break;
+      case 'ign':
+        this.ignitionResult(this.boat.toggleIgnition(), nick);
+        break;
       case 'ap':
         this.setAutopilot(act.v === 1, act.v === 1 ? '' : nick);
         break;
@@ -1232,6 +1235,8 @@ class Game {
       if (this.phase === 'map') this.closeMap();
       else if (this.phase === 'play' && !this.dialogs.isOpen) this.openMap();
     }
+    // X за штурвалом — ключ запалювання: заглушити / запустити двигун
+    if (input.pressed('KeyX') && this.phase === 'play' && !this.dialogs.isOpen && this.player.mode === 'boat' && this.player.wheeling) this.ignition();
     // V — вид з-за корми / від першої особи (за штурвалом)
     // T за штурвалом — автопілот (з «Приладами» 5)
     if (input.pressed('KeyT') && this.phase === 'play' && !this.dialogs.isOpen && this.player.mode === 'boat' && this.player.wheeling && instrHas(this.game.upgrades.instr ?? 0).radar) this.toggleAutopilot();
@@ -2566,6 +2571,26 @@ class Game {
         'warn', 4200,
       );
     }
+  }
+
+  /** ключ запалювання (X за штурвалом); екіпаж просить власника яхти */
+  private ignition() {
+    this.audio.click();
+    if (this.coop.crewing) {
+      if (!this.boat.engineOn && !this.boat.engineKilled) return this.ignitionResult('stalled');
+      this.coop.sendAction({ a: 'ign' });
+      this.ignitionResult(this.boat.engineOn ? 'off' : 'on');
+      this.coop.myHelm[0] = 0;
+      return;
+    }
+    this.ignitionResult(this.boat.toggleIgnition());
+  }
+
+  private ignitionResult(r: 'off' | 'on' | 'stalled', nick?: string) {
+    const who = nick ? `${nick}: ` : '';
+    if (r === 'off') this.hud.toast(`🔑 ${who}двигун заглушено`, 'good', 2000);
+    else if (r === 'on') this.hud.toast(`🔑 ${who}двигун запущено`, 'good', 2000);
+    else this.hud.toast('Двигун заглох — запусти його в моторному відсіку на кормі (E)', 'warn', 3000);
   }
 
   /** автопілот: увімк./вимк. (екіпаж просить власника яхти) */
