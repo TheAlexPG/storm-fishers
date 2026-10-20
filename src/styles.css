@@ -591,6 +591,7 @@ body.intro-mode #vignette { opacity: 0.6; }
   vertical-align: baseline;
 }
 .map-legend .lg-boat { background: #e2674a; border-radius: 50% 50% 2px 2px; }
+.map-legend .lg-bot { background: rgba(42,58,70,0.6); clip-path: polygon(50% 0, 100% 100%, 0 100%); border-radius: 0; }
 .map-legend .lg-rock { background: #2a3a46; border-radius: 50%; width: 7px; height: 7px; }
 .map-legend .lg-ring { border: 1.5px dashed rgba(42,58,70,0.5); border-radius: 50%; background: none; }
 .map-legend .lg-wp { background: #24878c; }

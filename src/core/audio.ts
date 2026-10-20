@@ -315,6 +315,30 @@ export class AudioEngine {
   private stepBuf: AudioBuffer | null = null;
 
   /** дзвін буя: негармонічні обертони, довге згасання */
+  /** гудок рибальського човна вдалині: два низькі тони, м'яко */
+  horn(vol: number) {
+    const ctx = this.ensure();
+    if (!ctx || !this.master || vol <= 0.01) return;
+    const t = ctx.currentTime;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 700;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.09 * vol, t + 0.12);
+    g.gain.setValueAtTime(0.09 * vol, t + 1.1);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.6);
+    lp.connect(g).connect(this.master);
+    for (const f of [116, 174]) {
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.value = f;
+      o.connect(lp);
+      o.start(t);
+      o.stop(t + 1.7);
+    }
+  }
+
   bell(vol: number) {
     const ctx = this.ensure();
     if (!ctx || !this.master || vol <= 0.01) return;

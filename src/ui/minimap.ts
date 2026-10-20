@@ -18,6 +18,8 @@ export class Minimap {
   friends: Array<{ x: number; z: number; color: string; onBoat: boolean }> = [];
   /** сітки (буї): кінці ліній */
   buoys: Array<{ x0: number; z0: number; x1: number; z1: number }> = [];
+  /** човни місцевих рибалок */
+  bots: Array<{ x: number; z: number; h: number }> = [];
   private readonly scale = 0.42; // px/м → радіус ~190 м
   private land: HTMLCanvasElement | null = null;
 
@@ -126,6 +128,23 @@ export class Minimap {
         c.fillStyle = '#e9592f';
         c.fill();
       }
+    }
+
+    // човни рибалок — сірі трикутнички (лише в межах кола)
+    c.fillStyle = 'rgba(42,58,70,0.55)';
+    for (const b of this.bots) {
+      const [px, pz] = toMap(b.x, b.z);
+      if (Math.hypot(px - cx, pz - cx) > R - 4) continue;
+      c.save();
+      c.translate(px, pz);
+      c.rotate(-b.h + Math.PI);
+      c.beginPath();
+      c.moveTo(0, -4.5);
+      c.lineTo(3, 3.5);
+      c.lineTo(-3, 3.5);
+      c.closePath();
+      c.fill();
+      c.restore();
     }
 
     // друзі поза човном (на борту вони й так у центрі)

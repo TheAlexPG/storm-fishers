@@ -153,6 +153,7 @@ export class MapView {
       </div>
       <div class="map-legend">
         <span><i class="lg lg-boat"></i>яхта</span>
+        <span><i class="lg lg-bot"></i>рибалки</span>
         <span><i class="lg lg-rock"></i>скелі</span>
         <span><i class="lg lg-ring"></i>зони: берег до 400 м, середина до 900 м</span>
         <span>🐟 стая (за радіозвітом)</span>
@@ -360,6 +361,8 @@ export class MapView {
   friends: Array<{ x: number; z: number; nick: string; color: string; onBoat: boolean; fishing: boolean }> = [];
   /** поставлені сітки: лінія між двома буями, номер і скільки стоїть */
   buoys: Array<{ x0: number; z0: number; x1: number; z1: number; id: number; h: number }> = [];
+  /** човни місцевих рибалок (сірі, з назвою при зумі) */
+  bots: Array<{ x: number; z: number; h: number; name: string }> = [];
 
   show(boatX: number, boatZ: number, heading: number, rocks: RockObstacle[], game: GameState) {
     const opening = !this.isOpen;
@@ -663,6 +666,32 @@ export class MapView {
         if (main) this.infoEl.innerHTML = `<b>Маршрут</b> · ${r.length} ${plural(r.length, 'точка', 'точки', 'точок')} · ${this.fmtDist(total)}` + (r.length > 1 ? ` · далі: ${this.fmtDist(total - Math.hypot(r[0].x - boatX, r[0].z - boatZ))} після №1` : '');
       } else if (main) this.infoEl.innerHTML = '<b>Маршрут</b> · клікни по воді — перша точка';
       if (main) this.el.querySelector('.map-route')!.classList.toggle('empty', !r.length);
+    }
+
+    // ── човни рибалок ──
+    for (const b of this.bots) {
+      const px = mx(b.x), pz = my(b.z);
+      if (px < -20 || pz < -20 || px > w + 20 || pz > h + 20) continue;
+      c.save();
+      c.translate(px, pz);
+      c.rotate(-b.h + Math.PI);
+      c.beginPath();
+      c.moveTo(0, -6.5 * zk);
+      c.lineTo(4.2 * zk, 5 * zk);
+      c.lineTo(-4.2 * zk, 5 * zk);
+      c.closePath();
+      c.fillStyle = 'rgba(42,58,70,0.6)';
+      c.fill();
+      c.strokeStyle = 'rgba(255,250,240,0.8)';
+      c.lineWidth = 1;
+      c.stroke();
+      c.restore();
+      if (view.zoom > 2.2) {
+        c.font = `700 ${Math.round(10.5 * zk)}px ${FONT}`;
+        c.textAlign = 'center';
+        c.fillStyle = INK_SOFT;
+        c.fillText(b.name, px, pz - 10 * zk);
+      }
     }
 
     // ── човен (трикутник за курсом) ──
