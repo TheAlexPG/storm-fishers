@@ -97,6 +97,7 @@ import type { Platform } from './world/port';
 import { Avatar } from './world/avatar';
 import './styles.css';
 import { L } from './core/i18n';
+import { BUILD, watchForUpdates } from './core/build';
 import { Clouds } from './world/clouds';
 
 // ─────────────────────────────────────────────────────────────
@@ -483,7 +484,10 @@ class Game {
         this.audio.click();
       },
       onClosed: (reason) => this.onCoopClosed(reason),
+      onBuild: (nick, hash) =>
+        this.hud.toast(L(`⚠ ${nick} грає на іншій збірці гри (${hash}, у тебе ${BUILD.hash}) — оновіть сторінку (Ctrl+F5), інакше кооп може розходитися`, `⚠ ${nick} is on a different game build (${hash}, yours is ${BUILD.hash}) — reload the page (Ctrl+F5), or co-op may drift apart`), 'warn', 9000),
     });
+    watchForUpdates((hash) => this.hud.toast(L(`🆕 Вийшла нова версія гри (${hash}) — онови сторінку (F5), коли буде зручно`, `🆕 A new version of the game is out (${hash}) — reload the page (F5) when convenient`), 'warn', 12000));
     this.coop.botState = () => this.bots.netState();
     this.coop.onBots = (a) => this.bots.applyNet(a);
     // жива біржа: запаси симулює капітан кімнати, гості отримують знімок і шлють йому свої продажі

@@ -10,6 +10,7 @@ import type { TimeCycle } from '../core/time';
 import type { AudioEngine } from '../core/audio';
 import type { Settings } from '../game/settings';
 import { exportSave, parseSaveFile, applyImport, hasAnySave } from '../game/saveTransfer';
+import { buildTagHtml } from '../core/build';
 import { exchangeHtml, drawExchange } from './exchange';
 import { buyerHtml, ordersHtml } from './buyers';
 import { BUYER_BY_ID, contractTitle, type BuyerId } from '../game/buyers';
@@ -245,6 +246,7 @@ export class Dialogs {
         <div class="coop-msg" id="coop-msg">Whoever creates the room is the captain: the world, weather and time are theirs. Friends enter the code and come on their own yachts (with their own progress) or as crew. You can switch boats at any time in the menu (Esc).</div>
       </div>`) : ''}
     `), false, 'intro');
+    this.panel.insertAdjacentHTML('beforeend', buildTagHtml());
     document.body.classList.add('intro-mode');
     if (coop) {
       const nickEl = this.panel.querySelector('#coop-nick') as HTMLInputElement;
@@ -582,6 +584,7 @@ export class Dialogs {
         ${opts.coop ? L('<kbd>Enter</kbd><span>чат з екіпажем</span>', `<kbd>Enter</kbd><span>chat with the crew</span>`) : ''}
       </div>
     `), false);
+    this.panel.insertAdjacentHTML('beforeend', buildTagHtml());
     if (opts.coop) {
       const c = opts.coop;
       this.panel.querySelector('[data-act="copy"]')!.addEventListener('click', (e) => {

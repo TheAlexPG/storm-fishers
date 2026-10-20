@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { NetSession, type GameMsg, type PeerInfo } from './session';
+import { BUILD } from '../core/build';
 import { P2PSession } from './p2p';
 import { getPace, setPace } from '../game/pace';
 
@@ -124,6 +125,8 @@ export interface CoopHandlers {
   onChat(nick: string, text: string, color: string): void;
   onPeer(nick: string, joined: boolean): void;
   onClosed(reason: string): void;
+  /** у гравця інша збірка гри */
+  onBuild(nick: string, hash: string): void;
 }
 
 /** місце швартування для яхти власника */
@@ -238,6 +241,8 @@ export class Coop {
     s.onJoin = (p) => {
       this.ensurePeer(p);
       this.h.onPeer(p.nick, true);
+      // своя збірка — новенькому: різні збірки в одній кімнаті розходяться
+      s.send({ k: 'v', h: BUILD.hash }, p.id);
     };
     s.onLeave = (p) => {
       this.dropPeer(p.id);
@@ -253,6 +258,7 @@ export class Coop {
     this.myBoat = s.isHost || ownBoat ? s.id : s.hostId;
     if (s.isHost) void this.fetchLan();
     for (const p of s.peers.values()) this.ensurePeer(p);
+    s.send({ k: 'v', h: BUILD.hash });
   }
 
   /** перейти на іншу яхту (owner = myId — своя) */
@@ -436,6 +442,10 @@ export class Coop {
           if (Number.isFinite(x) && Number.isFinite(z)) pts.push({ x, z });
         }
         this.peerRoutes.set(from, { bo: Number(d.bo), pts });
+        break;
+      }
+      case 'v': {
+        if (typeof d.h === 'string' && d.h !== BUILD.hash) this.h.onBuild(s.nickOf(from), d.h.slice(0, 16));
         break;
       }
       case 'c': {

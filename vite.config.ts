@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 import { defineConfig, type Plugin } from 'vite';
 import { attachRelay, netInfoMiddleware } from './server/relay.mjs';
 
@@ -16,9 +17,32 @@ function coopRelay(): Plugin {
   };
 }
 
+/** збірка: короткий хеш коміту (* — є незакомічені зміни) і дата коміту */
+function gitBuild(): { hash: string; date: string } {
+  try {
+    const git = (c: string) => execSync(`git ${c}`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    return { hash: git('rev-parse --short HEAD') + (git('status --porcelain --untracked-files=no') ? '*' : ''), date: git('log -1 --format=%cs') };
+  } catch {
+    return { hash: 'dev', date: '' };
+  }
+}
+const BUILD = gitBuild();
+
+/** version.json поруч із грою — за ним відкрита вкладка помічає новішу збірку */
+function buildInfo(): Plugin {
+  return {
+    name: 'storm-build-info',
+    apply: 'build',
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify(BUILD) });
+    },
+  };
+}
+
 export default defineConfig({
   base: './',
-  plugins: [coopRelay()],
+  plugins: [coopRelay(), buildInfo()],
+  define: { __BUILD__: JSON.stringify(BUILD) },
   server: {
     port: 5173,
     host: true,
