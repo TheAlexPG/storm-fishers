@@ -1073,7 +1073,8 @@ class Game {
       const key = id + (this.game.upgrades.nets ?? 0);
       return [key, near(key, 0.6, 0.95, -4.95, 0.8, 1.4)];
     }
-    if (id === 'st:anchor') return [id, near(id, 0, Y_DECK + 0.12, 4.1, 0.35, 0.5)];
+    // брашпиль: окремі меші (раніше зливався зі статикою, і «якорем» був лише прихований ящик поруч)
+    if (id === 'st:anchor') return [id, (this._windlass ??= this.boat.group.getObjectsByProperty('name', 'windlass'))];
     if (id === 'st:tent' || id === 'st:curtain') return [id + this.boat.tentLevel, id === 'st:tent' ? this.boat.canvas.foldObjects : this.boat.canvas.curtainObjects];
     if (id === 'st:door') return [id, [this.cabinDoor.group]];
     if (id === 'st:rod') return [id + this.fishing.rackObjects().length, [...this.fishing.rackObjects(), ...near('rack', 0.42, Y_DECK + 0.2, 3.76, 0.2, 0.6)]];
@@ -1102,6 +1103,7 @@ class Game {
   private _pickV = new THREE.Vector3();
   private _mast: THREE.Object3D[] | null = null;
   private _pumpMeshes: THREE.Object3D[] | null = null;
+  private _windlass: THREE.Object3D[] | null = null;
   private mastMesh(): THREE.Object3D[] {
     if (!this._mast) {
       const m = this.boat.group.getObjectByName('mast');
@@ -1136,8 +1138,9 @@ class Game {
         : s.id === 'st:sails' ? [...(this.stationObjects(s.id)[1] ?? []), ...this.boat.sails.pickables(), ...this.mastMesh()]
         : this.stationObjects(s.id)[1];
       if (!objs) continue;
-      // носова стійка — це самі вудки в ній; коли остання в руках, цілимось у порожні гнізда для вудок
-      if (s.id === 'st:rod') {
+      // носова стійка — це самі вудки в ній; з вудкою в руках цілимось і в гнізда (повернути її),
+      // без вудки — ні: гнізда стоять перед брашпилем і перехоплювали погляд на якір
+      if (s.id === 'st:rod' && this.fishing.holding) {
         for (const sl of RACK_SLOTS) {
           const pt = this.boat.localToWorld(sl.p[0], sl.p[1], sl.p[2], this._pickV);
           if (this._ray.ray.distanceToPoint(pt) > 0.2) continue;
