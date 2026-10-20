@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { clamp, damp } from '../core/math';
-import { RIG, DECK_Y, sheerY } from './yachtLayout';
+import { RIG, DECK_Y, HOUSE, sheerY } from './yachtLayout';
+
+/** погон гіка-шкота на даху рубки (yachtModel.buildCockpit) */
+const SHEET_Z = 0.6;
 import { sailPerf, type SailPerf } from '../game/upgrades';
 import { SPRIT } from './upgradeParts';
 import { L } from '../core/i18n';
@@ -215,10 +218,17 @@ export class SailRig {
     this.bag.position.set(0, 0.2, -boomLen / 2 - 0.1);
     this.bag.castShadow = true;
     this.boomPivot.add(this.bag);
-    // гроташкот: блок на кінці гіка
-    const sheet = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, RIG.boomY - (DECK_Y + 2.12) - 0.05, 4), navy);
-    sheet.position.set(0, -(RIG.boomY - (DECK_Y + 2.12)) / 2, -boomLen + 0.5);
-    this.boomPivot.add(sheet);
+    // гроташкот: із середини гіка на погон на даху рубки (перед козирком; кокпіт вільний)
+    const sheetLen = RIG.boomY - (HOUSE.top + 0.1);
+    for (const dx of [-0.025, 0.025]) {
+      const sheet = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, sheetLen, 4), navy);
+      sheet.position.set(dx, -sheetLen / 2, SHEET_Z - (RIG.mastZ - 0.08));
+      this.boomPivot.add(sheet);
+    }
+    const blk = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), navy);
+    blk.scale.set(0.8, 1.2, 0.8);
+    blk.position.set(0, -0.08, SHEET_Z - (RIG.mastZ - 0.08));
+    this.boomPivot.add(blk);
 
     this.main = new THREE.Mesh(sailGrid(this.NU, this.NV), cloth);
     this.main.castShadow = true;

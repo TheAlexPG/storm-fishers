@@ -35,6 +35,16 @@ export class GameState {
   finds: string[] = [];
   /** вибраний капелюх (game/hats.ts) */
   hat = 'captain';
+  /** тент: скільки рівнів встановлено (null — усе куплене; 0 — знято зовсім) */
+  tentFit: number | null = null;
+  tentFolded = false;
+  tentClosed = false;
+
+  /** рівні апгрейдів, як вони стоять на яхті (тент можна зняти частково чи повністю) */
+  fittedUpgrades(): Record<string, number> {
+    const t = this.upgrades.tent ?? 0;
+    return { ...this.upgrades, tent: this.tentFit == null ? t : Math.max(0, Math.min(t, this.tentFit)) };
+  }
   /** рекорд ваги за видом, кг */
   records: Record<string, number> = {};
   /** крок навчання «що далі» (TUTORIAL.length — пройдено) */
@@ -156,8 +166,12 @@ export class GameState {
     return true;
   }
 
+  /** нижня межа корпусу: біля причалу (пришвартовано) яхта не тоне — див. Boat.update */
+  hullFloor = 0;
+
   damage(amount: number) {
-    this.hull = clamp(this.hull - amount, 0, this.maxHull);
+    if (this.hull <= this.hullFloor) return;
+    this.hull = clamp(this.hull - amount, this.hullFloor, this.maxHull);
   }
   repair(amount: number) {
     this.hull = clamp(this.hull + amount, 0, this.maxHull);
@@ -325,6 +339,11 @@ export class GameState {
     this.upgrades[id]++;
     // корпус: після апгрейду збільшуємо поточну міцність на таку ж кількість
     if (id === 'hull') this.hull = Math.min(this.maxHull, this.hull + 40);
+    // новий рівень тенту ставлять одразу — увесь, що є
+    if (id === 'tent') {
+      this.tentFit = null;
+      this.tentFolded = false;
+    }
     this.checkObjectives();
     return true;
   }
@@ -493,6 +512,9 @@ export class GameState {
       places: this.places,
       finds: this.finds,
       hat: this.hat,
+      tentFit: this.tentFit,
+      tentFolded: this.tentFolded,
+      tentClosed: this.tentClosed,
       records: this.records,
       tut: this.tut,
       track: this.track,
@@ -563,11 +585,19 @@ export class GameState {
         const sum = Object.values(data.upgrades).reduce((a: number, v) => a + (Number(v) || 0), 0);
         this.upgrades.instr = sum >= 10 ? 2 : sum >= 3 ? 1 : 0;
       }
+      // старий сейв (з жорстким дахом-hardtop): дах прибрали, натомість досвідченим — тент
+      if (data.upgrades.tent == null) {
+        const sum = Object.values(data.upgrades).reduce((a: number, v) => a + (Number(v) || 0), 0);
+        this.upgrades.tent = sum >= 8 ? 2 : sum >= 3 ? 1 : 0;
+      }
     }
     if (Array.isArray(data.discovered)) this.discovered = data.discovered;
     if (Array.isArray(data.places)) this.places = data.places;
     this.finds = Array.isArray(data.finds) ? data.finds.filter((v) => typeof v === 'string') : [];
     this.hat = typeof data.hat === 'string' ? data.hat : 'captain';
+    this.tentFit = typeof data.tentFit === 'number' ? data.tentFit : null;
+    this.tentFolded = data.tentFolded === true;
+    this.tentClosed = data.tentClosed === true;
     this.records = {};
     if (data.records && typeof data.records === 'object') for (const [k, v] of Object.entries(data.records)) if (Number.isFinite(v)) this.records[k] = Number(v);
     // старі сейви без кроку: досвідчений гравець — навчання пропускаємо

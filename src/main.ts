@@ -189,6 +189,8 @@ class Game {
   private netsSyncMode = 'idle';
   /** гравець схилився над штурманським столом */
   private chartMode = false;
+  /** ПКМ над картою: скільки протягнуто (−1 — не затиснута) */
+  private chartDrag = -1;
   private chartK = 0;
   private _chEye = new THREE.Vector3();
   private _chAt = new THREE.Vector3();
@@ -487,6 +489,7 @@ class Game {
       this.coop.sendEvent('stall');
     };
     this.boat.onSunk = () => this.handleSunk();
+    this.boat.onDockPump = () => this.hud.toast(L('⚓ У порту воду з трюму відкачують з причалу — пришвартована яхта не потоне (на якорі — може!)', `⚓ In port the bilge is pumped out from the pier — a moored yacht won't sink (at anchor it can!)`), 'good', 3500);
     this.player.onStep = (surf, run) => this.audio.step(surf, run);
 
     // звук стартує з першого жесту (політика автоплею) — музика грає вже в заставці
@@ -734,6 +737,13 @@ class Game {
       case 'door':
         this.boat.doorOpen = act.v === 1;
         break;
+      case 'tent':
+        this.game.tentFolded = act.v === 1;
+        if (act.v === 1) this.game.tentClosed = false;
+        break;
+      case 'curtain':
+        this.game.tentClosed = act.v === 1 && !this.game.tentFolded;
+        break;
       case 'anchor':
         this.anchorResult(this.boat.anchor.toggle(this.boat), nick);
         break;
@@ -762,6 +772,10 @@ class Game {
         if (id in g.upgrades && g.upgrades[id] < 5) {
           g.upgrades[id]++;
           if (id === 'hull') g.hull = Math.min(g.maxHull, g.hull + 40);
+          if (id === 'tent') {
+            g.tentFit = null;
+            g.tentFolded = false;
+          }
           this.syncUpgrades();
           this.hud.toast(L(`🛠 ${nick}: нова прокачка човна`, `🛠 ${nick}: a new boat upgrade`), 'good');
         }
@@ -874,7 +888,7 @@ class Game {
   }
 
   private syncUpgrades() {
-    this.boat.applyUpgrades(this.game.upgrades, this.time.daylight);
+    this.boat.applyUpgrades(this.game.fittedUpgrades(), this.time.daylight);
     this.fishing.setOwned(this.game.upgrades.holders ?? 0);
     this.hl.invalidate();
   }
@@ -937,6 +951,9 @@ class Game {
       } else if (id === 'st:anchor') {
         key = id;
         objs = near(key, 0, Y_DECK + 0.12, 4.1, 0.35, 0.5);
+      } else if (id === 'st:tent' || id === 'st:curtain') {
+        key = id + this.boat.tentLevel;
+        objs = id === 'st:tent' ? this.boat.canvas.foldObjects : this.boat.canvas.curtainObjects;
       } else if (id === 'st:door') {
         key = id;
         objs = [this.cabinDoor.group];
@@ -1134,6 +1151,18 @@ class Game {
             },
           }
         : undefined,
+      tent: this.coop.crewing
+        ? undefined
+        : {
+            owned: this.game.upgrades.tent ?? 0,
+            fit: this.game.fittedUpgrades().tent,
+            onPick: (l) => {
+              const owned = this.game.upgrades.tent ?? 0;
+              this.game.tentFit = l >= owned ? null : l;
+              this.syncUpgrades();
+              this.saveGame();
+            },
+          },
       hats: {
         list: HATS.map((h) => ({ id: h.id, name: h.name, icon: h.icon, owned: this.hatOwned(h.id), hint: h.hint })),
         current: this.game.hat,
@@ -1421,18 +1450,38 @@ class Game {
     if (locked && this.phase === 'play' && !this.photo && this.chartMode) {
       // над картою: миша водить олівцем (біля краю карта їде), коліщатко — зум,
       // ЛКМ — точка маршруту, ПКМ — прибрати точку під олівцем (або останню)
+      // ПКМ затиснута й тягнеш — карта їде за мишею (олівець на місці); короткий клік ПКМ — прибрати точку
       const [mdx, mdy] = input.consumeMouse();
-      this.chart.moveCursor(mdx, mdy);
-      this.chartEdgePan(dt);
-      if (input.pressed('Mouse0')) this.chartClick();
-      if (input.pressed('Mouse2') && this.game.route.length) {
-        const [cw, ch] = this.chart.size;
-        const i = this.mapView.chartHit(this.chart.u, this.chart.v, cw, ch, this.game.route);
-        this.game.removeRoutePoint(i >= 0 ? i : this.game.route.length - 1);
-        this.audio.click();
-        this.chart.markDirty();
-        this.saveGame();
+      const [cw, ch] = this.chart.size;
+      if (input.pressed('Mouse2')) this.chartDrag = 0;
+      if (this.chartDrag >= 0 && input.down('Mouse2')) {
+        this.chartDrag += Math.abs(mdx) + Math.abs(mdy);
+        if (this.chartDrag > 8) {
+          this.mapView.chartPan(mdx * 0.71, mdy * 0.71, cw, ch);
+          this.chart.markDirty();
+        }
+      } else {
+        this.chart.moveCursor(mdx, mdy);
+        this.chartEdgePan(dt);
       }
+      if (this.chartDrag >= 0 && !input.down('Mouse2')) {
+        if (this.chartDrag <= 8 && this.game.route.length) {
+          const i = this.mapView.chartHit(this.chart.u, this.chart.v, cw, ch, this.game.route);
+          this.game.removeRoutePoint(i >= 0 ? i : this.game.route.length - 1);
+          this.audio.click();
+          this.saveGame();
+        }
+        this.chart.markDirty();
+        this.chartDrag = -1;
+      }
+      // WASD / стрілки — рухати карту
+      const kx = (input.down('KeyA') || input.down('ArrowLeft') ? 1 : 0) - (input.down('KeyD') || input.down('ArrowRight') ? 1 : 0);
+      const kz = (input.down('KeyW') || input.down('ArrowUp') ? 1 : 0) - (input.down('KeyS') || input.down('ArrowDown') ? 1 : 0);
+      if (kx || kz) {
+        this.mapView.chartPan(kx * 320 * dt, kz * 320 * dt, cw, ch);
+        this.chart.markDirty();
+      }
+      if (input.pressed('Mouse0')) this.chartClick();
       this.boat.localToWorld(this.player.localX, this.player.floorY + 1.62, this.player.localZ, this.player.head);
     } else if (locked && this.phase === 'play' && !this.photo) {
       const crewHelm = this.coop.crewing && this.player.wheeling;
@@ -1884,6 +1933,11 @@ class Game {
       return;
     }
 
+    if (id === 'st:tent' || id === 'st:curtain') {
+      this.tentToggle(id === 'st:tent' ? 'tent' : 'curtain');
+      return;
+    }
+
     if (id === 'st:door') {
       this.boat.doorOpen = !this.boat.doorOpen;
       if (this.coop.crewing) this.coop.sendAction({ a: 'door', v: this.boat.doorOpen ? 1 : 0 });
@@ -2086,8 +2140,13 @@ class Game {
     // каюта: тепле світло вночі та у шторм
     this.boat.setInteriorLight(time.daylight, this.weather.intensity);
 
-    // апгрейди-світло
-    this.boat.applyUpgrades(g.upgrades, time.daylight);
+    // апгрейди-світло (тент — як встановлено: його можна зняти)
+    this.boat.applyUpgrades(g.fittedUpgrades(), time.daylight);
+    if (!this.coop.crewing) {
+      // тент: стан — у сейві власника; екіпаж бачить зі знімка
+      this.boat.tentFolded = g.tentFolded;
+      this.boat.tentClosed = g.tentClosed;
+    }
 
     // камера: від першої особи / з-за корми (V за штурвалом) / обліт у заставці
     const head = this.player.head;
@@ -2621,6 +2680,34 @@ class Game {
     }
   }
 
+  /** тент: скласти/розкласти або опустити/скрутити штори (екіпаж — через власника) */
+  private tentToggle(what: 'tent' | 'curtain') {
+    const b = this.boat;
+    this.audio.thump(0.3);
+    if (what === 'tent') {
+      const fold = !b.tentFolded;
+      if (this.coop.crewing) {
+        this.coop.sendAction({ a: 'tent', v: fold ? 1 : 0 });
+        b.tentFolded = fold;
+      } else {
+        this.game.tentFolded = fold;
+        if (fold) this.game.tentClosed = false;
+        this.saveGame();
+      }
+      this.hud.toast(fold ? L('⛺ Тент складено — над кокпітом лише небо й паруси', `⛺ Canvas folded — nothing but sky and sails over the cockpit`) : L('⛺ Тент розкладено', `⛺ Canvas unfolded`), 'good', 2000);
+      return;
+    }
+    const close = !b.tentClosed;
+    if (this.coop.crewing) {
+      this.coop.sendAction({ a: 'curtain', v: close ? 1 : 0 });
+      b.tentClosed = close;
+    } else {
+      this.game.tentClosed = close;
+      this.saveGame();
+    }
+    this.hud.toast(close ? L('⛺ Штори опущено — кокпіт закрито від хвиль і дощу', `⛺ Curtains down — the cockpit is closed off from waves and rain`) : L('⛺ Штори скручено — видно все навколо', `⛺ Curtains rolled up — you can see all around`), 'good', 2000);
+  }
+
   /** ключ запалювання (X за штурвалом); екіпаж просить власника яхти */
   private ignition() {
     this.audio.click();
@@ -2784,7 +2871,7 @@ class Game {
       const [cw, ch] = this.chart.size;
       const w = this.mapView.uvToWorld(this.chart.u, this.chart.v, cw, ch);
       const d = w ? ` (${this.mapView.fmtDist(Math.hypot(w[0] - this.boat.pos.x, w[1] - this.boat.pos.z))})` : '';
-      return { text: L(`Точка маршруту${d} · ПКМ — прибрати · коліщатко — зум · E — встати`, `Route point${d} · RMB — remove · wheel — zoom · E — stand up`), bite: false, key: L('ЛКМ', `LMB`) };
+      return { text: L(`Точка маршруту${d} · ПКМ — прибрати, затиснути й тягти — рухати карту (або WASD) · коліщатко — зум · E — встати`, `Route point${d} · RMB — remove, hold and drag — move the chart (or WASD) · wheel — zoom · E — stand up`), bite: false, key: L('ЛКМ', `LMB`) };
     }
     const np = this.player.mode === 'boat' ? this.nets.prompt(this.boat) : null;
     if (np && this.fishing.state !== 'fight' && this.fishing.state !== 'bite') return { text: np, bite: false };

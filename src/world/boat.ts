@@ -17,6 +17,7 @@ import { HOLDER_MOUNTS } from './upgradeParts';
 import { FISH_BOX } from './deckFish';
 import { holderCount } from '../game/upgrades';
 import { Anchor } from './anchor';
+import { CanvasTop } from './canvasTop';
 import { depthAt } from './helmInstruments';
 
 // ─────────────────────────────────────────────────────────────
@@ -39,6 +40,8 @@ export const MOOR = { x: 0, z: -15.9 };
 export const MOOR_HEADING = Math.PI / 2;
 /** радіус, у якому пружина шварту підхоплює човен (без газу) */
 export const MOOR_CAPTURE = 16;
+/** пришвартована яхта не опускається нижче цього стану корпусу (%) — у порту не тонуть */
+export const MOORED_HULL_FLOOR = 18;
 
 // станції (локальні координати палуби, y = deckY)
 export const STATION_POS: Record<string, { x: number; z: number; y?: number }> = {
@@ -67,6 +70,9 @@ export const STATION_POS: Record<string, { x: number; z: number; y?: number }> =
   anchor: { x: 0, z: 4.25 },
   // пульт автопілота на штурвальній тумбі (апгрейд «Прилади» 5)
   autopilot: { x: -0.25, z: -4.1 },
+  // тент: скласти / розкласти (лівий обруч біміні) і штори (правий рулон)
+  tent: { x: -0.72, z: -3.25 },
+  curtain: { x: 0.72, z: -3.25 },
 };
 
 export interface RockObstacle {
@@ -102,6 +108,8 @@ export class Boat {
   angVel = new THREE.Vector3();
   /** зараз тримається на шварті (для HUD) */
   mooredNow = false;
+  /** стоїть біля причалу без газу (пришвартована) — не тоне */
+  atBerth = false;
   /** сходня на причал: борт (−1/1), 0 — прибрана; z — де на палубі */
   gangSide: -1 | 0 | 1 = 0;
   static readonly GANG_Z = -2.9;
@@ -141,6 +149,9 @@ export class Boat {
   private _sv2 = new THREE.Vector3();
   onEngineStall: (() => void) | null = null;
   onSunk: (() => void) | null = null;
+  /** у шварті відкачали воду з трюму насосом з причалу (раз на кілька секунд, поки качає) */
+  onDockPump: (() => void) | null = null;
+  private dockPumpT = 0;
 
   private mass = 4000;
   private inertiaPitch = 3100;
@@ -237,6 +248,7 @@ export class Boat {
       }
     }
     this.buildMesh();
+    this.canvas = new CanvasTop(this.group, visual);
     this.scene.add(this.group);
     if (visual) {
       // зайві джерела світла перекомпілювали б усі шейдери й важчали б кадр
@@ -300,6 +312,13 @@ export class Boat {
   /** застосувати рівні апгрейдів до mesh */
   /** скільки стійок для вудок встановлено */
   holderSlots = 0;
+  /** тент над кокпітом (апгрейд «Тент»): встановлений рівень, складений, штори опущені */
+  canvas!: CanvasTop;
+  tentLevel = 0;
+  tentFolded = false;
+  tentClosed = false;
+  /** ступінь опущених штор 0..1 (анімація) */
+  tentK = 0;
   /** рівень «Приладів» (пульт автопілота — з 5-го) */
   instrLevel = 0;
   /** автопілот увімкнено (симулює власник яхти, екіпаж бачить зі знімка) */
@@ -311,6 +330,8 @@ export class Boat {
     if (id.startsWith('holder')) return Number(id.slice(6)) < this.holderSlots;
     if (id === 'nets') return this.netLevel > 0;
     if (id === 'autopilot') return this.instrLevel >= 5;
+    if (id === 'tent') return this.tentLevel >= 1;
+    if (id === 'curtain') return this.tentLevel >= 3 && !this.tentFolded;
     return true;
   }
 
@@ -319,6 +340,8 @@ export class Boat {
     this.sails.setLevel(levels.sails ?? 0);
     this.netLevel = levels.nets ?? 0;
     this.instrLevel = levels.instr ?? 0;
+    this.tentLevel = levels.tent ?? 0;
+    this.canvas.setLevel(this.tentLevel);
     for (const m of this.stationMarkers.children) m.visible = this.stationOn(m.userData.station as string);
     for (const [id, arr] of Object.entries(this.upg)) {
       const lvl = levels[id] ?? 0;
@@ -502,6 +525,8 @@ export class Boat {
     const dMz = this.pos.z - this.moor.z;
     const dMoor = Math.hypot(dMx, dMz);
     this.mooredNow = dMoor < MOOR_CAPTURE && Math.abs(this.throttle) < 0.15 && speed < 3;
+    // біля причалу без газу — навіть якщо штормовий накат на мить розігнав понад 3 м/с
+    this.atBerth = dMoor < MOOR_CAPTURE && Math.abs(this.throttle) < 0.15;
     if (this.mooredNow) {
       let fxm = -dMx * 3200 - this.vel.x * 5200;
       let fzm = -dMz * 3200 - this.vel.z * 5200;
@@ -597,7 +622,9 @@ export class Boat {
     const deckWorld = this.pos.y + BOAT.deckY;
     const crest = ocean.heightAt(this.pos.x, this.pos.z, t) + 0.5 * weather.intensity;
     if (crest > deckWorld - 0.12 && weather.intensity > 0.45) {
-      this.deckWater = clamp(this.deckWater + (crest - deckWorld + 0.12) * 16 * dt, 0, 100);
+      // опущені штори тенту тримають частину хвилі (штормові — майже всю)
+      const shield = this.tentK > 0.5 ? (this.tentLevel >= 5 ? 0.35 : 0.55) : 1;
+      this.deckWater = clamp(this.deckWater + (crest - deckWorld + 0.12) * 16 * dt * shield, 0, 100);
       if (Math.random() < dt * 2) particles.splash(this.pos.x + rand(-1.5, 1.5), deckWorld, this.pos.z + rand(-1.5, 1.5), 0.7);
     } else {
       this.deckWater = Math.max(0, this.deckWater - 2.5 * dt);
@@ -668,13 +695,32 @@ export class Boat {
     if (this.hatchOpen && this.deckWater > 8) this.bilge = Math.min(100, this.bilge + this.deckWater * 0.05 * dt);
     if (this.hatchOpen && weather.rain > 0.4) this.bilge = Math.min(100, this.bilge + weather.rain * 0.25 * dt);
     // відчинені двері каюти: хвиля, що заливає кокпіт, тече по трапу вниз
-    if (this.doorOpen && this.deckWater > 15) this.bilge = Math.min(100, this.bilge + this.deckWater * 0.035 * dt);
-    // і злива крізь відчинений трап (менше, ніж крізь люк трюму)
-    if (this.doorOpen && weather.rain > 0.3) this.bilge = Math.min(100, this.bilge + weather.rain * 0.15 * dt);
+    if (this.doorOpen && this.deckWater > 15) {
+      // козирок над трапом відводить воду від прорізу; штори — ще вдвічі
+      const hood = this.tentLevel >= 1 && !this.tentFolded ? 0.35 : 1;
+      this.bilge = Math.min(100, this.bilge + this.deckWater * 0.035 * dt * hood * (this.tentK > 0.5 ? 0.5 : 1));
+    }
+    // і злива крізь відчинений трап (менше, ніж крізь люк трюму); спрейхуд майже не пускає
+    if (this.doorOpen && weather.rain > 0.3) {
+      const hood = this.tentLevel >= 1 && !this.tentFolded ? 0.2 : 1;
+      this.bilge = Math.min(100, this.bilge + weather.rain * 0.15 * dt * hood);
+    }
+    // пришвартовано (будь-який причал, не якір!) — не тонемо: корпус не нижче межі,
+    // а воду з трюму поволі відкачують з причалу, щоб трюм не добивав корпус
+    game.hullFloor = this.atBerth && !this.sinking ? MOORED_HULL_FLOOR : 0;
+    if (this.atBerth && this.bilge > 0) {
+      const before = this.bilge;
+      this.bilge = Math.max(0, Math.min(95, this.bilge) - 2.5 * dt);
+      this.dockPumpT -= dt;
+      if (before > 20 && this.dockPumpT <= 0) {
+        this.dockPumpT = 25;
+        this.onDockPump?.();
+      }
+    }
     if (this.bilge >= 100) game.damage(12 * dt);
 
     // шторм + мокра палуба → просочення корпусу
-    if (this.deckWater > 85 && weather.intensity > 0.95) {
+    if (this.deckWater > 85 && weather.intensity > 0.95 && !(this.tentLevel >= 5 && this.tentK > 0.5)) {
       game.damage(1.6 * dt);
     }
 
@@ -797,6 +843,7 @@ export class Boat {
     this.sails.compute(dt, this.heading, this.vel, weather.windDir, weather.wind);
     this.sails.updateMeshes(dt, performance.now() / 1000);
     this.sails.updateWindex(this.heading, this.vel, weather.windDir);
+    this.tentK = this.canvas.update(dt, this.tentClosed, this.tentFolded, weather.wind, this.night ? 1 : 0);
     const deckWorld = this.pos.y + BOAT.deckY;
     const crest = ocean.heightAt(this.pos.x, this.pos.z, t) + 0.5 * weather.intensity;
     if (crest > deckWorld - 0.12 && weather.intensity > 0.45 && Math.random() < dt * 2) {
@@ -905,6 +952,7 @@ export class Boat {
       this.engineOn ? 1 : this.engineKilled ? 2 : 0, r(this.deckWater, 10), this.sails.mode, this.sinking ? 1 : 0,
       this.hatchOpen ? 1 : 0, r(this.bilge, 10), this.doorOpen ? 1 : 0,
       ...this.anchor.netState(),
+      this.tentClosed ? 1 : 0, this.tentFolded ? 1 : 0,
     ];
   }
 
@@ -928,6 +976,10 @@ export class Boat {
     }
     if (b.length > 17) this.doorOpen = b[17] >= 0.5;
     if (b.length > 18) this.anchor.applyNet(b, 18);
+    if (b.length > 26) {
+      this.tentClosed = b[25] >= 0.5;
+      this.tentFolded = b[26] >= 0.5;
+    }
   }
 
   /** сили вітрил → загальні сили/моменти кадру; анімація парусів */
@@ -939,6 +991,7 @@ export class Boat {
     this._t.z += sf.torqueRoll;
     this.sails.updateMeshes(dt, performance.now() / 1000);
     this.sails.updateWindex(this.heading, this.vel, weather.windDir);
+    this.tentK = this.canvas.update(dt, this.tentClosed, this.tentFolded, weather.wind, this.night ? 1 : 0);
   }
 
   /** приборна панель: стрілки RPM/паливо/швидкість, компасна шкала, лампа ON, дисплей */

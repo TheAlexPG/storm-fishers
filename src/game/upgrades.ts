@@ -83,7 +83,7 @@ export const UPGRADES: UpgradeDef[] = [
       { name: L('Рибний ящик', `Fish box`), blurb: L('Синій пластиковий ящик із кришкою. Стоїть у кормі кокпіту.', `A blue plastic box with a lid. It sits at the back of the cockpit.`) },
       { name: L('Другий ящик', `Second box`), blurb: L('Пара до першого — з правого борту.', `A partner for the first one — on the starboard side.`) },
       { name: L('Холодильник', `Cooler`), blurb: L('Білий кулер на ящику: риба довше лишається свіжою на вигляд.', `A white cooler on the box: the fish looks fresh for longer.`) },
-      { name: L('Кофр на дах', `Roof box`), blurb: L('Обтічний бокс на даху кокпіту. Пахне рибою, але місткий.', `A streamlined box on the cockpit roof. Smells of fish, but it holds a lot.`) },
+      { name: L('Кофр на дугу', `Arch box`), blurb: L('Обтічний бокс на кормовій дузі між сонячними панелями. Пахне рибою, але місткий.', `A streamlined box on the stern arch between the solar panels. Smells of fish, but it holds a lot.`) },
       { name: L('Сітка-садок', `Keep net`), blurb: L('Велика сітка на баку для вилову, що не влазить нікуди більше.', `A big net on the foredeck for the catch that fits nowhere else.`) },
     ],
     stats: [{ label: L('Місткість трюму', `Hold capacity`), value: (l) => 8 + l * 6, fmt: (v) => L(`${Math.round(v)} шт.`, `${Math.round(v)} pcs`) }],
@@ -132,8 +132,8 @@ export const UPGRADES: UpgradeDef[] = [
       { name: L('Носовий ліхтар', `Bow lantern`), blurb: L('Латунний ліхтар на носовому релінгу. Тепле світло над баком.', `A brass lantern on the bow rail. Warm light over the foredeck.`) },
       { name: L('Ліхтар рубки (лівий)', `Cabin-top light (port)`), blurb: L('Ліхтар на даху рубки з лівого борту.', `A light on the cabin roof, port side.`) },
       { name: L('Ліхтар рубки (правий)', `Cabin-top light (starboard)`), blurb: L('Пара до лівого — палуба освітлена з обох боків.', `A partner for the port one — the deck is lit on both sides.`) },
-      { name: L('Ліхтар кокпіту', `Cockpit light`), blurb: L('Ліхтар на краю даху: світло над штурвалом і ящиками.', `A light on the edge of the roof: light over the wheel and the boxes.`) },
-      { name: L('Пошуковий прожектор', `Searchlight`), blurb: L('Потужний прожектор на даху кокпіту — б\'є на 40 метрів уперед.', `A powerful searchlight on the cockpit roof — it reaches 40 metres ahead.`) },
+      { name: L('Ліхтар кокпіту', `Cockpit light`), blurb: L('Ліхтар на кормовій дузі: світло над штурвалом і ящиками.', `A light on the stern arch: light over the wheel and the boxes.`) },
+      { name: L('Пошуковий прожектор', `Searchlight`), blurb: L('Потужний прожектор на щоглі над гіком — б\'є на 40 метрів уперед.', `A powerful searchlight on the mast above the boom — it reaches 40 metres ahead.`) },
     ],
     stats: [
       { label: L('Ліхтарів на палубі', `Deck lights`), value: (l) => Math.min(4, l), fmt: (v) => `${Math.round(v)}` },
@@ -228,13 +228,41 @@ export const UPGRADES: UpgradeDef[] = [
       { name: L('Ехолот і вітромір', `Depth sounder and wind gauge`), blurb: L('Електронний дисплей: глибина під кілем із сигналом мілини, вимпельний і справжній вітер, цифрові показники.', `An electronic display: depth under the keel with a shallow alarm, apparent and true wind, digital readouts.`) },
       { name: L('GPS-картплотер', `GPS chartplotter`), blurb: L('Кольоровий екран із картою навколо яхти й твоїм маршрутом. Точний курс, відстань і час до точки, маршрут на мінікарті.', `A colour screen with the chart around the yacht and your route. Exact bearing, distance and time to the waypoint, the route on the minimap.`) },
       { name: L('Ехолот-рибошукач', `Fish-finding sonar`), blurb: L('Сонар показує рибу під кілем і рельєф дна, а на компасі з\'являється стрілка до найближчої зграї.', `The sonar shows fish under the keel and the seabed, and an arrow to the nearest school appears on the compass.`) },
-      { name: L('Радар, AIS і автопілот', `Radar, AIS and autopilot`), blurb: L('Обтічник радара на даху, екран зі скелями й човнами, імена суден на мінікарті. Автопілот веде яхту маршрутом сам.', `A radome on the roof, a screen with rocks and boats, vessel names on the minimap. The autopilot sails the route by itself.`) },
+      { name: L('Радар, AIS і автопілот', `Radar, AIS and autopilot`), blurb: L('Обтічник радара на щоглі, екран зі скелями й човнами, імена суден на мінікарті. Автопілот веде яхту маршрутом сам.', `A radome on the mast, a screen with rocks and boats, vessel names on the minimap. The autopilot sails the route by itself.`) },
     ],
     stats: [
       { label: L('Приладів на пульті', `Instruments on the console`), value: (l) => [1, 4, 6, 7, 8, 10][Math.max(0, Math.min(5, l))], fmt: (v) => `${Math.round(v)}` },
       { label: L('Точність навігації', `Navigation accuracy`), value: (l) => (l >= 3 ? 1 : l >= 1 ? 0.5 : 0.25) * 100, fmt: (v) => `${Math.round(v)} %` },
     ],
   },
+  {
+    id: 'tent',
+    name: L('Тент', `Canvas`),
+    role: L('м\'яка парусина над кокпітом — знімається будь-коли', `soft canvas over the cockpit — take it off any time`),
+    desc: (l) => TENT_DESC[Math.max(0, Math.min(5, l))],
+    costs: [450, 1100, 2200, 3400, 5600],
+    parts: [
+      { name: L('Козирок над трапом', `Sprayhood`), blurb: L('Брезентовий козирок на обручах з віконцями з прозорого вінілу. Бризки й дощ не летять у відчинені двері каюти.', `A canvas sprayhood on hoops with clear vinyl windows. Spray and rain don't fly in through the open cabin doors.`) },
+      { name: L('Біміні', `Bimini`), blurb: L('Тент на нержавіючих обручах від кормової дуги над штурвалом, з віконцем на грот — паруси видно й з-під нього. Укриття від дощу й сонця.', `An awning on stainless hoops from the stern arch over the wheel, with a window for the mainsail — you can still see the sails from under it. Shelter from rain and sun.`) },
+      { name: L('Штори кокпіту', `Cockpit curtains`), blurb: L('Бічні полотна з вікнами й вставка до козирка: у шторм опускаєш (E на рулоні) — кокпіт сухий, хвиля менше заливає палубу.', `Side panels with windows and a link to the sprayhood: lower them in a storm (E at the roll) — the cockpit stays dry and waves wash the deck less.`) },
+      { name: L('Затишний кокпіт', `Cosy cockpit`), blurb: L('Подушки на лавах і тепла гірлянда під біміні: під тентом сили відновлюються, як у каюті.', `Cushions on the benches and a warm string of lights under the bimini: under the canvas you recover energy like in the cabin.`) },
+      { name: L('Штормовий тент', `Storm canvas`), blurb: L('Важка «дубова» парусина з подвійним швом: опущені штори тримають майже всю воду, корпус не просочується в шторм.', `Heavy “oak” canvas with double seams: lowered curtains keep out almost all the water, and the hull doesn't leak in a storm.`) },
+    ],
+    stats: [
+      { label: L('Захист трапа', `Companionway protection`), value: (l) => (l >= 1 ? 65 : 0), fmt: (v) => `${Math.round(v)} %` },
+      { label: L('Укриття кокпіту', `Cockpit shelter`), value: (l) => [0, 5, 45, 90, 90, 100][Math.max(0, Math.min(5, l))], fmt: (v) => `${Math.round(v)} %` },
+    ],
+  },
+];
+
+/** «Тент»: що стоїть над кокпітом на кожному рівні */
+const TENT_DESC = [
+  L('відкритий кокпіт — паруси як на долоні', `open cockpit — the sails in full view`),
+  L('козирок над трапом', `sprayhood over the companionway`),
+  L('+ біміні над штурвалом', `+ bimini over the wheel`),
+  L('+ штори кокпіту (опускаються в негоду)', `+ cockpit curtains (lowered in foul weather)`),
+  L('+ подушки й гірлянда — затишок', `+ cushions and string lights — cosiness`),
+  L('+ штормова парусина з подвійним швом', `+ storm canvas with double seams`),
 ];
 
 /** «Прилади»: що видно на пульті на кожному рівні */
@@ -325,7 +353,7 @@ export const UPGRADE_BY_ID: Record<string, UpgradeDef> = Object.fromEntries(UPGR
 export const MAX_LEVEL = 5;
 
 export function defaultUpgrades(): UpgradeLevels {
-  return { engine: 0, hull: 0, hold: 0, rod: 0, fuel: 0, lights: 0, stab: 0, holders: 0, sails: 0, nets: 0, instr: 0 };
+  return { engine: 0, hull: 0, hold: 0, rod: 0, fuel: 0, lights: 0, stab: 0, holders: 0, sails: 0, nets: 0, instr: 0, tent: 0 };
 }
 
 export function upgradeCost(id: UpgradeId, currentLevel: number): number | null {
