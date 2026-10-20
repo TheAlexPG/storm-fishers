@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { WS } from '../core/region';
 import { terrainHeight } from './portTerrain';
 import { ISLANDS } from './islandShape';
 import { sheerY } from './yachtLayout';
@@ -37,7 +38,7 @@ export function seabedDepth(x: number, z: number): number {
   if (th > -6.9 && !strip) return Math.max(0, -th);
   // відкрите море глибшає від порту; біля островів — мілина
   const r = Math.hypot(x, z);
-  const t = Math.min(1, Math.max(0, (r - 120) / 580));
+  const t = Math.min(1, Math.max(0, (r - 120 * WS) / (580 * WS)));
   let deep = 7 + t * t * (3 - 2 * t) * 75;
   for (const isl of ISLANDS) {
     const d = Math.hypot(x - isl.x, z - isl.z);

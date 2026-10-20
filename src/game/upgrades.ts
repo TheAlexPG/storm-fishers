@@ -253,6 +253,38 @@ export const UPGRADES: UpgradeDef[] = [
       { label: L('Укриття кокпіту', `Cockpit shelter`), value: (l) => [0, 5, 45, 90, 90, 100][Math.max(0, Math.min(5, l))], fmt: (v) => `${Math.round(v)} %` },
     ],
   },
+  {
+    id: 'pump',
+    name: L('Помпа', `Bilge pump`),
+    role: L('відкачування трюму — від ручної до автоматичної', `pumping the bilge — from manual to automatic`),
+    desc: (l) => PUMP_DESC[Math.max(0, Math.min(5, l))],
+    costs: [300, 700, 1500, 2600, 4200],
+    parts: [
+      { name: L('Двоплунжерна помпа', `Double-action pump`), blurb: L('Качає на обидва ходи важеля: трюм осушується в півтора раза швидше, руки втомлюються менше.', `Pumps on both strokes of the lever: the bilge drains one and a half times faster and your arms tire less.`) },
+      { name: L('Велика помпа з довгим важелем', `Big pump with a long lever`), blurb: L('Ширший циліндр і довгий важіль — удвічі швидше за стару ручну помпу.', `A wider cylinder and a long lever — twice as fast as the old hand pump.`) },
+      { name: L('Електропомпа з поплавцем', `Electric pump with float switch`), blurb: L('Поплавець сам вмикає помпу, щойно в трюмі набирається вода: відкачує й тоді, коли ти за штурвалом. Пульт «AUTO» біля помпи.', `A float switch turns the pump on as soon as water collects in the bilge: it keeps pumping while you're at the wheel. An “AUTO” panel by the pump.`) },
+      { name: L('Друга електропомпа', `Second electric pump`), blurb: L('Ще одна помпа з власним виливом у транці — автоматика відкачує вдвічі швидше.', `Another pump with its own outlet in the transom — the automatic system pumps twice as fast.`) },
+      { name: L('Аварійна помпа високої продуктивності', `High-capacity emergency pump`), blurb: L('Потужна помпа з аварійною лампою: автоматика втричі швидша й зганяє воду ще й з палуби.', `A powerful pump with an alarm lamp: the automatic system is three times faster and clears water off the deck too.`) },
+    ],
+    stats: [
+      { label: L('Ручне качання', `Hand pumping`), value: (l) => pumpManual(l) * 100, fmt: (v) => `${Math.round(v)} %` },
+      { label: L('Автоматика', `Automatic`), value: (l) => pumpAuto(l), fmt: (v) => (v > 0 ? L(`${Math.round(v)} %/с`, `${Math.round(v)} %/s`) : '—') },
+    ],
+  },
+];
+
+/** помпа: множник ручного качання (швидкість і менше сил на хід) */
+export const pumpManual = (l: number) => 1 + 0.5 * Math.min(2, Math.max(0, l));
+/** помпа: автоматика з поплавцем, % трюму за секунду (з рівня 3) */
+export const pumpAuto = (l: number) => (l >= 3 ? 4 * (l - 2) : 0);
+
+const PUMP_DESC = [
+  L('ручна помпа — качаєш сам', `hand pump — you pump it yourself`),
+  L('двоплунжерна — у півтора раза швидше', `double-action — one and a half times faster`),
+  L('довгий важіль — удвічі швидше', `long lever — twice as fast`),
+  L('+ автоматична електропомпа з поплавцем', `+ automatic electric pump with float switch`),
+  L('+ друга електропомпа — автоматика вдвічі швидша', `+ second electric pump — the automatic system twice as fast`),
+  L('+ аварійна помпа — втричі швидше, зганяє воду й з палуби', `+ emergency pump — three times faster, clears the deck too`),
 ];
 
 /** «Тент»: що стоїть над кокпітом на кожному рівні */
@@ -353,7 +385,7 @@ export const UPGRADE_BY_ID: Record<string, UpgradeDef> = Object.fromEntries(UPGR
 export const MAX_LEVEL = 5;
 
 export function defaultUpgrades(): UpgradeLevels {
-  return { engine: 0, hull: 0, hold: 0, rod: 0, fuel: 0, lights: 0, stab: 0, holders: 0, sails: 0, nets: 0, instr: 0, tent: 0 };
+  return { engine: 0, hull: 0, hold: 0, rod: 0, fuel: 0, lights: 0, stab: 0, holders: 0, sails: 0, nets: 0, instr: 0, tent: 0, pump: 0 };
 }
 
 export function upgradeCost(id: UpgradeId, currentLevel: number): number | null {

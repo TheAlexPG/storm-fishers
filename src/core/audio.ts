@@ -27,6 +27,7 @@ export class AudioEngine {
   private windGain: GainNode | null = null;
   private rainGain: GainNode | null = null;
   private waveGain: GainNode | null = null;
+  private washGain: GainNode | null = null;
 
   private ensure(): AudioContext | null {
     if (this.ctx) return this.ctx;
@@ -82,6 +83,20 @@ export class AudioEngine {
       this.waveGain.gain.value = 0;
       wave.connect(waveF).connect(this.waveGain).connect(this.master!);
       wave.start();
+
+      // прибій гвинта за кормою: шипучий середній шум, гучність — від газу
+      const wash = ctx.createBufferSource();
+      wash.buffer = buf;
+      wash.loop = true;
+      wash.playbackRate.value = 0.8;
+      const washF = ctx.createBiquadFilter();
+      washF.type = 'bandpass';
+      washF.frequency.value = 900;
+      washF.Q.value = 0.6;
+      this.washGain = ctx.createGain();
+      this.washGain.gain.value = 0;
+      wash.connect(washF).connect(this.washGain).connect(this.master!);
+      wash.start();
 
       // мотор: 2 осцилятори (оберти + гармоніка)
       this.engineOsc = ctx.createOscillator();
@@ -165,6 +180,7 @@ export class AudioEngine {
   setEngine(throttle: number, on: boolean, load: number) {
     if (!this.ctx || !this.engineGain || !this.engineOsc || !this.engineOsc2 || !this.engineFilter) return;
     const t = this.ctx.currentTime;
+    this.washGain?.gain.setTargetAtTime(on && throttle > 0.1 ? throttle * 0.09 : 0, t, 0.3);
     if (!on || throttle <= 0.01) {
       this.engineGain.gain.setTargetAtTime(0, t, 0.15);
       return;

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { SOLE_Y } from './yachtLayout';
+import { WORLD } from '../core/region';
 
 // ─────────────────────────────────────────────────────────────
 // Штурманський стіл: паперова лоція лежить на столі в салоні (текстура —
@@ -11,7 +12,8 @@ import { SOLE_Y } from './yachtLayout';
 /** локальні координати яхти: центр карти на стільниці */
 export const CHART_CENTER = new THREE.Vector3(0.83, SOLE_Y + 0.79, 0.95);
 const CW = 1100;
-const CH = 776; // співвідношення світу карти 1900×1340
+// співвідношення світу карти (region.ts WORLD)
+const CH = Math.round((CW * (WORLD.H1 - WORLD.H0)) / (WORLD.W1 - WORLD.W0));
 const PW = 0.6; // уздовж z (схід — нос)
 const PH = (PW * CH) / CW; // уздовж x (північ — борт)
 

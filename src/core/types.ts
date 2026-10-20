@@ -42,7 +42,8 @@ export type UpgradeId =
   | 'sails'
   | 'nets'
   | 'instr'
-  | 'tent';
+  | 'tent'
+  | 'pump';
 
 export type UpgradeLevels = Record<UpgradeId, number>;
 
@@ -129,6 +130,10 @@ export interface SaveData {
   records?: Record<string, number>;
   /** яхта стоїть на якорі (точка на дні й витравлений ланцюг) */
   anchor?: { x: number; z: number; chain: number };
+  /** масштаб світу, у якому записано координати (region.ts WS; старі сейви — 1) */
+  worldScale?: number;
+  /** після міграції масштабу: поставити човен заново (main.continueGame) */
+  relocate?: boolean;
   /** тент: встановлений рівень (≤ купленого; null — усе куплене), складений, штори опущені */
   tentFit?: number | null;
   tentFolded?: boolean;

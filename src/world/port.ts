@@ -1,4 +1,5 @@
 import { PortLife } from './portLife';
+import { WS } from '../core/region';
 import * as THREE from 'three';
 import { mulberry32 } from '../core/math';
 import type { RockObstacle } from './boat';
@@ -1357,6 +1358,7 @@ export class Port {
       [380, 300, 4.5], [-320, 150, 2.8], [120, 620, 3.8], [-420, 480, 4.2],
       [520, 150, 3.0], [300, 560, 3.6],
     ];
+    for (const r of rockSpots) { r[0] = Math.round(r[0] * WS); r[1] = Math.round(r[1] * WS); }
     addSeaRocks(this.batch, this.M.rock, rockSpots, rng);
     for (const [rx, rz, r] of rockSpots) this.rocks.push({ x: rx, z: rz, r: r * 1.15 });
 
@@ -1366,6 +1368,8 @@ export class Port {
       [600, -1800, 180, 70],
       [-900, -1500, 140, 50],
     ];
+    // далекі острови на обрії — за межами світу
+    for (const d of islands) { d[0] *= WS; d[1] *= WS; }
     addIslands(this.batch, this.M.island, islands, rng);
   }
 

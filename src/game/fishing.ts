@@ -4,6 +4,7 @@ import { Boat } from '../world/boat';
 import { FISH, FISH_BY_ID, fishingSpot, makeFish, rollKg, zoneFromDist, type FishingSpot } from './fish';
 import { eff, holderBiteSpeed, holderBiteWindow } from './upgrades';
 import { paceMul } from './pace';
+import { FORTUNE_TROPHY } from './cooking';
 import { rodModel, RACK_SLOTS, HOLDER_MOUNTS, type PartKit } from '../world/upgradeParts';
 import type { GameState } from './state';
 import { offshore, type Weather } from '../core/weather';
@@ -488,13 +489,15 @@ export class Fishing {
     // ваги: рідкісність, радіо, шторм; «трофейні» вудки тягнуть рідкісну велику рибу
     const off = pier ? 0 : offshore(this.boat.pos.x, this.boat.pos.z);
     const spot = fishingSpot(r.bobberPos.x, r.bobberPos.z, game.reports);
+    // ідеальний чай — «капітанський фарт»: як трофейніша вудка (рідкісні види, більша вага, трофеї)
+    const trophy = info.trophy + (game.kitchen.has('fortune') ? FORTUNE_TROPHY : 0);
     const weights = pool.map((f) => {
       let w = 1 / f.rarity;
       // радіо-звіт діє в межах стаї (на карті), трохи — по всій зоні
       const rep = game.reportBoost(f.id, zone);
       if (rep > 1) w *= 1 + (rep - 1) * (0.35 + 0.65 * spot.heat);
       if (weather.intensity > 0.6 && f.zones.includes('open')) w *= 1.6;
-      w *= 1 + info.trophy * (f.rarity - 1) * 1.5;
+      w *= 1 + trophy * (f.rarity - 1) * 1.5;
       // далі від берега — рідкісніша риба
       w *= 1 + off * (f.rarity - 1) * 2.2;
       return w;
@@ -510,7 +513,7 @@ export class Fishing {
       }
     }
     this.fishSpeciesId = sp.id;
-    const roll = rollKg(sp, spot, pier ? 0 : info.trophy);
+    const roll = rollKg(sp, spot, pier ? 0 : trophy);
     // з причалу — дрібнота, без трофеїв
     this.fishKg = pier ? Math.max(0.02, Math.round(roll.kg * rand(0.3, 0.45) * 100) / 100) : roll.kg;
     this.fishTrophy = pier ? false : roll.trophy;

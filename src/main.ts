@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { Input } from './core/input';
 import { TimeCycle, DAY_SECONDS } from './core/time';
-import { offshore, seaFactor, Weather } from './core/weather';
+import { seaMul, Weather } from './core/weather';
+import { WORLD, nearestHaven, roughAt, shoreRes } from './core/region';
 import { Ocean, UNDERWATER_LAYER } from './core/ocean';
 import { AudioEngine } from './core/audio';
 import { clamp, rand, formatMoney } from './core/math';
@@ -12,7 +13,7 @@ import { Boat, BOAT, MOOR, MOOR_HEADING, STATION_POS } from './world/boat';
 import { moorSlotX, MOOR_SLOTS } from './net/coop';
 import { Port } from './world/port';
 import { terrainHeight } from './world/portTerrain';
-import { Player } from './world/player';
+import { Player, type Interactable } from './world/player';
 import { Sky } from './world/sky';
 import { SkyEnvironment } from './world/graphics';
 import { ParticlePool } from './world/particles';
@@ -22,7 +23,7 @@ import { Hud, type FightHud } from './ui/hud';
 import { Minimap } from './ui/minimap';
 import { MapView } from './ui/map';
 import { Dialogs, type Venue } from './ui/dialogs';
-import { zoneFromDist, ZONE_NAMES, FISH, SCHOOL_ANCHORS } from './game/fish';
+import { zoneFromDist, ZONE_NAMES, FISH, SCHOOL_ANCHORS, SCHOOL_R } from './game/fish';
 
 /** місця швартування й причали інших гаваней (portSites.ts) */
 const SITE_BERTHS: Record<string, Berth[]> = Object.fromEntries(PORT_SITES.map((p) => [p.id, siteBerths(p)]));
@@ -45,6 +46,7 @@ import { loadSettings, saveSettings, type Settings } from './game/settings';
 import { setPace } from './game/pace';
 import { WindLines } from './world/windLines';
 import { FoamTrail } from './world/foamTrail';
+import { Jellies } from './world/jellies';
 import { FishJump } from './world/fishJump';
 import { DeckFish } from './world/deckFish';
 import { RadioSet, type RadioCtl, type RadioData } from './world/radioSet';
@@ -166,9 +168,15 @@ class Game {
   private settings: Settings = loadSettings();
   private windLines: WindLines;
   private foamTrail: FoamTrail;
+  private jellies: Jellies;
   private fishJump: FishJump;
   /** стрибок риби під час боротьби */
   private leapJump: FishJump;
+  /** риба, що вистрибує над стаєю з радіозвіту */
+  private schoolJumps: FishJump[] = [];
+  private schoolJumpT = 2;
+  private _jFrom = new THREE.Vector3();
+  private _jTo = new THREE.Vector3();
   private deckFish: DeckFish;
   private radio!: RadioSet;
   private cabinDecor!: CabinDecor;
@@ -195,6 +203,8 @@ class Game {
   /** місцеві рибалки на човнах (боти) */
   private bots!: Bots;
   private stormWarned = false;
+  private localStormWarned = false;
+  private inRough = false;
   private netsSyncT = 0;
   private netsSyncKey = '';
   private netsSyncMode = 'idle';
@@ -219,6 +229,8 @@ class Game {
   private radioCtl: RadioCtl | null = null;
   private hl = new Highlighter();
   private _hv = new THREE.Vector3();
+  private _ray = new THREE.Raycaster();
+  private _c0 = new THREE.Vector2();
   private landmarks: Landmarks;
   private islands: Islands;
   /** інші гавані світу (world/ports.ts) */
@@ -301,12 +313,15 @@ class Game {
     this.shopCounter = new ShopCounter(this.scene, this.port.solids);
     this.exchangeBoard = new ExchangeBoard(this.scene);
     // прибій уздовж берега бухти
-    this.ocean.setShore(terrainHeight, -520, -780, 1040, 860, 2);
+    // мапа дна на весь світ (2 м/піксель, у більшому світі — грубіше: region.ts shoreRes): мілини й прибій біля всіх берегів, островів і гаваней
+    this.ocean.setShore(terrainHeight, WORLD.W0, WORLD.H0, WORLD.W1 - WORLD.W0, WORLD.H1 - WORLD.H0, shoreRes());
     this.particles = new ParticlePool(this.scene, 1100);
     this.windLines = new WindLines(this.scene);
     this.foamTrail = new FoamTrail(this.scene);
+    this.jellies = new Jellies(this.scene);
     this.fishJump = new FishJump(this.scene);
     this.leapJump = new FishJump(this.scene);
+    for (let i = 0; i < 3; i++) this.schoolJumps.push(new FishJump(this.scene));
     this.scene.add(this.moorMark);
     this.landmarks = new Landmarks(this.scene, this.port.rocks);
     this.islands = new Islands(this.scene);
@@ -505,9 +520,12 @@ class Game {
       this.audio.thump(power / 6);
       this.coop.sendEvent('hit', power);
     };
+    // легкий удар хвилі — плеск, тим гучніший, чим сильніший удар
+    this.boat.onWaveHit = (power) => this.audio.splash(Math.min(0.7, 0.12 + power * 0.18));
     this.boat.onSlam = (dmg, kind, power) => {
       this.slamShake = Math.min(1, 0.35 + power * 0.08);
       this.audio.thump(Math.min(1, power / 6));
+      this.audio.splash(Math.min(1, 0.5 + power * 0.1));
       if (dmg >= 1) {
         const tip = this.slamTipT <= 0;
         if (tip) this.slamTipT = 25;
@@ -935,9 +953,20 @@ class Game {
     if (bx > dock.x0 && bx < dock.x1 && bz > dock.z0 && bz < dock.z1) {
       bx = this.homeMoorX; bz = MOOR.z; bh = MOOR_HEADING;
     }
+    // сейв із меншого світу: у гавані — на причал тієї ж гавані, у морі — та сама відносна точка, якщо там вода
+    let relocated = false;
+    if (data.relocate) {
+      const site = PORT_SITES.find((p) => Math.hypot(p.x - bx, p.z - bz) < 200);
+      if (site) {
+        const b = this.berthIn(site.id);
+        bx = b.x; bz = b.z; bh = b.h; relocated = true;
+      } else if (Math.hypot(bx, bz) < 220 || terrainHeight(bx, bz) > -2.5) {
+        bx = this.homeMoorX; bz = MOOR.z; bh = MOOR_HEADING; relocated = true;
+      }
+    }
     this.boat.reset(bx, bz, bh);
     const an = data.anchor;
-    if (an && Number.isFinite(an.x) && Number.isFinite(an.z) && Number.isFinite(an.chain) && seabedDepth(an.x, an.z) <= ANCHOR_MAX_DEPTH + 5) this.boat.anchor.setDown(an.x, an.z, an.chain);
+    if (!relocated && an && Number.isFinite(an.x) && Number.isFinite(an.z) && Number.isFinite(an.chain) && seabedDepth(an.x, an.z) <= ANCHOR_MAX_DEPTH + 5) this.boat.anchor.setDown(an.x, an.z, an.chain);
     this.player.resetToBoat();
     this.stations.dispose();
     this.stations = new Stations(this.boat, this.game, this.audio);
@@ -982,77 +1011,115 @@ class Game {
     });
   }
 
+  /** меші станції яхти: [ключ підсвітки, об'єкти] — їх підсвічуємо і в них цілиться промінь погляду */
+  private stationObjects(id: string): [string, THREE.Object3D[] | null] {
+    const near = (key: string, x: number, y: number, z: number, r: number, max: number) =>
+      this.hl.near(key, this.boat.group, this._hv.set(x, y, z), r, max, (o) => {
+        // вудки рухаються (руки/стійки) — їх додаємо окремо
+        for (let q: THREE.Object3D | null = o; q; q = q.parent) if (q.userData.rod) return true;
+        return false;
+      });
+    if (id === 'st:fishbox') return [id, [this.deckFish.hatch]];
+    if (id === 'st:autopilot') return [id + (this.boat.autopilot ? '1' : '0'), [this.instruments.apButton]];
+    if (id === 'st:nets') {
+      const key = id + (this.game.upgrades.nets ?? 0);
+      return [key, near(key, 0.6, 0.95, -4.95, 0.8, 1.4)];
+    }
+    if (id === 'st:anchor') return [id, near(id, 0, Y_DECK + 0.12, 4.1, 0.35, 0.5)];
+    if (id === 'st:tent' || id === 'st:curtain') return [id + this.boat.tentLevel, id === 'st:tent' ? this.boat.canvas.foldObjects : this.boat.canvas.curtainObjects];
+    if (id === 'st:door') return [id, [this.cabinDoor.group]];
+    if (id === 'st:rod') return [id + this.fishing.rackObjects().length, [...this.fishing.rackObjects(), ...near('rack', 0.42, Y_DECK + 0.2, 3.76, 0.2, 0.6)]];
+    if (id.startsWith('st:holder')) {
+      const h = Number(id.slice(9));
+      const m = HOLDER_MOUNTS[h].base;
+      const rod = this.fishing.holderObject(h);
+      return [id + (rod ? 'r' : ''), [...near('holder' + h + this.game.upgrades.holders, m[0], m[1] + 0.2, m[2], 0.35, 0.8), ...(rod ? [rod] : [])]];
+    }
+    if (id === 'st:wheel') return [id, near('wheel', 0, Y_DECK + 0.75, -3.38 + HELM_DZ, 0.55, 1.6)];
+    if (id === 'st:engine' || id === 'st:pump') return [id, near(id, id === 'st:engine' ? 0.62 : -0.62, Y_DECK + 0.05, -4.05, 0.3, 0.9)];
+    if (id === 'st:sails') return [id, near('sails', 0, L_HOUSE.top + 0.15, L_RIG.mastZ - 0.3, 0.6, 0.7)];
+    if (id === 'st:kitchen') return [id, near('kitchen', -0.82, Y_SOLE + 1.0, 1.25, 0.3, 0.6)];
+    if (id === 'st:kettle') return [id, [this.galley.kettle]];
+    if (id === 'st:cookbook') return [id, [this.galley.book]];
+    if (id === 'st:bed') return [id, near('bed', 0, Y_SOLE + 0.45, 3.2, 0.8, 2.2)];
+    return ['', null];
+  }
+
+  /** від першої особи станція — лише та, у яку влучає промінь із центру екрана */
+  private pickStation() {
+    const p = this.player;
+    if (p.mode !== 'boat' || p.wheeling || this.rig.mode !== 'fp') return;
+    this._ray.setFromCamera(this._c0, this.camera);
+    this._ray.far = 3.2;
+    let best: Interactable | null = null;
+    let bestD = Infinity;
+    for (const s of p.reachable) {
+      // радіо й штурманський стіл — цілком (дрібний орган радіо вибирає radio.aim)
+      const objs = s.id === 'st:radio' ? [this.radio.group] : s.id === 'st:chart' ? [this.chart.group] : this.stationObjects(s.id)[1];
+      const hit = objs && this._ray.intersectObjects(objs, true)[0];
+      if (hit && hit.distance < bestD) {
+        bestD = hit.distance;
+        best = s;
+      }
+    }
+    // зійти на берег — не станція, лишається за дальністю
+    if (best || p.nearest?.id !== 'go-ashore') p.nearest = best;
+  }
+
+  /** над стаєю з радіозвіту риба вистрибує з води раз на ~2 с — видно, де клює */
+  private updateSchoolJumps(dt: number, t: number) {
+    for (const j of this.schoolJumps) {
+      const was = j.busy;
+      j.update(dt, t);
+      if (was && !j.busy) {
+        const l = j.landing;
+        this.particles.splash(l.x, l.y + 0.2, l.z, 0.35);
+      }
+    }
+    this.schoolJumpT -= dt;
+    if (this.schoolJumpT > 0) return;
+    this.schoolJumpT = 1.5 + Math.random();
+    const cam = this.camera.position;
+    const r = this.game.reports.find((r) => {
+      const [ax, az] = SCHOOL_ANCHORS[r.zone];
+      return Math.hypot(ax - cam.x, az - cam.z) < SCHOOL_R;
+    });
+    const jump = this.schoolJumps.find((j) => !j.busy);
+    if (!r || !jump) return;
+    const a = Math.random() * Math.PI * 2;
+    const d = 8 + Math.random() * 30;
+    const x = cam.x + Math.cos(a) * d;
+    const z = cam.z + Math.sin(a) * d;
+    // не з-під корпусу й не з суходолу
+    if (Math.hypot(x - this.boat.pos.x, z - this.boat.pos.z) < 6 || terrainHeight(x, z) > -1.5 || islandNear(x, z, 5)) return;
+    const y = this.ocean.heightAt(x, z, t);
+    const h = Math.random() * Math.PI * 2;
+    const len = 1.2 + Math.random() * 1.5;
+    this._jFrom.set(x, y - 0.2, z);
+    this._jTo.set(x + Math.cos(h) * len, y - 0.3, z + Math.sin(h) * len);
+    jump.start(r.speciesId, 0.4 + Math.random() * 1.5, this._jFrom, this._jTo, true);
+    this.particles.splash(x, y + 0.1, z, 0.5);
+    this.audio.splash(Math.max(0.05, 0.35 - d * 0.008));
+  }
+
   /** підсвітка того, з чим зараз взаємодієш (E) */
   private updateHighlight(t: number) {
     const p = this.player;
     let key = '';
     let objs: THREE.Object3D[] | null = null;
-    const near = (id: string, x: number, y: number, z: number, r: number, max: number) =>
-      this.hl.near(id, this.boat.group, this._hv.set(x, y, z), r, max, (o) => {
-        // вудки рухаються (руки/стійки) — їх додаємо окремо
-        for (let q: THREE.Object3D | null = o; q; q = q.parent) if (q.userData.rod) return true;
-        return false;
-      });
     if (this.phase === 'play' && !this.dialogs.isOpen && !this.kitchen.active && !p.wheeling && p.mode === 'boat') {
       const fish = !this.deckFish.carried && this.deckFish.nearest(p.localX, p.localZ, 1.2);
       const id = p.nearest?.id ?? '';
       if (fish) {
         key = 'fish:' + fish.uid;
         objs = [this.deckFish.meshOf(fish)!].filter(Boolean);
-      } else if (id === 'st:fishbox') {
-        key = id;
-        objs = [this.deckFish.hatch];
-      } else if (id === 'st:autopilot') {
-        key = id + (this.boat.autopilot ? '1' : '0');
-        objs = [this.instruments.apButton];
-      } else if (id === 'st:nets') {
-        key = id + (this.game.upgrades.nets ?? 0);
-        objs = near(key, 0.6, 0.95, -4.95, 0.8, 1.4);
       } else if (id === 'st:radio') {
         // підсвічуємо лише орган, на який дивишся (вимкнене радіо — кнопку живлення)
         const o = this.radio.object(this.radioCtl ?? (this.radio.on ? 'tune' : 'power'));
         key = id + ':' + (this.radioCtl ?? (this.radio.on ? '' : 'power'));
         objs = o && (this.radioCtl || !this.radio.on) ? [o] : null;
-      } else if (id === 'st:anchor') {
-        key = id;
-        objs = near(key, 0, Y_DECK + 0.12, 4.1, 0.35, 0.5);
-      } else if (id === 'st:tent' || id === 'st:curtain') {
-        key = id + this.boat.tentLevel;
-        objs = id === 'st:tent' ? this.boat.canvas.foldObjects : this.boat.canvas.curtainObjects;
-      } else if (id === 'st:door') {
-        key = id;
-        objs = [this.cabinDoor.group];
-      } else if (id === 'st:rod') {
-        key = id + this.fishing.rackObjects().length;
-        objs = [...this.fishing.rackObjects(), ...near('rack', 0.42, Y_DECK + 0.2, 3.76, 0.2, 0.6)];
-      } else if (id.startsWith('st:holder')) {
-        const h = Number(id.slice(9));
-        const m = HOLDER_MOUNTS[h].base;
-        const rod = this.fishing.holderObject(h);
-        key = id + (rod ? 'r' : '');
-        objs = [...near('holder' + h + this.game.upgrades.holders, m[0], m[1] + 0.2, m[2], 0.35, 0.8), ...(rod ? [rod] : [])];
-      } else if (id === 'st:wheel') {
-        key = id;
-        objs = near('wheel', 0, Y_DECK + 0.75, -3.38 + HELM_DZ, 0.55, 1.6);
-      } else if (id === 'st:engine' || id === 'st:pump') {
-        const x = id === 'st:engine' ? 0.62 : -0.62;
-        key = id;
-        objs = near(id, x, Y_DECK + 0.05, -4.05, 0.3, 0.9);
-      } else if (id === 'st:sails') {
-        key = id;
-        objs = near('sails', 0, L_HOUSE.top + 0.15, L_RIG.mastZ - 0.3, 0.6, 0.7);
-      } else if (id === 'st:kitchen') {
-        key = id;
-        objs = near('kitchen', -0.82, Y_SOLE + 1.0, 1.25, 0.3, 0.6);
-      } else if (id === 'st:kettle') {
-        key = id;
-        objs = [this.galley.kettle];
-      } else if (id === 'st:cookbook') {
-        key = id;
-        objs = [this.galley.book];
-      } else if (id === 'st:bed') {
-        key = id;
-        objs = near('bed', 0, Y_SOLE + 0.45, 3.2, 0.8, 2.2);
+      } else {
+        [key, objs] = this.stationObjects(id);
       }
     }
     if (this.phase === 'play' && !this.dialogs.isOpen && p.mode === 'port' && p.nearest?.id.startsWith('shop:')) {
@@ -1155,7 +1222,7 @@ class Game {
       news: g.market.news.map((n) => ({ who: `«${botName(n.who)}»`, text: newsText(n.text, n.who), h: n.h })),
       reports: g.reports.map((r) => ({ zone: ZONE_NAMES[r.zone], name: g.speciesName(r.speciesId), boost: r.boost })),
       hold: { count: g.hold.length, cap: g.holdCap, value: g.hold.reduce((a, f) => a + g.sellPrice(f), 0) },
-      stormSoon: w.stormEta != null || snap.forecast > 0.74 || w.base > 0.74,
+      stormSoon: w.localStormEta != null || snap.forecast > 0.74 || w.base > 0.74,
       tip: (() => {
         const zone = zoneFromDist(Math.hypot(this.boat.pos.x, this.boat.pos.z));
         const night = this.time.isNight;
@@ -1441,7 +1508,7 @@ class Game {
     // погода: у відкритому морі сильніша (множник від відстані до берега)
     {
       const wp = this.player.mode === 'boat' ? this.boat.pos : this.player.head;
-      this.weather.localMul = seaFactor(offshore(wp.x, wp.z));
+      this.weather.localMul = seaMul(wp.x, wp.z);
     }
     if (this.coop.isClient) this.weather.updatePassive(dt);
     else this.weather.update(dt);
@@ -1451,6 +1518,28 @@ class Game {
       this.stormWarned = true;
       this.hud.toast(L(`📻 Штормове попередження: шторм приблизно за ${Math.max(1, Math.round(eta / 60))} хв (≈${Math.max(1, Math.round(eta / 25))} год гри). Рибалки вертаються в порт${this.boat.doorOpen || this.boat.hatchOpen ? L(' · зачини двері каюти й люк трюму', ` · close the cabin doors and the hold hatch`) : ''}`, `📻 Storm warning: a storm in about ${Math.max(1, Math.round(eta / 60))} min (≈${Math.max(1, Math.round(eta / 25))} game hours). Fishermen are heading back to port${this.boat.doorOpen || this.boat.hatchOpen ? L(' · зачини двері каюти й люк трюму', ` · close the cabin doors and the hold hatch`) : ''}`), 'warn', 6500);
     } else if (eta == null && this.weather.state() !== 'storm') this.stormWarned = false;
+    // бурхливий район: фронт без шторму тут однаково стане штормом — попереджаємо так само заздалегідь
+    {
+      const wp = this.player.mode === 'boat' ? this.boat.pos : this.player.head;
+      const ra = roughAt(wp.x, wp.z);
+      // у бурхливому районі шторм починається вже з фронтом (раніше за загальний)
+      const fe = this.weather.roughHere ? this.weather.frontEta : null;
+      const le = fe;
+      if (le != null && le > 45 && !this.localStormWarned) {
+        this.localStormWarned = true;
+        this.hud.toast(L(`📻 Фронт приблизно за ${Math.max(1, Math.round(le / 60))} хв. Тут, ${ra.area ? `у районі «${ra.area.name}»` : 'у відкритому морі'}, він принесе шторм — рушай до гавані чи ближче до берега`, `📻 A front in about ${Math.max(1, Math.round(le / 60))} min. Out here${ra.area ? ` in ${ra.area.name}` : ' in the open sea'} it will bring a storm — head for a harbour or closer to shore`), 'warn', 7000);
+      } else if (this.weather.frontEta == null && this.weather.state() !== 'storm') this.localStormWarned = false;
+      // увійшли в бурхливий район — підказка, де найближчий затишок
+      if (!this.inRough && ra.v > 0.35 && ra.area) {
+        this.inRough = true;
+        const nh = nearestHaven(wp.x, wp.z);
+        const site = PORT_SITES.find((p) => Math.hypot(p.x - nh.h.x, p.z - nh.h.z) < 80);
+        const port = site ? site.name : L('«Шторм»', `Storm Harbour`);
+        const fNow = this.weather.frontEta;
+        const soon = fNow != null ? L(` · ⛈ фронт ${fNow < 30 ? 'уже йде' : `за ${Math.max(1, Math.round(fNow / 60))} хв`}!`, ` · ⛈ front ${fNow < 30 ? 'is already here' : `in ${Math.max(1, Math.round(fNow / 60))} min`}!`) : '';
+        this.hud.toast(L(`⚠ ${ra.area.name}: хвиля вища, шторм тут лютіший — зате риба більша. Найближча гавань — ${port} (${(nh.d / 1000).toFixed(1).replace('.', ',')} км)${soon}`, `⚠ ${ra.area.name[0].toUpperCase() + ra.area.name.slice(1)}: higher seas and fiercer storms — but bigger fish. Nearest harbour: ${port} (${(nh.d / 1000).toFixed(1)} km)${soon}`), 'warn', 6500);
+      } else if (this.inRough && ra.v < 0.12) this.inRough = false;
+    }
     if (this.weather.state() !== this.lastWeather) {
       const st = this.weather.state();
       if (st === 'storm') {
@@ -1574,6 +1663,7 @@ class Game {
       this.sailMenuFrame = this.sailMenu.open;
       if (this.sailMenu.open) this.updateSailMenu(input);
       this.player.update(dt, input, this.boat, this.port, this.ocean, t);
+      this.pickStation();
       this.pickCounter();
       if (this.player.onIsland) {
         const f = this.islands.pick(this.player.wx, this.player.wz, this.game.finds) ?? this.stalls.pickHermit(this.player.wx, this.player.wz);
@@ -1581,8 +1671,8 @@ class Game {
       }
       if (crewHelm) this.coop.myHelm = [this.boat.throttle, this.boat.rudder];
     } else {
-      // навіть без лока тримаємо голову на місці
-      this.boat.localToWorld(this.player.localX, this.player.floorY + 1.62, this.player.localZ, this.player.head);
+      // навіть без лока тримаємо голову на місці (на яхті — разом із нею; на березі й у воді голова вже у світових координатах)
+      if (this.player.mode === 'boat') this.boat.localToWorld(this.player.localX, this.player.floorY + 1.62, this.player.localZ, this.player.head);
     }
     this.player.updateEnergy(dt);
 
@@ -1625,6 +1715,8 @@ class Game {
     this.ocean.setHull(this.boat.group, this.boat.vel.length());
     // слід піни за кормою
     this.foamTrail.update(dt, t, this.boat.localToWorld(0, 0, -4.9, this._v), this.boat.heading, this.boat.vel.length(), this.ocean, this.camera.position, clamp(this.time.daylight + 0.15, 0, 1), clamp(this.weather.intensity - 0.4, 0, 1));
+    // нічне цвітіння медуз
+    this.jellies.update(dt, t, this.ocean, this.camera.position, 1 - this.time.daylight);
 
     // станції
     // відійшов від щогли — робота з фалами переривається
@@ -1664,6 +1756,7 @@ class Game {
     this.player.rodBusy = this.fishing.state === 'fight' || this.fishing.state === 'charge';
     this.fishJump.update(dt, t);
     this.leapJump.update(dt, t);
+    this.updateSchoolJumps(dt, t);
     const catched = this.fishing.takeCatch();
     if (catched) {
       // риба вилітає з води в руки
@@ -2303,6 +2396,8 @@ class Game {
     this.port.update(simDt, t);
     this.ports.setNight(1 - time.daylight);
     this.ports.update(t, this.camera.position);
+    // бризки, сплески, дим: рух і згасання (без цього частинки ніколи не малювались і забивали пул)
+    this.particles.update(simDt);
 
     // каюта: тепле світло вночі та у шторм
     this.boat.setInteriorLight(time.daylight, this.weather.intensity);
@@ -2454,7 +2549,7 @@ class Game {
       const risk = g.insurance < 2 && (g.hold.length > 0 || this.deckFish.count > 0 || Object.values(g.upgrades).some((v) => v > g.insurance));
       const b = this.boat;
       this.hud.setInsWarn(
-        b.bilge > 2 ? L(`🌊 Вода в трюмі ${Math.round(b.bilge)}%`, `🌊 Water in the bilge ${Math.round(b.bilge)}%`) :
+        b.bilge > 2 ? L(`🌊 Вода в трюмі ${Math.round(b.bilge)}%`, `🌊 Water in the bilge ${Math.round(b.bilge)}%`) + (b.autoPumping ? L(' · автопомпа качає', ` · auto pump on`) : '') :
         b.hatchOpen && atSea ? L('⚠ Люк трюму відкрито', `⚠ Hold hatch open`) :
         b.doorOpen && atSea && this.weather.intensity > 0.5 ? L('⚠ Двері каюти відчинені', `⚠ Cabin doors open`) :
         atSea && risk ? (g.insurance ? L('⚠ Слабка страховка', `⚠ Weak insurance`) : L('⚠ Без страховки — ризик', `⚠ No insurance — risky`)) : null,
@@ -2997,7 +3092,7 @@ class Game {
     if (depth < 2) fish *= 0.3;
     fish = clamp(fish + (Math.sin(this.simTime * 0.37) * 0.04), 0, 1);
     const snap = this.weather.snapshot();
-    const falling = this.weather.stormEta != null || snap.forecast > this.weather.base + 0.12;
+    const falling = this.weather.localStormEta != null || snap.forecast > this.weather.base + 0.12;
     const s = b.sails;
     this.instruments.update(dt, {
       x: b.pos.x,

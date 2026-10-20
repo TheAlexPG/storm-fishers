@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import type { FishItem } from '../core/types';
 import type { Ocean } from '../core/ocean';
-import { offshore, seaFactor, type Weather } from '../core/weather';
+import { offshore, type Weather } from '../core/weather';
+import { localIntensity, seaMul } from '../core/region';
 import type { GameState } from '../game/state';
 import { FISH, makeFish, zoneFromDist } from '../game/fish';
 import { netCount, netHaulSpeed, netLength } from '../game/upgrades';
@@ -314,7 +315,7 @@ export class Nets {
       for (let i = this.nets.length - 1; i >= 0; i--) {
         const n = this.nets[i];
         n.soakH += dtHours;
-        const li = weather.base * seaFactor(offshore((n.x0 + n.x1) / 2, (n.z0 + n.z1) / 2));
+        const li = localIntensity(weather.base, seaMul((n.x0 + n.x1) / 2, (n.z0 + n.z1) / 2));
         if (li > 0.95) n.wear += dtHours * (li - 0.95) * 70;
         if (n.wear >= 100) {
           this.nets.splice(i, 1);

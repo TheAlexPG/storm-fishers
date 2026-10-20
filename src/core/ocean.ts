@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { localIntensity, regionGlsl, seaMul } from './region';
 import { wrapAngle } from './math';
 
 // ─────────────────────────────────────────────────────────────
@@ -102,12 +103,6 @@ function groupMod(x: number, z: number, ph: [number, number]): number {
   const a = Math.sin((GROUP_D1[0] * x + GROUP_D1[1] * z) * GROUP_K1 + ph[0]);
   const b = Math.sin((GROUP_D2[0] * x + GROUP_D2[1] * z) * GROUP_K2 + ph[1] + 0.6 * a);
   return 1 + 0.3 * a * (0.6 + 0.4 * b);
-}
-/** дзеркало offshore()/seaFactor() з weather.ts — локальне посилення у відкритому морі */
-function seaMul(x: number, z: number): number {
-  const d = Math.hypot(x, z);
-  const t = Math.min(1, Math.max(0, (d - 350) / 1650));
-  return 0.7 + 0.75 * t * t * (3 - 2 * t);
 }
 
 /** Оновлює набір хвиль на місці (без alloc). */
@@ -223,10 +218,8 @@ float groupMod(vec2 p) {
 
 float gain(float s) { return 0.15 + 0.85 * s + 0.15 * s * s; }
 float swellGain(float s) { return 1.8 * pow(max(0.0, s - 0.35), 1.6); }
-float seaMul(vec2 p) {
-  float t = clamp((length(p) - 350.0) / 1650.0, 0.0, 1.0);
-  return 0.7 + 0.75 * t * t * (3.0 - 2.0 * t);
-}
+// seaMul/localIntensity — region.ts (вставляється в конструкторі, коли всі гавані вже відомі)
+//REGION//
 
 void main() {
   // радіальна сітка їде за камерою; крок росте з відстанню від центру
@@ -242,7 +235,7 @@ void main() {
     damp = ${SHORE_MIN.toFixed(2)} + ${(1 - SHORE_MIN).toFixed(2)} * (1.0 - smoothstep(-${SHORE_DEEP.toFixed(1)}, -0.6, bed));
   }
   // відкрите море: погода сильніша — хвилі вищі (набір хвиль рахується для загальної сили)
-  float li = uIntensity * seaMul(p);
+  float li = localIntensity(uIntensity, seaMul(p));
   vLocalI = li;
   float gChop = gain(li), gSwell = swellGain(li);
   float gm = groupMod(p);
@@ -659,8 +652,9 @@ void main() {
   // Прибій: смуги піни біля берега, що набігають і тануть
   {
     vec2 suv = (vWorldPos.xz - uShoreRect.xy) * uShoreRect.zw;
-    if (suv.x > 0.0 && suv.x < 1.0 && suv.y > 0.0 && suv.y < 1.0) {
-      float bed = texture2D(uShore, suv).r * 20.0 - 10.0; // висота дна, м
+    float bed = suv.x > 0.0 && suv.x < 1.0 && suv.y > 0.0 && suv.y < 1.0 ? texture2D(uShore, suv).r * 20.0 - 10.0 : -10.0; // висота дна, м
+    // глибока вода (майже весь світ) — без прибою й шуму: дешево
+    if (bed > -4.6) {
       float shallow = smoothstep(-4.5, -0.4, bed);        // 0 глибоко … 1 біля самої кромки
       // мілину тепер дає справжня прозорість (дно крізь воду); фарбуємо лише без неї
       if (uRefrOn < 0.5) col = mix(col, uShallowColor * (0.6 + 0.7 * uSunStrength) + vec3(0.06, 0.1, 0.07), shallow * 0.5);
@@ -788,7 +782,7 @@ export class Ocean {
       lens.push(init[i].len);
     }
     this.material = new THREE.ShaderMaterial({
-      vertexShader: VERT,
+      vertexShader: VERT.replace('//REGION//', regionGlsl()),
       fragmentShader: FRAG,
       defines: { NW: WAVE_COUNT },
       uniforms: {
@@ -878,7 +872,7 @@ export class Ocean {
 
   /** локальна сила погоди в точці (відкрите море — сильніша; дзеркало шейдера) */
   localI(x: number, z: number): number {
-    return this.intensity * seaMul(x, z);
+    return localIntensity(this.intensity, seaMul(x, z));
   }
 
   /** множник амплітуди хвиль на мілині (дзеркало вершинного шейдера; білінійно як LinearFilter) */
