@@ -67,6 +67,7 @@ import { PLANS, applySinkToUpgrades, dailyPremium, type SinkReport } from './gam
 import { Landmarks, LANDMARKS } from './world/landmarks';
 import { Islands, FINDS } from './world/islands';
 import { ISLANDS, islandNear } from './world/islandShape';
+import { seabedDepth, ANCHOR_MAX_DEPTH, type AnchorResult } from './world/anchor';
 import { HATS, HAT_BY_ID } from './game/hats';
 import { Ports } from './world/ports';
 import { PORT_SITES, PORT_SITE_BY_ID, PORT_SERVICE_HANDLERS, pierRect, siteBerths, type Berth } from './world/portSites';
@@ -185,6 +186,10 @@ class Game {
   private _chQ = new THREE.Quaternion();
   private _chM = new THREE.Matrix4();
   private doorWarnT = 0;
+  /** якір: спроба авто-віддачі на березі, попередження про дрейф, попередній стан */
+  private anchorAuto = false;
+  private anchorWarnT = 0;
+  private anchorPrev = 0;
   private radioTextT = 0;
   /** орган радіо, на який дивиться гравець (кнопка/ручка) */
   private radioCtl: RadioCtl | null = null;
@@ -317,7 +322,9 @@ class Game {
     this.deckFish.onWashed = (f) => this.hud.toast(`🌊 Хвиля змила за борт: ${this.game.speciesName(f.speciesId)}! Клади рибу в ящик одразу.`, 'bad', 4000);
     this.player.onJump = () => this.audio.step(this.player.mode === 'boat' ? 0 : 2, true);
     this.player.stationText = (id) =>
-      id === 'radio'
+      id === 'anchor'
+        ? this.anchorLabel()
+        : id === 'radio'
         ? this.radio.label(this.radioCtl)
         : id === 'fishbox'
         ? !this.boat.hatchOpen
@@ -685,6 +692,9 @@ class Game {
       case 'door':
         this.boat.doorOpen = act.v === 1;
         break;
+      case 'anchor':
+        this.anchorResult(this.boat.anchor.toggle(this.boat), nick);
+        break;
       // спільний трюм: екіпаж кладе / продає / варить рибу
       case 'store':
         if (act.f && g.hold.length < g.holdCap && !g.hold.some((f) => f.uid === act.f.uid)) g.hold.push({ ...act.f });
@@ -798,6 +808,8 @@ class Game {
       bx = this.homeMoorX; bz = MOOR.z; bh = MOOR_HEADING;
     }
     this.boat.reset(bx, bz, bh);
+    const an = data.anchor;
+    if (an && Number.isFinite(an.x) && Number.isFinite(an.z) && Number.isFinite(an.chain) && seabedDepth(an.x, an.z) <= ANCHOR_MAX_DEPTH + 5) this.boat.anchor.setDown(an.x, an.z, an.chain);
     this.player.resetToBoat();
     this.stations.dispose();
     this.stations = new Stations(this.boat, this.game, this.audio);
@@ -870,6 +882,9 @@ class Game {
         const o = this.radio.object(this.radioCtl ?? (this.radio.on ? 'tune' : 'power'));
         key = id + ':' + (this.radioCtl ?? (this.radio.on ? '' : 'power'));
         objs = o && (this.radioCtl || !this.radio.on) ? [o] : null;
+      } else if (id === 'st:anchor') {
+        key = id;
+        objs = near(key, 0, Y_DECK + 0.12, 4.1, 0.35, 0.5);
       } else if (id === 'st:door') {
         key = id;
         objs = [this.cabinDoor.group];
@@ -1114,6 +1129,8 @@ class Game {
       this.weather.intensity,
     );
     if (!this.nets.remote) data.nets = this.nets.save();
+    const an = this.boat.anchor;
+    if (!this.coop.crewing && an.state === 2) data.anchor = { x: Math.round(an.ax * 10) / 10, z: Math.round(an.az * 10) / 10, chain: Math.round(an.chain) };
     GameState.write(data);
   }
 
@@ -1364,6 +1381,7 @@ class Game {
 
     // човен
     this.boat.night = this.time.isNight;
+    this.boat.anchor.remote = this.coop.crewing;
     if (this.coop.crewing) {
       if (this.player.wheeling) {
         this.boat.throttle = this.coop.myHelm[0];
@@ -1376,14 +1394,20 @@ class Game {
       const others = [...(this.coop.active ? this.coop.fleetObstacles() : []), ...this.bots.obstacles()];
       this.boat.update(dt, t, this.ocean, this.weather, g, this.particles, this.audio, others.length ? [...this.port.rocks, ...others] : this.port.rocks, this.moorDock);
       this.islands.collideBoat(this.boat, g);
-      // капітан на острові / плаває біля нього — яхта стоїть на якорі
+      // капітан зійшов на острів / плаває біля нього: якір віддається сам
+      // (якщо дістає дна); де задуглибоко — яхту просто «притримуємо»
       const p = this.player;
       if (p.onIsland || (p.mode === 'water' && islandNear(p.wx, p.wz, 40))) {
         this.boat.throttle = 0;
-        this.boat.vel.multiplyScalar(Math.exp(-dt * 2.5));
-      }
+        if (!this.boat.anchor.down && !this.anchorAuto) {
+          this.anchorAuto = true;
+          if (this.boat.anchor.toggle(this.boat) === 'drop') this.hud.toast('⚓ Якір віддано автоматично — яхта чекатиме біля берега', 'good', 3200);
+        }
+        if (!this.boat.anchor.down) this.boat.vel.multiplyScalar(Math.exp(-dt * 2.5));
+      } else if (p.mode === 'boat') this.anchorAuto = false;
     }
     this.boat.updateGangway(dt, this.moorDock);
+    this.updateAnchorHud(dt);
     // камера й маска води в корпусі — від пози човна саме цього кадру
     this.player.syncHead(this.boat);
     this.ocean.setHull(this.boat.group, this.boat.vel.length());
@@ -1764,6 +1788,11 @@ class Game {
         return;
       }
       this.setChart(true);
+      return;
+    }
+
+    if (id === 'st:anchor') {
+      this.anchorToggle();
       return;
     }
 
@@ -2427,6 +2456,75 @@ class Game {
     this.mapView.chartPan(-(ex / E) * sp, -(ey / E) * sp, cw, ch);
     const after = this.mapView.uvToWorld(c.u, c.v, cw, ch);
     if (before && after && (before[0] !== after[0] || before[1] !== after[1])) c.markDirty();
+  }
+
+  // ── якір ──
+  private anchorLabel(): string {
+    const a = this.boat.anchor;
+    if (a.state === 0) {
+      const b = this.boat.localToWorld(0, 1, 4.9, this._v);
+      const d = seabedDepth(b.x, b.z);
+      return d > ANCHOR_MAX_DEPTH ? `Брашпиль — тут задуглибоко (${Math.round(d)} м), якір не дістане` : `Брашпиль — віддати якір (глибина ${Math.round(d)} м)`;
+    }
+    if (a.winch < 0) return 'Брашпиль — знову травити ланцюг';
+    return `Брашпиль — вибрати якір (${Math.round(a.chain)} м ланцюга)`;
+  }
+
+  private anchorToggle() {
+    const a = this.boat.anchor;
+    this.audio.click();
+    if (!this.coop.crewing) {
+      this.anchorResult(a.toggle(this.boat));
+      return;
+    }
+    // екіпаж: глибину видно й самому, команду виконує власник яхти
+    if (a.state === 0) {
+      const b = this.boat.localToWorld(0, 1, 4.9, this._v);
+      const d = seabedDepth(b.x, b.z);
+      if (d > ANCHOR_MAX_DEPTH) return this.anchorResult('deep');
+    }
+    this.coop.sendAction({ a: 'anchor', v: 1 });
+    this.anchorResult(a.state === 0 || a.winch < 0 ? 'drop' : 'raise');
+  }
+
+  private anchorResult(r: AnchorResult, nick?: string) {
+    const a = this.boat.anchor;
+    const who = nick ? `${nick}: ` : '';
+    if (r === 'drop') this.hud.toast(`⚓ ${who}якір пішов${a.depth ? ` · глибина ${Math.round(a.depth)} м` : ''}`, 'good', 2400);
+    else if (r === 'raise') this.hud.toast(`⚓ ${who}брашпиль вибирає ланцюг…`, 'good', 2000);
+    else if (r === 'deep') {
+      const b = this.boat.localToWorld(0, 1, 4.9, this._v);
+      this.hud.toast(`Тут задуглибоко (${Math.round(seabedDepth(b.x, b.z))} м) — якір не дістає дна. Шукай мілину біля берега чи острова`, 'warn', 3200);
+    } else if (r === 'shallow') this.hud.toast('Тут замілко — спершу відійди від берега', 'warn', 2400);
+  }
+
+  /** чіп «на якорі», попередження про дрейф, «якір на борту» */
+  private updateAnchorHud(dt: number) {
+    const a = this.boat.anchor;
+    const chain = `${Math.round(a.chain)} м ланцюга`;
+    const dragging = a.state === 2 && a.drag > 0.5;
+    this.hud.setAnchorChip(
+      a.state === 0 ? null :
+      dragging ? '⚓ якір повзе!' :
+      a.winch < 0 ? `⚓ вибираємо · ${chain}` :
+      a.state === 1 ? '⚓ віддаємо якір…' :
+      a.winch > 0 ? `⚓ травимо · ${chain}` :
+      `⚓ на якорі · ${chain}`,
+      dragging,
+    );
+    if (this.anchorPrev !== 0 && a.state === 0) this.hud.toast('⚓ Якір на борту — можна йти', 'good', 2000);
+    this.anchorPrev = a.state;
+    this.anchorWarnT -= dt;
+    if (dragging && this.anchorWarnT <= 0 && !this.coop.crewing) {
+      this.anchorWarnT = 14;
+      const b = this.boat;
+      this.hud.toast(
+        Math.abs(b.throttle) > 0.3 ? '⚓ Газ проти ланцюга — якір повзе по дну. Спершу вибери якір (брашпиль на баку)' :
+        b.sails.mode > 0 ? '⚓ Паруси тягнуть яхту — якір повзе. Спусти паруси або вибери якір' :
+        '⚓ Шторм зриває якір — яхту зносить! Шукай мілину ближче до берега або вибирай якір і йди',
+        'warn', 4200,
+      );
+    }
   }
 
   /** власник яхти: сітки й буї екіпажу (на зміні та 2 Гц під час постановки/вибирання) */

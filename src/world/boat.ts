@@ -16,6 +16,7 @@ import { DECK_Y, SOLE_Y, RIG, HOUSE, deckLimitX } from './yachtLayout';
 import { HOLDER_MOUNTS } from './upgradeParts';
 import { FISH_BOX } from './deckFish';
 import { holderCount } from '../game/upgrades';
+import { Anchor } from './anchor';
 
 // ─────────────────────────────────────────────────────────────
 // Вітрильна яхта «Шторм» (меш — yachtModel.ts, компонування — yachtLayout.ts):
@@ -61,6 +62,8 @@ export const STATION_POS: Record<string, { x: number; z: number; y?: number }> =
   holder2: { x: HOLDER_MOUNTS[2].stand[0], z: HOLDER_MOUNTS[2].stand[1] },
   // сітковий ящик/барабан на кормовій платформі (апгрейд «Сітки»)
   nets: { x: 0.55, z: -4.3 },
+  // брашпиль на баку — віддати / вибрати якір
+  anchor: { x: 0, z: 4.25 },
 };
 
 export interface RockObstacle {
@@ -208,7 +211,13 @@ export class Boat {
   sails!: SailRig;
 
   /** visual — чужа яхта в коопі: лише картинка, без власних ламп-джерел світла */
+  /** якір із ланцюгом (брашпиль на баку) */
+  readonly anchor: Anchor;
+  private _af = { fx: 0, fz: 0, rx: 0, rz: 0, wx: 0, wz: 0 };
+
   constructor(private scene: THREE.Scene, visual = false) {
+    this.anchor = new Anchor(scene);
+    this.anchor.remote = visual;
     // 3-шарова сітка (об'єм корпусу): глибокі шари лишаються у воді
     // навіть при тангажі, тож буївність змінюється плавно, без різких
     // «вкл/викл», які раніше розганяли крен/тангаж наспіх
@@ -507,6 +516,13 @@ export class Boat {
     // вітрила: тяга від вітру (безкоштовно) + крен
     this.applySails(dt, weather);
 
+    // якірний ланцюг тягне ніс до якоря (яхта стає носом до вітру)
+    if (this.anchor.force(dt, this, weather.wind, weather.windDir, this._af)) {
+      this._f.x += this._af.fx + this._af.wx;
+      this._f.z += this._af.fz + this._af.wz;
+      this._t.y += this._af.rz * this._af.fx - this._af.rx * this._af.fz;
+    }
+
     // кермо: обтікання від ходу + струмінь гвинта (з газом можна розвернутись
     // майже на місці — як при швартуванні справжньої яхти)
     const wash = this.engineOn ? Math.abs(this.throttle) * PROP_WASH : 0;
@@ -661,6 +677,7 @@ export class Boat {
     audio.setEngine(Math.abs(this.throttle), this.engineOn, this.engineLoad);
 
     this.syncTransform();
+    this.anchor.update(dt, this, audio);
   }
 
   /**
@@ -752,6 +769,7 @@ export class Boat {
   /** прибрати зі сцени (чужа яхта покинула кімнату) */
   dispose(scene: THREE.Scene) {
     scene.remove(this.group);
+    this.anchor.dispose();
   }
 
   updateRemote(dt: number, t: number, ocean: Ocean, weather: Weather, game: GameState, particles: ParticlePool, audio: AudioEngine | null) {
@@ -781,6 +799,7 @@ export class Boat {
     }
     this.engineLoad = clamp(speed / 10, 0, 1) * Math.abs(this.throttle);
     this.updateFlag(dt, t, weather);
+    this.anchor.update(dt, this, audio);
     if (!audio) return;
     this.updatePanel(dt, game, weather, this.night);
     audio.setEngine(Math.abs(this.throttle), this.engineOn, this.engineLoad);
@@ -871,6 +890,7 @@ export class Boat {
       r(this.vel.x, 100), r(this.vel.y, 100), r(this.vel.z, 100), r(this.throttle, 100), r(this.rudder, 100),
       this.engineOn ? 1 : 0, r(this.deckWater, 10), this.sails.mode, this.sinking ? 1 : 0,
       this.hatchOpen ? 1 : 0, r(this.bilge, 10), this.doorOpen ? 1 : 0,
+      ...this.anchor.netState(),
     ];
   }
 
@@ -892,6 +912,7 @@ export class Boat {
       this.bilge = b[16];
     }
     if (b.length > 17) this.doorOpen = b[17] >= 0.5;
+    if (b.length > 18) this.anchor.applyNet(b, 18);
   }
 
   /** сили вітрил → загальні сили/моменти кадру; анімація парусів */
@@ -1038,6 +1059,7 @@ export class Boat {
     this.slamCd = 2;
     this.beamCd = 2;
     this.bowOut = false;
+    this.anchor.reset();
     this.sails.reset();
     this.syncTransform();
   }

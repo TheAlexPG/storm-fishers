@@ -121,6 +121,8 @@ export interface SaveData {
   nets?: unknown;
   /** рекорд ваги за видом, кг */
   records?: Record<string, number>;
+  /** яхта стоїть на якорі (точка на дні й витравлений ланцюг) */
+  anchor?: { x: number; z: number; chain: number };
 }
 
 export interface PlayerStats {

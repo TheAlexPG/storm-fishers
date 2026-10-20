@@ -417,6 +417,32 @@ export class AudioEngine {
     notes.forEach((n, i) => setTimeout(() => this.beep(n, 0.5, 'triangle', 0.12), i * 140));
   }
 
+  /** ланцюг якоря через брашпиль: металеве брязкання ланки (0..1) */
+  chain(power: number) {
+    const ctx = this.ensure();
+    if (!ctx || !this.master || ctx.state !== 'running') return;
+    const t = ctx.currentTime;
+    const s = ctx.createBufferSource();
+    s.buffer = this.stepBuf ??= (() => {
+      const b = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.12), ctx.sampleRate);
+      const d = b.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3);
+      return b;
+    })();
+    s.playbackRate.value = 0.7 + Math.random() * 0.25;
+    const f = ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.value = 2600 + Math.random() * 900;
+    f.Q.value = 6;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.16 * (0.4 + 0.6 * power), t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+    s.connect(f).connect(g).connect(this.master);
+    s.start(t);
+    s.stop(t + 0.12);
+    this.beep(1700 + Math.random() * 500, 0.05, 'triangle', 0.025 * (0.5 + power));
+  }
+
   /** стукіт об корпус (хвиля б'є) */
   thump(power: number) {
     this.beep(70 + power * 30, 0.12, 'sine', 0.22 * power);

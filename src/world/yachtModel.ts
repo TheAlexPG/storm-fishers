@@ -1256,8 +1256,7 @@ export class YachtBuilder {
   private buildDeckGear() {
     const g = this.g;
     const steel = this.mat(STEEL, 0.25, 0.9);
-    // якір у носовому ролику + брашпиль
-    this.rbox(g, 0.14, 0.11, 0.5, 0, sheerY(4.55) - 0.02, 4.6, steel, 0.04, 0.02);
+    // носовий ролик + брашпиль (сам якір із ланцюгом — anchor.ts)
     {
       const roller = this.cyl(g, 0.045, 0.045, 0.1, 0, sheerY(4.55) + 0.02, 4.86, this.mat(0x30343a, 0.5, 0.3), 12);
       roller.rotation.z = Math.PI / 2;
