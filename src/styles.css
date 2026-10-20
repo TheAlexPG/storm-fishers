@@ -433,6 +433,8 @@ body.intro-mode #vignette { opacity: 0.6; }
   white-space: nowrap;
 }
 .nav-chip.hidden { display: none; }
+.nav-chip.alarm { background: rgba(231, 76, 60, 0.9); color: #fff; animation: chipAlarm 0.6s ease-in-out infinite alternate; }
+@keyframes chipAlarm { from { opacity: 1; } to { opacity: 0.55; } }
 
 /* ── приборна панель (діалог) ── */
 .panel-grid {

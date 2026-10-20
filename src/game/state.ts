@@ -372,7 +372,15 @@ export class GameState {
     if (typeof data.energy === 'number') this.energy = data.energy;
     if (Array.isArray(data.hold)) this.hold = data.hold;
     if (typeof data.insurance === 'number') this.insurance = data.insurance;
-    if (data.upgrades) this.upgrades = { ...defaultUpgrades(), ...data.upgrades };
+    if (data.upgrades) {
+      this.upgrades = { ...defaultUpgrades(), ...data.upgrades };
+      // старий сейв (до «Приладів»): досвідченим капітанам — механіка/ехолот у подарунок,
+      // щоб звичні швидкість і цифри не зникли разом з оновленням
+      if (data.upgrades.instr == null) {
+        const sum = Object.values(data.upgrades).reduce((a: number, v) => a + (Number(v) || 0), 0);
+        this.upgrades.instr = sum >= 10 ? 2 : sum >= 3 ? 1 : 0;
+      }
+    }
     if (Array.isArray(data.discovered)) this.discovered = data.discovered;
     if (Array.isArray(data.places)) this.places = data.places;
     this.finds = Array.isArray(data.finds) ? data.finds.filter((v) => typeof v === 'string') : [];

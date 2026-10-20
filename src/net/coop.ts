@@ -85,7 +85,8 @@ export type BoatAction =
   | { a: 'store'; f: FishItem }
   | { a: 'take'; uid: number }
   | { a: 'cook'; uid: number }
-  | { a: 'nets' };
+  | { a: 'nets' }
+  | { a: 'ap'; v: number };
 
 export interface FriendMarker {
   x: number;
@@ -479,6 +480,7 @@ export class Coop {
       res: [r(g.fuel, 100), r(g.hull, 10)],
       up: g.upgrades,
       helm: this.helmOwner,
+      ap: boat.autopilot ? 1 : 0,
     };
     // трюм — коли змінився (або раз на 2 с для тих, хто щойно прийшов)
     const key = g.hold.map((f) => f.uid + (f.cooked ? 'c' : '')).join(',');
@@ -544,6 +546,7 @@ export class Coop {
       g.hull = res[1];
       g.upgrades = { ...g.upgrades, ...(last.up as Record<UpgradeId, number>) };
       this.helmOwner = (last.helm as number | null) ?? null;
+      boat.autopilot = last.ap === 1;
       if (Array.isArray(last.hold)) g.hold = (last.hold as FishItem[]).map((x) => ({ ...x }));
     }
     return renderT;
@@ -607,6 +610,16 @@ export class Coop {
   }
 
   /** чужі яхти як перешкоди для фізики своєї (зіткнення) */
+  /** чужі яхти флотилії для радара/AIS: позиція, курс, ім'я власника */
+  fleetBoats(): Array<{ x: number; z: number; h: number; name: string }> {
+    const out: Array<{ x: number; z: number; h: number; name: string }> = [];
+    for (const [owner, f] of this.fleet) {
+      if (owner === this.myBoat || !f.visual) continue;
+      out.push({ x: f.visual.pos.x, z: f.visual.pos.z, h: f.visual.heading, name: `⛵ ${this.session?.nickOf(owner) ?? '???'}` });
+    }
+    return out;
+  }
+
   fleetObstacles(): Array<{ x: number; z: number; r: number; kind: 'mark' }> {
     const out: Array<{ x: number; z: number; r: number; kind: 'mark' }> = [];
     for (const [owner, f] of this.fleet) {

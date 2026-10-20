@@ -263,6 +263,20 @@ export class AudioEngine {
     this.beep(660, 0.04, 'sine', 0.15);
   }
 
+  /** сигнал приладів: мілина (подвійний писк) / автопілот увімк./вимк. */
+  instrBeep(kind: 'shallow' | 'apOn' | 'apOff') {
+    if (kind === 'shallow') {
+      this.beep(2100, 0.07, 'square', 0.06);
+      setTimeout(() => this.beep(2100, 0.07, 'square', 0.06), 130);
+    } else if (kind === 'apOn') {
+      this.beep(880, 0.06, 'sine', 0.12);
+      setTimeout(() => this.beep(1320, 0.08, 'sine', 0.12), 90);
+    } else {
+      this.beep(1320, 0.06, 'sine', 0.12);
+      setTimeout(() => this.beep(660, 0.12, 'sine', 0.12), 90);
+    }
+  }
+
   private beep(freq: number, dur: number, type: OscillatorType, vol: number) {
     const ctx = this.ensure();
     if (!ctx || !this.master) return;

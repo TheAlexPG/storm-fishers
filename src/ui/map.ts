@@ -27,7 +27,7 @@ const WW = W1 - W0;
 const HH = H1 - H0;
 
 // якорі стай для радіо-звітів (за зонами)
-const SCHOOL_ANCHORS: Record<ZoneId, [number, number]> = {
+export const SCHOOL_ANCHORS: Record<ZoneId, [number, number]> = {
   shore: [80, 40],
   mid: [-150, 300],
   open: [300, 650],

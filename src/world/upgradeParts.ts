@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { UpgradeId } from '../core/types';
+import { instrShelfModel } from './helmInstruments';
 import { HALF_LEN, DECK_Y, WATERLINE_Y, HOUSE, COCKPIT, RIG, sheerY, hullBottomY, hullHalfWidth, hullXAt } from './yachtLayout';
 
 // ─────────────────────────────────────────────────────────────
@@ -911,6 +912,8 @@ export const PART_SPECS: Record<UpgradeId, PartSpec[]> = {
     { model: (k) => fin(k, 1.1), mounts: [{ p: [finX(finY), finY, finZ] }, { p: [-finX(finY), finY, finZ], mirror: true }] },
     { model: gyroDome, mounts: [{ p: [-0.45, DECK_Y, -4.5] }] },
   ],
+  // прилади штурвала живуть у HelmInstruments (екрани, стрілки) — тут лише речі для полиці
+  instr: [1, 2, 3, 4, 5].map((l) => ({ model: (k: PartKit) => instrShelfModel(l, k), view: -0.25, onBoat: () => new THREE.Group() })),
   // паруси: тканина, гік і генакер змінюються в SailRig (setLevel), тут — «залізо»
   sails: [
     // 1: новий дакрон — видно на самих парусах

@@ -20,7 +20,7 @@ import { Stations } from './game/stations';
 import { Fishing } from './game/fishing';
 import { Hud, type FightHud } from './ui/hud';
 import { Minimap } from './ui/minimap';
-import { MapView } from './ui/map';
+import { MapView, SCHOOL_ANCHORS } from './ui/map';
 import { Dialogs, type Venue } from './ui/dialogs';
 import { zoneFromDist, ZONE_NAMES, FISH } from './game/fish';
 
@@ -49,6 +49,8 @@ import { CabinDoor } from './world/cabinDoor';
 import { ChartTable, CHART_CENTER } from './world/chartTable';
 import { Nets, type NetsNet } from './world/nets';
 import { Bots } from './world/bots';
+import { HelmInstruments, depthAt, bearingDeg } from './world/helmInstruments';
+import { instrHas } from './game/upgrades';
 import { ShopCounter, type CounterTarget } from './world/shopCounter';
 import { ExchangeBoard } from './world/exchangeBoard';
 import { describeSave } from './game/saveTransfer';
@@ -155,6 +157,11 @@ class Game {
   private exchangeBoard!: ExchangeBoard;
   private cabinDoor!: CabinDoor;
   private chart!: ChartTable;
+  /** прилади штурвала (апгрейд «Прилади») */
+  private instruments!: HelmInstruments;
+  private apHold = 0;
+  private apPrevH = 0;
+  private shallowToastT = 0;
   /** сітки (апгрейд «Сітки»): буї в морі, постановка/вибирання з корми */
   private nets!: Nets;
   /** місцеві рибалки на човнах (боти) */
@@ -267,6 +274,25 @@ class Game {
     this.cabinDecor = new CabinDecor(this.boat.group);
     this.cabinDoor = new CabinDoor(this.boat.group);
     this.chart = new ChartTable(this.boat.group);
+    {
+      const mats = new Map<string, THREE.MeshStandardMaterial>();
+      this.instruments = new HelmInstruments(this.boat.group, this.boat.panelParts, {
+        mat: (c, r = 0.8, m = 0.05) => {
+          const k = `${c}|${r}|${m}`;
+          let mt = mats.get(k);
+          if (!mt) mats.set(k, (mt = new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m })));
+          return mt;
+        },
+      });
+      this.instruments.onShallow = (d) => {
+        this.audio.instrBeep('shallow');
+        this.shallowToastT -= 1;
+        if (this.shallowToastT <= 0) {
+          this.shallowToastT = 6;
+          this.hud.toast(`⚠ Мілина! Під кілем ${d.toFixed(1).replace('.', ',')} м`, 'bad', 2200);
+        }
+      };
+    }
     this.nets = new Nets(this.scene);
     this.bots = new Bots(this.scene, this.port.platforms, this.port.rocks);
     this.bots.onChatter = (name, text) => this.hud.toast(`📻 «${name}»: ${text}`, 'warn', 4200);
@@ -656,6 +682,9 @@ class Game {
       case 'door':
         this.boat.doorOpen = act.v === 1;
         break;
+      case 'ap':
+        this.setAutopilot(act.v === 1, act.v === 1 ? '' : nick);
+        break;
       // спільний трюм: екіпаж кладе / продає / варить рибу
       case 'store':
         if (act.f && g.hold.length < g.holdCap && !g.hold.some((f) => f.uid === act.f.uid)) g.hold.push({ ...act.f });
@@ -829,6 +858,9 @@ class Game {
       } else if (id === 'st:fishbox') {
         key = id;
         objs = [this.deckFish.hatch];
+      } else if (id === 'st:autopilot') {
+        key = id + (this.boat.autopilot ? '1' : '0');
+        objs = [this.instruments.apButton];
       } else if (id === 'st:nets') {
         key = id + (this.game.upgrades.nets ?? 0);
         objs = near(key, 0.6, 0.95, -4.95, 0.8, 1.4);
@@ -1140,6 +1172,8 @@ class Game {
       else if (this.phase === 'play' && !this.dialogs.isOpen) this.openMap();
     }
     // V — вид з-за корми / від першої особи (за штурвалом)
+    // T за штурвалом — автопілот (з «Приладами» 5)
+    if (input.pressed('KeyT') && this.phase === 'play' && !this.dialogs.isOpen && this.player.mode === 'boat' && this.player.wheeling && instrHas(this.game.upgrades.instr ?? 0).radar) this.toggleAutopilot();
     if (input.pressed('KeyV') && this.phase === 'play' && !this.dialogs.isOpen) {
       this.chasePref = !this.chasePref;
       try {
@@ -1318,6 +1352,7 @@ class Game {
     // човен
     this.boat.night = this.time.isNight;
     if (this.coop.crewing) {
+      this.autopilotStep(dt);
       if (this.player.wheeling) {
         this.boat.throttle = this.coop.myHelm[0];
         this.boat.rudder = this.coop.myHelm[1];
@@ -1325,6 +1360,7 @@ class Game {
       this.boat.updateRemote(dt, t, this.ocean, this.weather, g, this.particles, this.audio);
     } else {
       this.coop.ownerApply(dt, this.boat, this.player);
+      this.autopilotStep(dt);
       // інші яхти флотилії — теж перешкоди (зіткнення бортами)
       const others = [...(this.coop.active ? this.coop.fleetObstacles() : []), ...this.bots.obstacles()];
       this.boat.update(dt, t, this.ocean, this.weather, g, this.particles, this.audio, others.length ? [...this.port.rocks, ...others] : this.port.rocks, this.port.platforms[0]);
@@ -1686,6 +1722,11 @@ class Game {
       return;
     }
 
+    if (id === 'st:autopilot') {
+      this.toggleAutopilot();
+      return;
+    }
+
     if (id === 'st:nets') {
       if (this.coop.crewing) this.coop.sendAction({ a: 'nets' });
       else this.nets.interact(g.upgrades.nets ?? 0, this.boat, g, this.weather);
@@ -1978,7 +2019,7 @@ class Game {
     this.mapView.friends = friends;
     this.mapView.buoys = this.nets.markers();
     this.minimap.buoys = this.mapView.buoys;
-    this.mapView.bots = this.minimap.bots = this.bots.markers();
+    this.updateInstruments(this.clockDelta);
     this.minimap.update(this.boat.pos.x, this.boat.pos.z, this.boat.heading, this.port.rocks, time.isNight);
     // відкрита мапа в коопі — друзі й човен рухаються (~4 рази/с)
     if (this.phase === 'map') {
@@ -2242,6 +2283,129 @@ class Game {
     this.mapView.chartPan(-(ex / E) * sp, -(ey / E) * sp, cw, ch);
     const after = this.mapView.uvToWorld(c.u, c.v, cw, ch);
     if (before && after && (before[0] !== after[0] || before[1] !== after[1])) c.markDirty();
+  }
+
+  /** автопілот: увімк./вимк. (екіпаж просить власника яхти) */
+  private toggleAutopilot(on = !this.boat.autopilot) {
+    if (this.coop.crewing) {
+      this.coop.sendAction({ a: 'ap', v: on ? 1 : 0 });
+      this.boat.autopilot = on; // відразу на своєму пульті; знімок власника підтвердить
+    } else this.setAutopilot(on);
+    this.audio.instrBeep(on ? 'apOn' : 'apOff');
+  }
+
+  private setAutopilot(on: boolean, why = '') {
+    if (on === this.boat.autopilot) return;
+    if (on && this.game.upgrades.instr < 5) return;
+    this.boat.autopilot = on;
+    this.apHold = this.boat.heading;
+    this.apPrevH = this.boat.heading;
+    const wp = this.game.waypoint;
+    this.hud.toast(
+      on ? (wp ? '🤖 Автопілот: веду маршрутом. Кермо (A/D) чи T — вимкнути' : '🤖 Автопілот тримає курс. Кермо (A/D) чи T — вимкнути') : `🤖 Автопілот вимкнено${why ? ' — ' + why : ''}`,
+      on ? 'good' : 'warn',
+      2600,
+    );
+    if (!on && why) this.audio.instrBeep('apOff');
+  }
+
+  /** автопілот (симулює власник яхти): кермо на точку маршруту або тримати курс */
+  private autopilotStep(dt: number) {
+    const b = this.boat;
+    if (!b.autopilot) return;
+    const steering = this.player.wheeling && this.phase === 'play' && (Input.instance.down('KeyA') || Input.instance.down('KeyD'));
+    if (this.coop.crewing) {
+      // екіпаж за штурвалом крутить кермо — просимо власника вимкнути
+      if (steering) this.toggleAutopilot(false);
+      return;
+    }
+    if (steering || (this.game.upgrades.instr ?? 0) < 5) {
+      this.setAutopilot(false, steering ? 'кермо в руках' : '');
+      return;
+    }
+    // скелі/мілина по курсу — вимкнути й пискнути
+    const fx = Math.sin(b.heading), fz = Math.cos(b.heading);
+    const look = Math.min(70, 18 + b.vel.length() * 6);
+    for (let d = 10; d <= look; d += 6) {
+      const x = b.pos.x + fx * d, z = b.pos.z + fz * d;
+      const rock = this.port.rocks.some((r) => !r.kind && Math.hypot(r.x - x, r.z - z) < r.r + 4);
+      if (rock || depthAt(x, z) < 3) {
+        this.setAutopilot(false, 'попереду мілина чи скеля!');
+        this.audio.instrBeep('shallow');
+        return;
+      }
+    }
+    const wp = this.game.waypoint;
+    const want = wp ? Math.atan2(wp.x - b.pos.x, wp.z - b.pos.z) : this.apHold;
+    if (wp) this.apHold = want;
+    const err = Math.atan2(Math.sin(want - b.heading), Math.cos(want - b.heading));
+    const rate = dt > 0 ? Math.atan2(Math.sin(b.heading - this.apPrevH), Math.cos(b.heading - this.apPrevH)) / dt : 0;
+    this.apPrevH = b.heading;
+    // ПД-регулятор: rudder +1 крутить heading угору (див. Player: D → −1 → праворуч)
+    const cmd = clamp(err * 2.4 - rate * 1.6, -1, 1);
+    b.rudder = cmd;
+  }
+
+  /** прилади: рівень, екрани, чіпи HUD, маршрут/AIS на мінікарті */
+  private updateInstruments(dt: number) {
+    const g = this.game, b = this.boat;
+    const lvl = g.upgrades.instr ?? 0;
+    const has = instrHas(lvl);
+    if (this.instruments.level !== lvl) this.instruments.setLevel(lvl);
+    const bots = this.bots.markers();
+    this.minimap.bots = bots;
+    this.minimap.ais = has.radar;
+    this.mapView.bots = has.radar ? bots : [];
+    this.minimap.route = has.gps ? g.route : [];
+    // риба під кілем: базово за зоною, біля зграй з радіозвітів — густіше
+    const dist = Math.hypot(b.pos.x, b.pos.z);
+    const zone = zoneFromDist(dist);
+    let fish = (zone === 'shore' ? 0.34 : zone === 'mid' ? 0.3 : 0.24) + (this.time.isNight ? 0.05 : 0);
+    let school: { x: number; z: number; name: string } | null = null;
+    let sd = 900;
+    for (const r of g.reports) {
+      const [ax, az] = SCHOOL_ANCHORS[r.zone];
+      const d = Math.hypot(ax - b.pos.x, az - b.pos.z);
+      fish += Math.max(0, 1 - d / 320) * 0.25 * r.boost;
+      if (d < sd) {
+        sd = d;
+        school = { x: ax, z: az, name: g.speciesName(r.speciesId) };
+      }
+    }
+    const depth = depthAt(b.pos.x, b.pos.z);
+    if (depth < 2) fish *= 0.3;
+    fish = clamp(fish + (Math.sin(this.simTime * 0.37) * 0.04), 0, 1);
+    const snap = this.weather.snapshot();
+    const falling = this.weather.stormEta != null || snap.forecast > this.weather.base + 0.12;
+    const s = b.sails;
+    this.instruments.update(dt, {
+      x: b.pos.x,
+      z: b.pos.z,
+      heading: b.heading,
+      speed: b.vel.length(),
+      awa: s.awa,
+      aws: s.aws,
+      fromStarboard: s.windFromStarboard,
+      hpa: 1024 - this.weather.intensity * 42 - (falling ? 6 : 0),
+      falling,
+      route: g.route,
+      boats: [...bots, ...(this.coop.active ? this.coop.fleetBoats() : [])],
+      rocks: this.port.rocks,
+      fish,
+      school,
+      autopilot: b.autopilot,
+      night: this.time.isNight,
+    });
+    this.hud.instr = {
+      lvl,
+      speed: b.vel.length(),
+      depth,
+      wind: this.weather.windMs,
+      falling,
+      fishBrg: school && sd > 40 && sd < 700 ? bearingDeg(b.pos.x, b.pos.z, school.x, school.z) : null,
+      fish,
+      autopilot: b.autopilot,
+    };
   }
 
   /** власник яхти: сітки й буї екіпажу (на зміні та 2 Гц під час постановки/вибирання) */

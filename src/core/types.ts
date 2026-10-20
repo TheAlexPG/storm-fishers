@@ -40,7 +40,8 @@ export type UpgradeId =
   | 'stab'
   | 'holders'
   | 'sails'
-  | 'nets';
+  | 'nets'
+  | 'instr';
 
 export type UpgradeLevels = Record<UpgradeId, number>;
 

@@ -28,6 +28,8 @@ export interface HelmData {
   hull: number;
   hullMax: number;
   night: boolean;
+  /** глибина під кілем, м (ехолот) */
+  depth?: number;
 }
 
 const W = 512;
@@ -175,9 +177,17 @@ export class HelmDisplay {
     big(`${Math.round(d.fuel)}/${d.fuelMax} л`, 196, 292, 26, fuelCol);
     label(d.rangeKm == null ? 'запас: —' : `запас ≈ ${d.rangeKm.toFixed(1)} км`, 196, 322);
 
-    label('ХВИЛЯ', W - 22, 260, 'right');
-    big(`${d.wave.toFixed(1)} м`, W - 22, 292, 26, fg, 'right');
-    label(d.zone, W - 22, 322, 'right');
+    if (d.depth != null) {
+      // ехолот: глибина під кілем (мілина — червоним)
+      const dp = d.depth;
+      label('ГЛИБИНА', W - 22, 260, 'right');
+      big(dp > 240 ? '>250 м' : `${dp.toFixed(dp < 10 ? 1 : 0)} м`, W - 22, 292, 26, dp < 4.5 ? '#e74c3c' : fg, 'right');
+      label(`хвиля ${d.wave.toFixed(1)} м · ${d.zone}`, W - 22, 322, 'right');
+    } else {
+      label('ХВИЛЯ', W - 22, 260, 'right');
+      big(`${d.wave.toFixed(1)} м`, W - 22, 292, 26, fg, 'right');
+      label(d.zone, W - 22, 322, 'right');
+    }
 
     // корпус — лише коли пошкоджено
     if (d.hull < d.hullMax * 0.6) {
