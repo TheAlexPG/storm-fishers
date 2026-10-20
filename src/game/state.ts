@@ -29,6 +29,12 @@ export class GameState {
   hold: FishItem[] = [];
   /** кооп-екіпаж: трюм належить яхті власника — зміни йдуть йому */
   holdHook: ((op: 'add' | 'remove' | 'cook', f: FishItem) => void) | null = null;
+  /**
+   * Кооп-екіпаж: гаманець спільний — гроші яхти рахує її власник, кожен заробіток
+   * чи витрата йде йому (hook), а тут лише дублюється для інтерфейсу. own — свої
+   * гроші гравця, що лежать у сейві замороженими; frozen — капітан пішов.
+   */
+  private wallet: { hook: (v: number, kind: EarnKind | SpendKind) => void; own: number; t: number; frozen: boolean } | null = null;
   /** страховка човна: 0 — немає, 1..4 — рівні (insurance.ts) */
   insurance = 0;
   upgrades = defaultUpgrades();
@@ -77,16 +83,47 @@ export class GameState {
 
   /** заробив: гроші + запис у книгу */
   earn(v: number, kind: EarnKind) {
-    if (!(v > 0)) return;
+    if (!(v > 0) || this.wallet?.frozen) return;
+    this.walletOp(v, kind);
     this.money += v;
     this.ledger.earn(v, kind, this.today);
   }
 
   /** витратив: гроші + запис у книгу (без перевірки балансу — її робить виклик) */
   spend(v: number, kind: SpendKind) {
-    if (!(v > 0)) return;
+    if (!(v > 0) || this.wallet?.frozen) return;
+    this.walletOp(-v, kind);
     this.money -= v;
     this.ledger.spend(v, kind, this.today);
+  }
+
+  private walletOp(v: number, kind: EarnKind | SpendKind) {
+    if (!this.wallet) return;
+    this.wallet.hook(v, kind);
+    this.wallet.t = performance.now();
+  }
+
+  /** кооп-екіпаж: гаманець яхти (hook — власнику); null — знову свій */
+  shareWallet(hook: ((v: number, kind: EarnKind | SpendKind) => void) | null) {
+    if (hook) {
+      this.wallet = { hook, own: this.wallet?.own ?? this.money, t: 0, frozen: false };
+      return;
+    }
+    if (this.wallet) this.money = this.wallet.own;
+    this.wallet = null;
+  }
+
+  /** знімок власника яхти; щойно витрачене тут ще не дійшло до нього — секунду не відкочуємо */
+  walletNet(v: number) {
+    if (this.wallet && !this.wallet.frozen && performance.now() - this.wallet.t > 1200) this.money = v;
+  }
+
+  /** капітан пішов: гроші екіпажу лишились у його сейві — тут ні витрат, ні заробітку */
+  freezeWallet(): boolean {
+    if (!this.wallet || this.wallet.frozen) return false;
+    this.wallet.frozen = true;
+    this.money = 0;
+    return true;
   }
 
   priceWeek = 1;
@@ -535,7 +572,7 @@ export class GameState {
     return {
       version: 1,
       worldScale: WS,
-      money: this.money,
+      money: this.wallet ? this.wallet.own : this.money,
       fuel: this.fuel,
       hull: this.hull,
       energy: this.energy,

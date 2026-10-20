@@ -9,6 +9,7 @@ import { clamp, rand, formatMoney } from './core/math';
 import type { UpgradeId } from './core/types';
 import { UPGRADE_BY_ID, maxLevel, upgradeCost, upgradeLock } from './game/upgrades';
 import { GameState, newsText } from './game/state';
+import type { EarnKind, SpendKind } from './game/ledger';
 import { Boat, BOAT, MOOR, MOOR_HEADING, STATION_POS } from './world/boat';
 import { moorSlotX, MOOR_SLOTS } from './net/coop';
 import { Port } from './world/port';
@@ -706,6 +707,8 @@ class Game {
       else if (op === 'remove') this.coop.sendAction({ a: 'take', uid: f.uid });
       else this.coop.sendAction({ a: 'cook', uid: f.uid });
     };
+    // гаманець — екіпажу яхти: що заробив чи витратив — у гроші власника
+    this.game.shareWallet((v, k) => this.coop.sendAction({ a: 'money', v: Math.round(v * 100) / 100, k }));
     this.player.attachGame(this.game);
     if (!keepWorld) {
       this.time = new TimeCycle(8.0);
@@ -736,7 +739,7 @@ class Game {
     this.requestLock();
     this.hud.flashHints();
     const cap = this.coop.nickOf(owner);
-    this.hud.toast(L(`👥 Ти на яхті ${cap} в екіпажі. Трюм спільний: хто продав рибу — тому й гроші.`, `👥 You're crew on yacht ${cap}. The hold is shared: whoever sells the fish gets the money.`), 'good', 7000);
+    this.hud.toast(L(`👥 Ти на яхті ${cap} в екіпажі. Трюм і гаманець спільні: усе зароблене — в касу яхти, покупки — з неї. Твої власні гроші чекають у сейві.`, `👥 You're crew on yacht ${cap}. The hold and the purse are shared: everything earned goes to the yacht's purse, purchases come out of it. Your own money waits in your save.`), 'good', 7000);
     if (!keepWorld) this.hud.toast(L('Enter — чат з екіпажем', `Enter — chat with the crew`), 'warn', 6000);
   }
 
@@ -788,6 +791,7 @@ class Game {
     this.stations.onBoatAction = null;
     this.dialogs.onBoatPurchase = null;
     this.game.holdHook = null;
+    this.game.shareWallet(null);
     GameState.saveKey = GameState.SOLO_KEY;
   }
 
@@ -888,6 +892,16 @@ class Game {
         if (act.s) this.radio.turn(c, Math.max(-20, Math.min(20, act.s)));
         else this.radio.use(c, act.v === -1 ? -1 : 1);
         this.radioTextT = 0;
+        break;
+      }
+      case 'money': {
+        // спільна каса яхти: заробіток і витрати екіпажу
+        const v = Number(act.v);
+        if (!Number.isFinite(v) || Math.abs(v) > 1e6) break;
+        if (v > 0) {
+          g.earn(v, (Object.prototype.hasOwnProperty.call(g.ledger.earned, act.k) ? act.k : 'other') as EarnKind);
+          this.hud.toast(`💰 ${nick}: +${formatMoney(v)}`, 'good', 2200);
+        } else g.spend(-v, (Object.prototype.hasOwnProperty.call(g.ledger.spent, act.k) ? act.k : 'other') as SpendKind);
         break;
       }
       case 'anchor':
@@ -1844,6 +1858,9 @@ class Game {
     // човен
     this.boat.night = this.time.isNight;
     this.boat.anchor.remote = this.coop.crewing;
+    // капітан пішов — каса яхти лишилась у його сейві
+    if (this.coop.crewing && !this.coop.captainHere && this.game.freezeWallet())
+      this.hud.toast(L('💰 Капітан пішов — каса яхти заморожена в нього. Твої власні гроші — на своїй яхті.', `💰 The captain left — the yacht's purse is frozen with them. Your own money is on your own yacht.`), 'warn', 6000);
     if (this.coop.crewing) {
       this.autopilotStep(dt);
       if (this.player.wheeling) {

@@ -95,7 +95,9 @@ export type BoatAction =
   | { a: 'tent'; v: number }
   | { a: 'curtain'; v: number }
   /** радіо: v — ЛКМ/ПКМ по органу, s — кроки коліщатка */
-  | { a: 'radio'; c: string; v?: number; s?: number };
+  | { a: 'radio'; c: string; v?: number; s?: number }
+  /** спільний гаманець: v > 0 — заробіток екіпажу, v < 0 — витрата; k — стаття книги */
+  | { a: 'money'; v: number; k: string };
 
 export interface FriendMarker {
   x: number;
@@ -189,6 +191,10 @@ export class Coop {
   /** я в екіпажі чужої яхти (її фізику веде власник) */
   get crewing(): boolean {
     return this.active && this.myBoat !== this.myId;
+  }
+  /** власник яхти, на якій я в екіпажі, ще в кімнаті */
+  get captainHere(): boolean {
+    return this.peers.has(this.myBoat);
   }
   get room(): string {
     return this.session?.room ?? '';
@@ -545,7 +551,7 @@ export class Coop {
       t: r(simTime),
       b: boat.netState(),
       oc: ocean,
-      res: [r(g.fuel, 100), r(g.hull, 10)],
+      res: [r(g.fuel, 100), r(g.hull, 10), Math.round(g.money)],
       up: g.fittedUpgrades(),
       helm: this.helmOwner,
       ap: boat.autopilot ? 1 : 0,
@@ -613,6 +619,7 @@ export class Coop {
       const res = last.res as number[];
       g.fuel = res[0];
       g.hull = res[1];
+      if (typeof res[2] === 'number') g.walletNet(res[2]);
       g.upgrades = { ...g.upgrades, ...(last.up as Record<UpgradeId, number>) };
       this.helmOwner = (last.helm as number | null) ?? null;
       boat.autopilot = last.ap === 1;
