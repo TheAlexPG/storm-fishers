@@ -105,6 +105,11 @@ export class FishMarket {
     return this.eventMult(speciesId) * this.demand(speciesId);
   }
 
+  /** множник ринку при заданому надлишку (прорахунок кількох продажів поспіль) */
+  factorWith(speciesId: string, glut: number): number {
+    return this.eventMult(speciesId) * demandAt(glut);
+  }
+
   /** ціна за кг «зараз» (без свіжості/шторму) */
   perKg(speciesId: string, priceMult: Record<string, number>): number {
     const sp = FISH_BY_ID[speciesId];
@@ -230,5 +235,54 @@ export class FishMarket {
       );
     }
     if (num(d.acc)) this.acc = d.acc!;
+  }
+}
+
+/**
+ * Біржа іншого порту: власне насичення (свій glut), місцеві множники видів;
+ * події й історія — спільні з домашньою біржею (новини ті самі), але ціни
+ * в історії — у місцевому масштабі.
+ */
+export class PortMarket extends FishMarket {
+  constructor(private home: FishMarket, private local: (speciesId: string) => number, glut: Record<string, number>) {
+    super();
+    this.glut = glut;
+    Object.defineProperty(this, 'events', { get: () => home.events });
+    Object.defineProperty(this, 'prev', { get: () => home.prev });
+    Object.defineProperty(this, 'hist', {
+      get: () => {
+        const out: Record<string, number[]> = {};
+        for (const [id, h] of Object.entries(home.hist)) {
+          const k = local(id);
+          out[id] = h.map((v) => v * k);
+        }
+        return out;
+      },
+    });
+  }
+
+  override eventMult(speciesId: string): number {
+    return this.home.eventMult(speciesId);
+  }
+
+  override eventFor(speciesId: string): MarketEvent | undefined {
+    return this.home.eventFor(speciesId);
+  }
+
+  override factor(speciesId: string): number {
+    return this.home.eventMult(speciesId) * this.demand(speciesId) * this.local(speciesId);
+  }
+
+  override factorWith(speciesId: string, glut: number): number {
+    return this.home.eventMult(speciesId) * demandAt(glut) * this.local(speciesId);
+  }
+}
+
+/** розсмоктати надлишок (ігрові години) — для бірж інших портів */
+export function recoverGlut(glut: Record<string, number>, hours: number) {
+  for (const id of Object.keys(glut)) {
+    const g = glut[id] - MARKET_RECOVER * hours;
+    if (g <= 0) delete glut[id];
+    else glut[id] = g;
   }
 }

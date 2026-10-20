@@ -1,4 +1,8 @@
 import { PORT_POINTS } from '../world/port';
+import { PORT_SITES, pierRect, siteServices } from '../world/portSites';
+
+/** послуги інших гаваней — для підписів на зумі */
+const SITE_POINTS = PORT_SITES.flatMap((p) => siteServices(p).map((sv) => ({ ...sv, site: p.id })));
 import { terrainHeight } from '../world/portTerrain';
 import { LANDMARKS } from '../world/landmarks';
 import type { RockObstacle } from '../world/boat';
@@ -460,11 +464,17 @@ export class MapView {
       c.fillStyle = INK;
       c.fill();
     }
+    // причали інших гаваней
+    c.fillStyle = '#b08a5a';
+    for (const p of PORT_SITES) {
+      const r = pierRect(p);
+      c.fillRect(mx(r.x0), my(r.z0), Math.max(2, (r.x1 - r.x0) * s), Math.max(2, (r.z1 - r.z0) * s));
+    }
     // наблизили — підписати, де що в порту (біржа, крамниця, верф…)
     if (s > 1.6) {
       c.font = `800 ${Math.round(Math.min(13, 6 + s * 1.2))}px ${FONT}`;
       c.textAlign = 'center';
-      for (const pt of PORT_POINTS) {
+      for (const pt of [...PORT_POINTS, ...SITE_POINTS.filter((sp) => game.places.includes(sp.site))]) {
         const txt = `${pt.icon} ${pt.name}`;
         const tw = c.measureText(txt).width;
         const lx = mx(pt.x), ly = my(pt.z) - 10;
@@ -535,6 +545,30 @@ export class MapView {
     for (const l of LANDMARKS) {
       const px = mx(l.x), pz = my(l.z);
       const found = game.places.includes(l.id);
+      // гавані — якір; назву знають і до відвідин (чутки моряків), відкриті — яскраві
+      if (l.id.startsWith('port-')) {
+        c.beginPath();
+        c.arc(px, pz, 10, 0, Math.PI * 2);
+        c.fillStyle = found ? '#2a3a46' : 'rgba(42,58,70,0.35)';
+        c.fill();
+        c.lineWidth = 2;
+        c.strokeStyle = '#fffaf0';
+        c.stroke();
+        c.font = `13px -apple-system, "Segoe UI", sans-serif`;
+        c.textAlign = 'center';
+        c.fillStyle = '#fffaf0';
+        c.fillText('⚓', px, pz + 4.5);
+        c.font = `700 12px ${FONT_D}`;
+        const txt = found ? l.name : `${l.name} · ?`;
+        const tw = c.measureText(txt).width;
+        c.fillStyle = 'rgba(255,250,240,0.85)';
+        c.beginPath();
+        c.roundRect(px - tw / 2 - 6, pz - 31, tw + 12, 18, 9);
+        c.fill();
+        c.fillStyle = found ? INK : INK_SOFT;
+        c.fillText(txt, px, pz - 18);
+        continue;
+      }
       c.beginPath();
       c.arc(px, pz, found ? 6 : 9, 0, Math.PI * 2);
       c.fillStyle = found ? '#e2674a' : 'rgba(42,58,70,0.08)';

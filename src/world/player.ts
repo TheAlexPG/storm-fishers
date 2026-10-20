@@ -8,6 +8,10 @@ import { Ocean } from '../core/ocean';
 import type { GameState } from '../game/state';
 import type { PlayerMode } from '../core/types';
 import { islandHeight, islandNear, resolveIslandSolids } from './islandShape';
+import { PORT_SITES, siteAt, siteServices } from './portSites';
+
+/** послуги інших гаваней (portSites.ts): id «svc:<порт>:<вид>» */
+const SITE_SVC = PORT_SITES.flatMap((p) => siteServices(p).map((s) => ({ ...s, id: `svc:${p.id}:${s.kind}` })));
 import { Islands } from './islands';
 
 // ─────────────────────────────────────────────────────────────
@@ -260,9 +264,12 @@ export class Player {
         // будинки й реквізит — тверді
         let [nx, nz] = port.resolveSolids(this.wx + dx * speed * dt, this.wz + dz * speed * dt, PLAYER_R);
         if (this.onIsland) [nx, nz] = resolveIslandSolids(nx, nz, PLAYER_R);
-        const plat = this.onIsland ? null : this.platformNear(nx, nz, port, 0);
-        // острів: рельєф під ногами; надто крутий схил — не пройти
-        const gh = this.onIsland ? islandHeight(nx, nz) : -99;
+        // причал/плато — платформа; суходіл острова чи іншої гавані — рельєф;
+        // перехід між ними — коли висоти близькі (причал 1.1 ↔ набережна 1.6)
+        let plat = this.platformNear(nx, nz, port, 0);
+        const gh = islandHeight(nx, nz);
+        if (plat && this.onIsland && Math.abs(plat.y - this.wy) > 0.7) plat = null;
+        const toLand = !plat && gh > -0.15 && !this.onIsland && Math.abs(gh - this.wy) < 0.7;
         // сходня: підійшов до її кінця й ідеш до яхти — на борт
         let boarded = false;
         if (boat.gangSide) {
@@ -280,7 +287,13 @@ export class Player {
         }
         if (boarded) {
           /* на борту */
-        } else if (this.onIsland && gh > -0.15) {
+        } else if (toLand) {
+          this.onIsland = true;
+          this.wx = nx;
+          this.wz = nz;
+          this.wy = damp(this.wy, gh, 14, dt);
+          moving = true;
+        } else if (this.onIsland && gh > -0.15 && !plat) {
           if (gh - this.wy < 0.25 + speed * dt * 1.1) {
             this.wx = nx;
             this.wz = nz;
@@ -288,6 +301,7 @@ export class Player {
             moving = true;
           }
         } else if (plat) {
+          this.onIsland = false;
           this.wx = nx;
           // плавний ступінь по висоті (причал 1.1 ↔ земля 1.6), без «попапу»
           this.wy = damp(this.wy, plat.y, 14, dt);
@@ -437,6 +451,15 @@ export class Player {
     return null;
   }
 
+  /** причал (низька платформа) поруч із плавцем */
+  private dockNear(port: Port): Platform | null {
+    for (const d of port.platforms) {
+      if (d.y > 1.3) continue;
+      if (this.wx > d.x0 - 2 && this.wx < d.x1 + 2 && this.wz > d.z0 - 2 && this.wz < d.z1 + 2) return d;
+    }
+    return null;
+  }
+
   /** ступити на острів у точці (x, z) */
   private goAshore(x: number, z: number) {
     this.mode = 'port';
@@ -501,11 +524,24 @@ export class Player {
           best = { id: 'go-ashore', label: 'Зійти на берег' };
         }
       }
-    } else if (this.mode === 'port' && this.onIsland) {
+    } else if (this.mode === 'port' && this.onIsland && !siteAt(this.wx, this.wz)) {
       // на острові: повернутись на яхту (поруч — залізти, далеко — вплав)
       const dBoat = Math.hypot(this.wx - boat.pos.x, this.wz - boat.pos.z);
       best = dBoat < 9 ? { id: 'climb-boat', label: 'Залізти на яхту' } : { id: 'swim-boat', label: `Повернутись на яхту вплав (${Math.round(dBoat)} м)` };
     } else if (this.mode === 'port') {
+      // послуги інших гаваней
+      for (const sv of SITE_SVC) {
+        const d = Math.hypot(this.wx - sv.x, this.wz - sv.z);
+        if (d < bestD) {
+          bestD = d;
+          best = { id: sv.id, label: sv.label };
+        }
+      }
+      // у чужій гавані далеко від яхти — не застрягнути
+      if (!best && this.onIsland) {
+        const dBoat = Math.hypot(this.wx - boat.pos.x, this.wz - boat.pos.z);
+        if (dBoat > 60) best = { id: 'swim-boat', label: `Повернутись на яхту (${Math.round(dBoat)} м)` };
+      }
       for (const pt of PORT_POINTS) {
         const d = Math.hypot(this.wx - pt.x, this.wz - pt.z);
         if (d < bestD) {
@@ -528,11 +564,8 @@ export class Player {
         best = { id: 'climb-boat', label: 'Залізти на човен' };
         bestD = dBoat;
       }
-      const dock = port.platforms[0];
-      if (
-        this.wx > dock.x0 - 2 && this.wx < dock.x1 + 2 &&
-        this.wz > dock.z0 - 2 && this.wz < dock.z1 + 2
-      ) {
+      const dock = this.dockNear(port);
+      if (dock) {
         const dD = Math.hypot(this.wx - clamp(this.wx, dock.x0, dock.x1), this.wz - clamp(this.wz, dock.z0, dock.z1));
         if (dD < bestD + 2) {
           best = { id: 'climb-dock', label: 'Залізти на причал' };
@@ -593,7 +626,7 @@ export class Player {
       return null;
     }
     if (n.id === 'climb-dock') {
-      const dock = port.platforms[0];
+      const dock = this.dockNear(port) ?? port.platforms[0];
       this.wx = clamp(this.wx, dock.x0 + 0.5, dock.x1 - 0.5);
       this.wz = clamp(this.wz, dock.z0 + 0.5, dock.z1 - 0.5);
       this.wy = dock.y;

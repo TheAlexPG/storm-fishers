@@ -24,6 +24,10 @@ import { MapView } from './ui/map';
 import { Dialogs, type Venue } from './ui/dialogs';
 import { zoneFromDist, ZONE_NAMES, FISH } from './game/fish';
 
+/** місця швартування й причали інших гаваней (portSites.ts) */
+const SITE_BERTHS: Record<string, Berth[]> = Object.fromEntries(PORT_SITES.map((p) => [p.id, siteBerths(p)]));
+const SITE_DOCKS: Record<string, Platform> = Object.fromEntries(PORT_SITES.map((p) => [p.id, pierRect(p)]));
+
 /** м'яке навчання: крок → підказка; умова виконання — у Game.updateTutorial */
 const TUTORIAL = [
   'Підійди до штурвала на кормі й натисни E',
@@ -61,6 +65,9 @@ import { Landmarks, LANDMARKS } from './world/landmarks';
 import { Islands, FINDS } from './world/islands';
 import { ISLANDS, islandNear } from './world/islandShape';
 import { HATS, HAT_BY_ID } from './game/hats';
+import { Ports } from './world/ports';
+import { PORT_SITES, PORT_SITE_BY_ID, PORT_SERVICE_HANDLERS, pierRect, siteBerths, type Berth } from './world/portSites';
+import type { Platform } from './world/port';
 import { Avatar } from './world/avatar';
 import './styles.css';
 
@@ -176,6 +183,16 @@ class Game {
   private _hv = new THREE.Vector3();
   private landmarks: Landmarks;
   private islands: Islands;
+  /** інші гавані світу (world/ports.ts) */
+  private ports: Ports;
+  /** місце швартування вдома (x на причалі «Шторму» — за слотом флотилії) */
+  private homeMoorX = MOOR.x;
+  /** причал поточного місця швартування (сходня, зіткнення корпусу) */
+  private moorDock!: Platform;
+  /** гавань, біля якої поточне місце швартування ('home' — «Шторм») */
+  private moorSite = 'home';
+  /** гавань, у якій ти зараз (для напису при прибутті) */
+  private atSite: string | null = 'home';
   private bellCd = 0;
   /** «з-за корми» за штурвалом (V); запам'ятовується */
   private chasePref = true;
@@ -255,6 +272,8 @@ class Game {
     this.scene.add(this.moorMark);
     this.landmarks = new Landmarks(this.scene, this.port.rocks);
     this.islands = new Islands(this.scene);
+    this.ports = new Ports(this.scene, this.port.platforms, this.port.solids);
+    this.moorDock = this.port.platforms[0];
     this.boat = new Boat(this.scene);
     this.player = new Player(this.game);
     this.stations = new Stations(this.boat, this.game, this.audio);
@@ -506,8 +525,8 @@ class Game {
       this.weather = new Weather();
     }
     this.coop.setMyBoat(owner);
-    this.boat.moor.x = moorSlotX(owner);
-    this.boat.reset(this.boat.moor.x, this.boat.moor.z, MOOR_HEADING);
+    this.homeMoorX = this.boat.moor.x = moorSlotX(owner);
+    this.boat.reset(this.homeMoorX, MOOR.z, MOOR_HEADING);
     this.boat.sails.passive = true;
     this.deckFish.clear();
     this.fishing.reelIn();
@@ -549,8 +568,8 @@ class Game {
       this.weather = new Weather();
       this.weather.restore(data?.weatherSeed ?? 10);
     }
-    this.boat.moor.x = moorSlotX(this.coop.myId);
-    this.boat.reset(this.boat.moor.x, this.boat.moor.z, MOOR_HEADING);
+    this.homeMoorX = this.boat.moor.x = moorSlotX(this.coop.myId);
+    this.boat.reset(this.homeMoorX, MOOR.z, MOOR_HEADING);
     this.deckFish.clear();
     this.fishing.reelIn();
     this.player.resetToBoat();
@@ -730,7 +749,7 @@ class Game {
     this.player.attachGame(this.game);
     this.time = new TimeCycle(8.0);
     this.weather = new Weather();
-    this.boat.reset(this.boat.moor.x, this.boat.moor.z, MOOR_HEADING);
+    this.boat.reset(this.homeMoorX, MOOR.z, MOOR_HEADING);
     this.player.resetToBoat();
     this.stations.dispose();
     this.stations = new Stations(this.boat, this.game, this.audio);
@@ -756,10 +775,10 @@ class Game {
     this.time.dayCount = data.dayCount ?? 1;
     this.weather.restore(data.weatherSeed ?? 10);
     // старі сейви: човен стояв на (0,-26) — під причалом; виносимо на шварт
-    let bx = data.boatX ?? this.boat.moor.x, bz = data.boatZ ?? this.boat.moor.z, bh = data.boatHeading ?? MOOR_HEADING;
+    let bx = data.boatX ?? this.homeMoorX, bz = data.boatZ ?? MOOR.z, bh = data.boatHeading ?? MOOR_HEADING;
     const dock = this.port.platforms[0];
     if (bx > dock.x0 && bx < dock.x1 && bz > dock.z0 && bz < dock.z1) {
-      bx = this.boat.moor.x; bz = this.boat.moor.z; bh = MOOR_HEADING;
+      bx = this.homeMoorX; bz = MOOR.z; bh = MOOR_HEADING;
     }
     this.boat.reset(bx, bz, bh);
     this.player.resetToBoat();
@@ -785,7 +804,11 @@ class Game {
   private handleSunk() {
     const g = this.game;
     const r = this.applySink(true);
-    this.boat.reset(this.boat.moor.x, this.boat.moor.z, MOOR_HEADING);
+    // новий човен — у найближчій відомій гавані з верф'ю
+    const sp = this.rescuePort(this.boat.pos.x, this.boat.pos.z);
+    this.boat.reset(sp.berth.x, sp.berth.z, sp.berth.h);
+    g.portId = sp.id;
+    if (sp.id !== 'home') this.hud.toast(`🛟 Рятувальники відбуксирували тебе до гавані «${PORT_SITE_BY_ID[sp.id].name}»`, 'warn', 6000);
     this.player.resetToBoat();
     this.fishing.reelIn();
     // новий човен від страхової — цілий; без страховки — латаний корпус
@@ -1297,6 +1320,9 @@ class Game {
     }
     this.player.updateEnergy(dt);
 
+    // місце швартування — найближче з гаваней (своє місце за слотом флотилії)
+    this.pickMoor();
+
     // човен
     this.boat.night = this.time.isNight;
     if (this.coop.crewing) {
@@ -1309,7 +1335,7 @@ class Game {
       this.coop.ownerApply(dt, this.boat, this.player);
       // інші яхти флотилії — теж перешкоди (зіткнення бортами)
       const others = [...(this.coop.active ? this.coop.fleetObstacles() : []), ...this.bots.obstacles()];
-      this.boat.update(dt, t, this.ocean, this.weather, g, this.particles, this.audio, others.length ? [...this.port.rocks, ...others] : this.port.rocks, this.port.platforms[0]);
+      this.boat.update(dt, t, this.ocean, this.weather, g, this.particles, this.audio, others.length ? [...this.port.rocks, ...others] : this.port.rocks, this.moorDock);
       this.islands.collideBoat(this.boat, g);
       // капітан на острові / плаває біля нього — яхта стоїть на якорі
       const p = this.player;
@@ -1318,7 +1344,7 @@ class Game {
         this.boat.vel.multiplyScalar(Math.exp(-dt * 2.5));
       }
     }
-    this.boat.updateGangway(dt, this.port.platforms[0]);
+    this.boat.updateGangway(dt, this.moorDock);
     // камера й маска води в корпусі — від пози човна саме цього кадру
     this.player.syncHead(this.boat);
     this.ocean.setHull(this.boat.group, this.boat.vel.length());
@@ -1439,8 +1465,10 @@ class Game {
       mat.opacity += (want * (0.5 + 0.25 * Math.sin(t * 3)) - mat.opacity) * (1 - Math.exp(-3 * dt));
       m.visible = mat.opacity > 0.01;
       m.position.set(this.boat.moor.x, this.ocean.renderedHeightAt(this.boat.moor.x, this.boat.moor.z, t) + 0.08, this.boat.moor.z);
+      m.rotation.y = this.boat.moorHeading;
+      if (this.boat.mooredNow) g.portId = this.moorSite;
       if (this.boat.mooredNow && !this.wasMoored && this.leftHarbour) {
-        this.hud.toast('⚓ Пришвартовано', 'good', 2500);
+        this.hud.toast(this.moorSite === 'home' ? '⚓ Пришвартовано' : `⚓ Пришвартовано · ${PORT_SITE_BY_ID[this.moorSite]?.name ?? ''}`, 'good', 2500);
         this.audio.click();
         this.leftHarbour = false;
       }
@@ -1475,6 +1503,8 @@ class Game {
         if (g.hold.some((f) => f.storm)) g.objectives.stormReturn = true;
       }
     }
+
+    this.updatePortsNav();
 
     // нова зона моря — великий напис, як назви місць у дорожніх іграх
     const zone = zoneFromDist(d);
@@ -1763,6 +1793,16 @@ class Game {
       this.useCounter(id.slice(5) as CounterTarget);
       return;
     }
+    // послуги інших гаваней: «svc:<порт>:<вид>»
+    if (id.startsWith('svc:')) {
+      const [, site, kind] = id.split(':');
+      this.game.portId = site;
+      if (kind === 'sleep') this.doSleep(true);
+      else if (kind === 'fuel' || kind === 'yard' || kind === 'shop' || kind === 'office' || kind === 'exchange') this.openDialog(kind);
+      else PORT_SERVICE_HANDLERS[kind]?.(site, this.game);
+      return;
+    }
+    if (id.startsWith('port:')) this.game.portId = 'home';
     // кожне місце в порту — лише свої послуги
     const venue = ({ 'port:shop': 'shop', 'port:fuel': 'fuel', 'port:repair': 'yard', 'port:office': 'office', 'port:market': 'exchange' } as const)[id as 'port:shop'];
     if (venue) {
@@ -1866,6 +1906,8 @@ class Game {
     // порт
     this.port.setNight(1 - time.daylight);
     this.port.update(simDt, t);
+    this.ports.setNight(1 - time.daylight);
+    this.ports.update(t, this.camera.position);
 
     // каюта: тепле світло вночі та у шторм
     this.boat.setInteriorLight(time.daylight, this.weather.intensity);
@@ -2170,6 +2212,81 @@ class Game {
       mv: p.moving ? 1 : 0,
     };
     this.selfAvatar.update(this.clockDelta, this.boat, this.ocean, this.simTime);
+  }
+
+  /** місце швартування для свого слоту в гавані (вдома — x за слотом флотилії) */
+  private berthIn(site: string): Berth {
+    if (site === 'home') return { x: this.homeMoorX, z: MOOR.z, h: MOOR_HEADING };
+    const list = SITE_BERTHS[site];
+    const slot = Math.max(0, MOOR_SLOTS.indexOf(this.homeMoorX));
+    return list[slot % list.length];
+  }
+
+  /** найближче місце швартування → boat.moor (пружина, сходня, орієнтир) */
+  private pickMoor() {
+    const bx = this.boat.pos.x, bz = this.boat.pos.z;
+    let site = 'home';
+    let best = this.berthIn('home');
+    let bd = Math.hypot(bx - best.x, bz - best.z);
+    for (const p of PORT_SITES) {
+      if (Math.abs(bx - p.x) > 500 || Math.abs(bz - p.z) > 500) continue;
+      const b = this.berthIn(p.id);
+      const d = Math.hypot(bx - b.x, bz - b.z);
+      if (d < bd) {
+        bd = d;
+        best = b;
+        site = p.id;
+      }
+    }
+    this.boat.moor.x = best.x;
+    this.boat.moor.z = best.z;
+    this.boat.moorHeading = best.h;
+    this.moorDock = site === 'home' ? this.port.platforms[0] : SITE_DOCKS[site];
+    this.moorSite = site;
+  }
+
+  /** куди везуть після затоплення: найближча відома гавань із верф'ю (дім — завжди) */
+  private rescuePort(x: number, z: number): { id: string; berth: Berth } {
+    let id = 'home';
+    let bd = Math.hypot(x, z);
+    for (const p of PORT_SITES) {
+      if (p.econ.repair == null || !this.game.places.includes(p.id)) continue;
+      const d = Math.hypot(x - p.x, z - p.z);
+      if (d < bd) {
+        bd = d;
+        id = p.id;
+      }
+    }
+    return { id, berth: this.berthIn(id) };
+  }
+
+  /** компас веде до найближчої відомої гавані; напис при заході в гавань */
+  private updatePortsNav() {
+    const g = this.game;
+    const px = this.player.mode === 'boat' ? this.boat.pos.x : this.player.head.x;
+    const pz = this.player.mode === 'boat' ? this.boat.pos.z : this.player.head.z;
+    const np = this.hud.navPort;
+    np.x = MOOR.x; np.z = MOOR.z; np.name = 'Шторм'; np.home = true;
+    let bd = Math.hypot(px - MOOR.x, pz - MOOR.z);
+    let here: string | null = bd < 80 ? 'home' : null;
+    for (const p of PORT_SITES) {
+      const b = this.berthIn(p.id);
+      const d = Math.hypot(px - b.x, pz - b.z);
+      if (d < 80) here = p.id;
+      if (!g.places.includes(p.id)) continue;
+      if (d < bd) {
+        bd = d;
+        np.x = b.x; np.z = b.z; np.name = p.name; np.home = false;
+      }
+    }
+    if (here !== this.atSite) {
+      // знову в уже відомій гавані — напис (перше відкриття малює checkPlaces)
+      if (here && here !== 'home' && g.places.includes(here) && this.phase === 'play') {
+        const p = PORT_SITE_BY_ID[here];
+        this.hud.titleCard(p.name, `гавань · пальне ${p.econ.fuel} ₴/л${p.econ.repair != null ? ' · верф' : ''}`);
+      }
+      this.atSite = here;
+    }
   }
 
   private setChart(on: boolean) {

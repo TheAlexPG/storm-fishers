@@ -104,6 +104,8 @@ export class Boat {
   private gangTilt = 0;
   /** своє місце біля причалу (у коопі в кожної яхти — своє) */
   moor = { x: MOOR.x, z: MOOR.z };
+  /** курс при шварті на цьому місці (пружина приймає й протилежний) */
+  moorHeading = MOOR_HEADING;
   throttle = 0;
   rudder = 0;
   engineOn = true;
@@ -484,8 +486,8 @@ export class Boat {
       if (fl > 16000) { fxm *= 16000 / fl; fzm *= 16000 / fl; }
       this._f.x += fxm;
       this._f.z += fzm;
-      // і розвертаємо бортом до причалу (нос на ±X — куди ближче)
-      const e1 = wrapAngle(this.heading - MOOR_HEADING), e2 = wrapAngle(this.heading + MOOR_HEADING);
+      // і розвертаємо бортом до причалу (нос уздовж причалу — куди ближче)
+      const e1 = wrapAngle(this.heading - this.moorHeading), e2 = wrapAngle(this.heading - this.moorHeading - Math.PI);
       const e = Math.abs(e1) < Math.abs(e2) ? e1 : e2;
       const w = clamp(1 - dMoor / MOOR_CAPTURE, 0.2, 1);
       this._t.y += (-e * 24000 - this.angVel.y * 46000) * w;

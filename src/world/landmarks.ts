@@ -4,6 +4,7 @@ import { makeGullTexture } from './sky';
 import type { RockObstacle } from './boat';
 import type { Ocean } from '../core/ocean';
 import { ISLANDS } from './islandShape';
+import { PORT_SITES, siteToWorld } from './portSites';
 
 // ─────────────────────────────────────────────────────────────
 // Пам'ятки в морі — те, заради чого варто відійти від берега:
@@ -32,6 +33,11 @@ export const LANDMARKS: Landmark[] = [
   { id: 'bell', name: 'Дзвоновий буй', sub: 'слухай його в тумані', x: -650, z: 250, r: 45 },
   // острови (islandShape.ts) — на них можна зійти
   ...ISLANDS.map((d) => ({ id: d.id, name: d.name, sub: d.sub, x: d.x, z: d.z, r: d.r * Math.sqrt(d.elong) + 45 })),
+  // інші гавані (portSites.ts) — позначка трохи в морі перед причалом
+  ...PORT_SITES.map((p) => {
+    const [x, z] = siteToWorld(p, p.pierL * 0.5, 0);
+    return { id: p.id, name: p.name, sub: p.sub, x, z, r: 110 };
+  }),
 ];
 
 export const LANDMARK_BY_ID: Record<string, Landmark> = Object.fromEntries(LANDMARKS.map((l) => [l.id, l]));

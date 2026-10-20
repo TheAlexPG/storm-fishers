@@ -1,6 +1,19 @@
 import type { RockObstacle } from '../world/boat';
 import { PORT_POINTS } from '../world/port';
 import { terrainHeight } from '../world/portTerrain';
+import { ISLANDS, islandHeight } from '../world/islandShape';
+import { PORT_SITES, pierRect, siteBox, siteServices } from '../world/portSites';
+
+/** суходоли поза підкладкою домашнього берега: гавані й острови (bbox x0,z0,x1,z1) */
+const LANDS: Array<[number, number, number, number]> = [
+  ...PORT_SITES.map((p) => siteBox(p)),
+  ...ISLANDS.map((d): [number, number, number, number] => {
+    const r = d.r * Math.sqrt(d.elong) * 1.35 + 6;
+    return [d.x - r, d.z - r, d.x + r, d.z + r];
+  }),
+];
+const SITE_PIERS = PORT_SITES.map((p) => pierRect(p));
+const SITE_SVC = PORT_SITES.flatMap((p) => siteServices(p));
 
 // підкладка суші (лоція): x −520..520, z −780..80, 2 м на піксель
 const LX0 = -520, LZ0 = -780, LM = 2, LW = 520, LH = 430;
@@ -77,6 +90,14 @@ export class Minimap {
     c.imageSmoothingEnabled = true;
     c.drawImage(this.landLayer(), lx, lz, LW * LM * this.scale, LH * LM * this.scale);
 
+    // гавані й острови — свої підкладки (кешуються), лише ті, що поруч
+    for (let k = 0; k < LANDS.length; k++) {
+      const [x0, z0, x1, z1] = LANDS[k];
+      if (x1 < boatX - 260 || x0 > boatX + 260 || z1 < boatZ - 260 || z0 > boatZ + 260) continue;
+      const [ax, az] = toMap(x0, z0);
+      c.drawImage(this.extraLand(k), ax, az, (x1 - x0) * this.scale, (z1 - z0) * this.scale);
+    }
+
     // кільця зон (400 м, 900 м)
     c.strokeStyle = 'rgba(42, 58, 70, 0.3)';
     c.setLineDash([2, 4]);
@@ -95,9 +116,16 @@ export class Minimap {
       c.fillStyle = '#b08a5a';
       c.fillRect(px, pz, 48 * this.scale, 22 * this.scale);
     }
+    // причали інших гаваней
+    c.fillStyle = '#b08a5a';
+    for (const pr of SITE_PIERS) {
+      if (Math.abs(pr.x0 - boatX) > 260 || Math.abs(pr.z0 - boatZ) > 260) continue;
+      const [px, pz] = toMap(pr.x0, pr.z0);
+      c.fillRect(px, pz, Math.max(1.5, (pr.x1 - pr.x0) * this.scale), Math.max(1.5, (pr.z1 - pr.z0) * this.scale));
+    }
     // точки сервісу
     c.fillStyle = '#2a3a46';
-    for (const p of PORT_POINTS) {
+    for (const p of [...PORT_POINTS, ...SITE_SVC]) {
       const [px, pz] = toMap(p.x, p.z);
       c.beginPath();
       c.arc(px, pz, 1.6, 0, Math.PI * 2);
@@ -195,6 +223,39 @@ export class Minimap {
     c.fillText('П', cx, 13);
 
     c.restore();
+  }
+
+  private extra: HTMLCanvasElement[] = [];
+
+  /** підкладка одного суходолу (гавань / острів) з islandHeight, 2 м на піксель */
+  private extraLand(k: number): HTMLCanvasElement {
+    if (this.extra[k]) return this.extra[k];
+    const [x0, z0, x1, z1] = LANDS[k];
+    const W = Math.ceil((x1 - x0) / LM), H = Math.ceil((z1 - z0) / LM);
+    const cv = document.createElement('canvas');
+    cv.width = W;
+    cv.height = H;
+    const g = cv.getContext('2d')!;
+    const img = g.createImageData(W, H);
+    const d = img.data;
+    const hs = new Float32Array(W * H);
+    for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) hs[j * W + i] = islandHeight(x0 + i * LM, z0 + j * LM);
+    for (let j = 0; j < H; j++) {
+      for (let i = 0; i < W; i++) {
+        const h = hs[j * W + i];
+        if (h <= 0.05) continue;
+        const o = (j * W + i) * 4;
+        const coast = (i > 0 && hs[j * W + i - 1] <= 0.05) || (j > 0 && hs[(j - 1) * W + i] <= 0.05) || (i < W - 1 && hs[j * W + i + 1] <= 0.05) || (j < H - 1 && hs[(j + 1) * W + i] <= 0.05);
+        const col = coast ? [42, 58, 70] : h < 2.2 ? [230, 211, 168] : h < 14 ? [169, 192, 138] : [158, 174, 120];
+        d[o] = col[0];
+        d[o + 1] = col[1];
+        d[o + 2] = col[2];
+        d[o + 3] = 255;
+      }
+    }
+    g.putImageData(img, 0, 0);
+    this.extra[k] = cv;
+    return cv;
   }
 
   /** суша (раз): пісок → трава → пагорби, берег чорнилом */
