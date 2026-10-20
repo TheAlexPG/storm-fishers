@@ -694,7 +694,7 @@ export class Player {
       case 'tent': return boat.tentFolded ? L('Тент — розкласти (козирок і біміні)', `Canvas — unfold (sprayhood and bimini)`) : L('Тент — скласти (відкрити небо й паруси)', `Canvas — fold (open up the sky and the sails)`);
       case 'curtain': return boat.tentClosed ? L('Штори тенту — скрутити (видно все навколо)', `Tent curtains — roll up (see all around)`) : L('Штори тенту — опустити (захист від хвиль і дощу)', `Tent curtains — lower (shelter from waves and rain)`);
       case 'cablight': return L(`Світло в каюті: ${modeLabel(boat.cabinLights)} — перемкнути (авто → увімк → вимк)`, `Cabin lights: ${modeLabel(boat.cabinLights)} — switch (auto → on → off)`);
-      case 'decklight': return L(`Світло на палубі й ходові вогні: ${modeLabel(boat.deckLights)} — перемкнути`, `Deck & running lights: ${modeLabel(boat.deckLights)} — switch`);
+      case 'decklight': return L(`Світло палуби, лампи над штурвалом і ходові вогні: ${modeLabel(boat.deckLights)} — перемкнути`, `Deck, helm lamps & running lights: ${modeLabel(boat.deckLights)} — switch`);
       case 'door': return boat.doorOpen ? L('Двері каюти — зачинити (у шторм вода ллється в салон)', `Cabin doors — close (in a storm water pours into the saloon)`) : L('Двері каюти — відчинити', `Cabin doors — open`);
       case 'nets': return this.stationText?.('nets') ?? L('Сітки', `Nets`);
       case 'anchor': return this.stationText?.('anchor') ?? L('Брашпиль — якір', `Windlass — anchor`);

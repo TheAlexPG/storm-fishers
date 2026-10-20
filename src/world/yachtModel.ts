@@ -22,6 +22,7 @@ export interface YachtRefs {
   hullMats: THREE.MeshStandardMaterial[];
   interiorLight: THREE.PointLight;
   cockpitLight: THREE.PointLight;
+  archLampMat?: THREE.MeshStandardMaterial;
   glowMats: THREE.MeshStandardMaterial[];
   needleRpm: THREE.Group;
   needleFuel: THREE.Group;
@@ -1044,6 +1045,8 @@ export class YachtBuilder {
     this.refs.cockpitLight.position.set(0, ay - 0.45, -3.6);
     g.add(this.refs.cockpitLight);
     const lampMat = new THREE.MeshStandardMaterial({ color: 0xfff4e0, emissive: 0xffd9a0, emissiveIntensity: 0.4 });
+    // плафони над штурвалом: їх веде вимикач «Палуба» (boat.setInteriorLight)
+    this.refs.archLampMat = lampMat;
     for (const x of [-0.35, 0.35]) {
       const l = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.03, 12), lampMat);
       l.position.set(x, ay - 0.04, ARCH.z1);

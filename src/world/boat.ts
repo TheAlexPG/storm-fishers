@@ -209,6 +209,7 @@ export class Boat {
   lightsCtl!: BoatLights;
   private stormNow = 0;
   private cockpitLight!: THREE.PointLight;
+  private archLampMat: THREE.MeshStandardMaterial | null = null;
   private glowMats: THREE.MeshStandardMaterial[] = [];
   private lights: Array<{ light: THREE.PointLight | null; lamp: THREE.Mesh }> = [];
   private spotlight: THREE.SpotLight | null = null;
@@ -297,6 +298,7 @@ export class Boat {
     this.hullMats = r.hullMats;
     this.interiorLight = r.interiorLight;
     this.cockpitLight = r.cockpitLight;
+    this.archLampMat = r.archLampMat ?? null;
     this.glowMats = r.glowMats;
     this.needleRpm = r.needleRpm;
     this.needleFuel = r.needleFuel;
@@ -416,8 +418,11 @@ export class Boat {
     // вимикач «Каюта»: авто — вночі/у шторм, увімк — завжди, вимк — темно
     const i = BoatLights.cabinLevel(this.cabinLights, daylight, storm);
     this.interiorLight.intensity = i;
-    // кокпіт: дах завжди читається як темне дерево, вночі/штормі — тепле укриття
-    this.cockpitLight.intensity = 2.5 + i * 3;
+    // кокпіт і плафони над штурвалом — на вимикачі «Палуба» разом з ходовими вогнями;
+    // слабке тло лишається, щоб дах читався як дерево, а «вимк» — справді темно
+    const d = BoatLights.deckLevel(this.deckLights, daylight);
+    this.cockpitLight.intensity = (this.deckLights === 2 ? 0.6 : 2.5) + d * 3;
+    if (this.archLampMat) this.archLampMat.emissiveIntensity = 0.08 + d * 1.6;
     // скло вікон світиться лише вночі/у шторм (вдень — прозоре, без «бежевих» плям)
     for (const m of this.glowMats) m.emissiveIntensity = m.userData.nightGlow ? Math.max(0, i - 0.25) * 0.8 : 0.15 + i * 0.55;
   }

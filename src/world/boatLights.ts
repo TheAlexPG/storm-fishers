@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { DECK_Y, HOUSE, RIG, SOLE_Y, sheerY } from './yachtLayout';
+import { DECK_Y, HOUSE, RIG, SOLE_Y, sheerY, hullHalfWidth } from './yachtLayout';
 import { glowTex } from './textures';
 import { L } from '../core/i18n';
 
@@ -65,11 +65,13 @@ export class BoatLights {
     parent.add(this.deckSwitch);
 
     // ходові вогні: лівий борт (+x) — червоний, правий (−x) — зелений
-    const sz = 4.35;
-    const sy = sheerY(sz) + 0.47;
-    this.addLamp(parent, 'side', 0xff2a1e, 0.3, sy, sz);
-    this.addLamp(parent, 'side', 0x22ff6a, -0.3, sy, sz);
-    this.addLamp(parent, 'stern', 0xfff4dc, 0.28, DECK_Y + 0.82, -4.42);
+    // на скулах носа трохи нижче за борт (як на справжній яхті), кормовий — на транці
+    const sz = 3.7;
+    const sy = sheerY(sz) - 0.07;
+    const sx = hullHalfWidth(sz) + 0.02;
+    this.addLamp(parent, 'side', 0xff2a1e, sx, sy, sz);
+    this.addLamp(parent, 'side', 0x22ff6a, -sx, sy, sz);
+    this.addLamp(parent, 'stern', 0xfff4dc, 0.62, sheerY(-4.7) - 0.1, -4.73);
     this.addLamp(parent, 'mast', 0xfff4dc, 0, RIG.base + 4.0, RIG.mastZ + 0.17);
     this.addLamp(parent, 'anchor', 0xfff4dc, 0, RIG.top + 0.12, RIG.mastZ);
 
