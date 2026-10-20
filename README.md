@@ -134,6 +134,7 @@ explore islands, outrun Beaufort‑scale storms and come home with a hold full o
 | **A / D** | tilt the rod while fighting |
 | **R** | reel in the line |
 | **M** | nautical chart (wheel — zoom, drag — pan, click — add route point, RMB — remove) |
+| **N** | minimap range: near · medium · far (the badge under it tells you if you're on a fishing ground or a school) |
 | **Radio** | aim at a button or knob · **LMB** press · **RMB** back · **wheel** turn |
 | **V** | stern chase camera / first person at the wheel |
 | **P** · **H** | photo mode · hide the interface |

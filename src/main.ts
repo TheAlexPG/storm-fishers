@@ -1579,6 +1579,11 @@ class Game {
       intro: this.phase === 'intro',
     });
     // M — штурвальна карта (повноекранна)
+    // N — масштаб мінімапи (близько · середньо · далеко)
+    if (input.pressed('KeyN') && this.phase === 'play' && !this.dialogs.isOpen) {
+      const r = this.minimap.cycleZoom();
+      this.hud.toast(L(`🧭 Мінімапа: огляд ≈${r}`, `🧭 Minimap: range ≈${r}`), 'good', 1400);
+    }
     if (input.pressed('KeyM')) {
       if (this.phase === 'map') this.closeMap();
       else if (this.phase === 'play' && !this.dialogs.isOpen) this.openMap();
@@ -2893,7 +2898,7 @@ class Game {
     this.mapView.buoys = this.nets.markers();
     this.minimap.buoys = this.mapView.buoys;
     this.updateInstruments(this.clockDelta);
-    this.minimap.update(this.boat.pos.x, this.boat.pos.z, this.boat.heading, this.port.rocks, time.isNight);
+    this.minimap.update(this.boat.pos.x, this.boat.pos.z, this.boat.heading, this.port.rocks, time.isNight, this.clockDelta);
     // відкрита мапа в коопі — друзі й човен рухаються (~4 рази/с)
     if (this.phase === 'map') {
       this.mapRefreshT -= this.clockDelta;
@@ -3466,6 +3471,14 @@ class Game {
     this.minimap.ais = has.radar;
     this.mapView.bots = has.radar ? bots : [];
     this.minimap.route = has.gps ? g.route : [];
+    // мінімапа: GPS відкриває рибні місця, стаї й доставки; вітер — завжди
+    this.minimap.gps = has.gps;
+    this.minimap.places = g.places;
+    this.minimap.reports = g.reports;
+    this.minimap.orders = g.cargo.orders;
+    this.minimap.speciesName = (id) => g.speciesName(id);
+    this.minimap.windDir = this.weather.windDir;
+    this.minimap.windMs = this.weather.windMs;
     // кооп: точки маршрутів екіпажу свого борту (лоція, стіл, мінімапа)
     const crew = this.coop.active ? this.coop.crewRoutes() : [];
     this.mapView.crew = crew;
