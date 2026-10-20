@@ -1,5 +1,6 @@
 import { fbm, smoothstep } from './portKit';
 import { L } from '../core/i18n';
+import { WS, addHaven } from '../core/region';
 
 // ─────────────────────────────────────────────────────────────
 // Порти світу (чиста математика й дані — без three.js). Домашній «Шторм»
@@ -85,7 +86,7 @@ const N = { ox: 0, oz: -1 };
 const E = { ox: 1, oz: 0 };
 const W = { ox: -1, oz: 0 };
 
-export const PORT_SITES: PortSite[] = [
+const RAW_SITES: PortSite[] = [
   {
     id: 'port-kut', name: L('Рибальський Кут', `Fisher's Nook`), sub: L('село на палях · пальне й рибна лавка', `a village on stilts · fuel and a fish stall`), size: 'tiny', style: 'village',
     x: -470, z: 70, ...E, R: 34, elong: 1.4, peak: 9, seed: 61,
@@ -135,6 +136,10 @@ export const PORT_SITES: PortSite[] = [
     ],
   },
 ];
+
+/** позиції — у масштабі світу (region.ts WS); кожна гавань — затишок від шторму */
+export const PORT_SITES: PortSite[] = RAW_SITES.map((p) => ({ ...p, x: Math.round(p.x * WS), z: Math.round(p.z * WS) }));
+for (const p of PORT_SITES) addHaven({ x: p.x + p.ox * p.pierL * 0.5, z: p.z + p.oz * p.pierL * 0.5, r: 150 + p.R * 1.3 });
 
 /**
  * Гачок для нових видів послуг (напр. окремі покупці риби): додай запис у

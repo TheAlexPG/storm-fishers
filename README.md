@@ -53,6 +53,7 @@ explore islands, outrun Beaufort‑scale storms and come home with a hold full o
 - **Living ocean** — Gerstner waves that grow from harbour ripples to 14‑metre swells offshore, refractive transparent water, foam, spray and rain.
 - **Weather that matters** — wind and sea state on the Beaufort scale and a day/night cycle with sunsets, a lighthouse and running lights.
 - **Long, readable weather cycles** — 8–14 minutes of fair weather, a front that builds for a few minutes, then a 5–8 minute storm that slowly eases. The radio warns you about 8–9 minutes before it hits, so there's time to reef and run for port.
+- **Rough waters** — three dangerous regions (the Storm Belt, the Shell Reefs and the Open Ocean) have higher seas and turn every front into a real storm. One weather system covers the whole sea, so between storms they are calm enough to fish; you get a warning about 7–9 minutes ahead, and every harbour is a safe haven.
 - **Wave slamming** — punch head‑on into big seas at full throttle and the hull takes damage; take them at an angle like a real sailor.
 
 ### ⛵ The yacht
@@ -69,8 +70,10 @@ explore islands, outrun Beaufort‑scale storms and come home with a hold full o
 - **Physical catch** — fish flop on deck, can be washed overboard, and are carried by hand to the fish box or the hold.
 - **Commercial nets** (mid/end‑game) — set drift nets from the stern drum, mark them with buoys, come back hours later and haul the catch. Storms can tear them.
 - **12 species** across shore, mid‑water and open‑sea zones, with radio reports of where the schools are biting today.
+- **Fishing grounds** — four marked spots where the fish run 1.5–2.5× heavier and trophies are far more common. The richest ones lie deep inside the rough waters. They appear on the chart as sailors' rumours with a risk rating (⚠ to ⚠⚠⚠) until you find them.
 
 ### 🏝️ Islands & treasure
+- **A sea worth crossing** — about 3.4 × 2.6 km of open water. The nearest harbour is under a kilometre from home, the farthest, the whaling station, about 2 km.
 - **Five islands to explore** — a gull rock, a pine island with a ruined keeper's hut, a palm spit, a pirate cove and a shell island, each with its own props.
 - **Go ashore** — bring the boat in close, press **E** and walk the beaches and hills; the yacht holds its position while you're away, and you can always get back aboard.
 - **Hidden hats & treasure** — find an ushanka, a sou'wester, a straw hat, a pirate tricorn and a crown of shells (plus a bonus hat for discovering every island), message bottles and a pirate chest.

@@ -7,21 +7,22 @@ import { terrainHeight } from '../world/portTerrain';
 import { LANDMARKS } from '../world/landmarks';
 import type { RockObstacle } from '../world/boat';
 import type { GameState } from '../game/state';
-import { SCHOOL_ANCHORS, SCHOOL_R } from '../game/fish';
+import { HOTSPOTS, SCHOOL_ANCHORS, SCHOOL_R } from '../game/fish';
+import { ROUGH, WORLD, WS, roughness } from '../core/region';
 import { L, plural } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // Карта (M): повноекранна штурвальна схема акваторії.
-// Світ: x -950..950, z -560..780. Північ (-Z) — вгору.
+// Світ: region.ts WORLD (≈3,4 × 2,6 км). Північ (-Z) — вгору.
 // Коліщатко — зум до курсора, перетягування — рух карти; ЛКМ — точка в кінець
 // маршруту (Shift — вставити в найближчий відрізок), тягни точку — пересунути,
 // ПКМ по точці — прибрати. Той самий рендер малює паперову карту на столі.
 // ─────────────────────────────────────────────────────────────
 
-const W0 = -950;
-const W1 = 950;
-const H0 = -560;
-const H1 = 780;
+const W0 = WORLD.W0;
+const W1 = WORLD.W1;
+const H0 = WORLD.H0;
+const H1 = WORLD.H1;
 
 // палітра «паперової лоції»
 const INK = '#2a3a46';
@@ -154,7 +155,8 @@ export class MapView {
         <span><i class="lg lg-boat"></i>яхта</span>
         <span><i class="lg lg-bot"></i>рибалки</span>
         <span><i class="lg lg-rock"></i>скелі</span>
-        <span><i class="lg lg-ring"></i>зони: берег до 400 м, середина до 900 м</span>
+        <span><i class="lg lg-ring"></i>зони: берег до ${(0.4 * WS).toFixed(1).replace('.', ',')} км, середина до ${(0.9 * WS).toFixed(1).replace('.', ',')} км</span>
+        <span>🎣 рибне місце · ⚠ ризик · сірувата вода — бурхливий район</span>
         <span>🐟 стая (за радіозвітом)</span>
         <span><i class="lg lg-wp"></i>маршрут (компас веде на першу точку)</span>
         <span><i class="lg lg-track"></i>пройдений шлях</span>
@@ -186,7 +188,8 @@ export class MapView {
         <span><i class="lg lg-boat"></i>yacht</span>
         <span><i class="lg lg-bot"></i>fishermen</span>
         <span><i class="lg lg-rock"></i>rocks</span>
-        <span><i class="lg lg-ring"></i>zones: coast up to 400 m, mid-water up to 900 m</span>
+        <span><i class="lg lg-ring"></i>zones: coast up to ${(0.4 * WS).toFixed(1)} km, mid-water up to ${(0.9 * WS).toFixed(1)} km</span>
+        <span>🎣 fishing ground · ⚠ risk · greyish water — rough area</span>
         <span>🐟 school (from radio reports)</span>
         <span><i class="lg lg-wp"></i>route (the compass leads to the first point)</span>
         <span><i class="lg lg-track"></i>track sailed</span>
@@ -452,18 +455,18 @@ export class MapView {
     c.fillRect(0, 0, w, h);
     this.drawBase(c, w, h, view);
 
-    // сітка 100 м — ледь помітна
+    // сітка 200 м — ледь помітна
     c.strokeStyle = 'rgba(42,58,70,0.06)';
     c.lineWidth = 1;
-    for (let gx = Math.ceil(W0 / 100) * 100; gx <= W1; gx += 100) {
+    for (let gx = Math.ceil(W0 / 200) * 200; gx <= W1; gx += 200) {
       c.beginPath(); c.moveTo(mx(gx), oy); c.lineTo(mx(gx), oy + HH * s); c.stroke();
     }
-    for (let gz = Math.ceil(H0 / 100) * 100; gz <= H1; gz += 100) {
+    for (let gz = Math.ceil(H0 / 200) * 200; gz <= H1; gz += 200) {
       c.beginPath(); c.moveTo(ox, my(gz)); c.lineTo(ox + WW * s, my(gz)); c.stroke();
     }
 
     // ── зони (кільця від порту: берег <400, середина <900) ──
-    for (const r of [900, 400]) {
+    for (const r of [900 * WS, 400 * WS]) {
       c.beginPath();
       c.arc(mx(0), my(0), r * s, 0, Math.PI * 2);
       c.setLineDash([2, 7]);
@@ -476,9 +479,9 @@ export class MapView {
     c.fillStyle = INK_SOFT;
     c.textAlign = 'center';
     const spaced = (t: string) => t.toUpperCase().split('').join('\u2009');
-    c.fillText(spaced(L('узбережжя', `coastal`)), mx(250), my(140));
-    c.fillText(spaced(L('середина', `mid-water`)), mx(0) + 650 * s, my(0) + 120 * s);
-    c.fillText(spaced(L('відкрите море', `open sea`)), mx(0), my(0) + 1000 * s > h - 20 && view.zoom < 1.01 ? h - 24 : my(0) + 1000 * s);
+    c.fillText(spaced(L('узбережжя', `coastal`)), mx(250 * WS), my(140 * WS));
+    c.fillText(spaced(L('середина', `mid-water`)), mx(0) + 650 * WS * s, my(0) + 120 * WS * s);
+    c.fillText(spaced(L('відкрите море', `open sea`)), mx(0), my(0) + 1000 * WS * s > h - 20 && view.zoom < 1.01 ? h - 24 : my(0) + 1000 * WS * s);
 
     // ── порт ──
     c.font = `700 13px ${FONT_D}`;
@@ -569,7 +572,20 @@ export class MapView {
     }
 
     // ── пам'ятки: відкриті — з назвою, решта — «?» ──
+    // ── бурхливі райони: підпис із попередженням ──
+    c.textAlign = 'center';
+    for (const a of ROUGH) {
+      const ax = Math.max(W0 + 160, Math.min(W1 - 160, a.x)), az = Math.max(H0 + 60, Math.min(H1 - 60, a.z));
+      c.font = `700 11px ${FONT_D}`;
+      c.fillStyle = 'rgba(70,86,104,0.85)';
+      c.fillText(`⚠ ${spaced(a.name)}`, mx(ax), my(az) - a.r * 0.55 * s);
+      c.font = `600 10.5px ${FONT}`;
+      c.fillStyle = 'rgba(70,86,104,0.7)';
+      c.fillText(L('вища хвиля · лютіші шторми', `higher seas · fiercer storms`), mx(ax), my(az) - a.r * 0.55 * s + 14);
+    }
+
     for (const l of LANDMARKS) {
+      if (l.id.startsWith('hot-')) continue;
       const px = mx(l.x), pz = my(l.z);
       const found = game.places.includes(l.id);
       // гавані — якір; назву знають і до відвідин (чутки моряків), відкриті — яскраві
@@ -614,6 +630,35 @@ export class MapView {
         c.font = `800 12px ${FONT}`;
         c.fillStyle = INK_SOFT;
         c.fillText('?', px, pz + 4);
+      }
+    }
+
+    // ── рибні місця: відкриті — назва й ризик; решта — «чутки» ──
+    for (const hs of HOTSPOTS) {
+      const px = mx(hs.x), pz = my(hs.z);
+      const found = game.places.includes(hs.id);
+      const rr = Math.max(14, hs.r * 0.8 * s);
+      c.beginPath();
+      c.arc(px, pz, rr, 0, Math.PI * 2);
+      c.fillStyle = found ? 'rgba(226,103,74,0.14)' : 'rgba(226,103,74,0.06)';
+      c.fill();
+      c.setLineDash(found ? [] : [4, 4]);
+      c.lineWidth = 1.5;
+      c.strokeStyle = found ? 'rgba(226,103,74,0.75)' : 'rgba(226,103,74,0.45)';
+      c.stroke();
+      c.setLineDash([]);
+      c.textAlign = 'center';
+      c.font = '15px -apple-system, "Segoe UI", sans-serif';
+      c.fillText('🎣', px, pz + 5);
+      const risk = '⚠'.repeat(hs.risk);
+      c.font = `700 11.5px ${FONT_D}`;
+      c.fillStyle = found ? '#a8432c' : 'rgba(168,67,44,0.7)';
+      const label = found ? `${hs.name} · ${risk}` : L(`Чутки: рибне місце · ${risk}`, `Rumour: fishing ground · ${risk}`);
+      c.fillText(label, px, pz + rr + 14);
+      if (found) {
+        c.font = `600 10.5px ${FONT}`;
+        c.fillStyle = INK_SOFT;
+        c.fillText(L(`риба ×${hs.kg.toFixed(1).replace('.', ',')} ваги · трофеї частіше`, `fish ×${hs.kg.toFixed(1)} weight · more trophies`), px, pz + rr + 28);
       }
     }
 
@@ -991,7 +1036,7 @@ export class MapView {
     const step = 2; // пікселі (dpr), далі — блоками
     const hex = (v: number): [number, number, number] => [(v >> 16) & 255, (v >> 8) & 255, v & 255];
     const PAPER = hex(0xefe6d4);
-    const SEA_N = hex(0xc9e1dc), SEA_M = hex(0xb4d4d2), SEA_F = hex(0x9fc5c8);
+    const SEA_N = hex(0xc9e1dc), SEA_M = hex(0xb4d4d2), SEA_F = hex(0x9fc5c8), SEA_ROUGH = hex(0x8fa3b3);
     const SAND = hex(0xe6d3a8), GRASS = hex(0xa9c08a), GRASS2 = hex(0x8fae72), HILL = hex(0xb5ab8a), ROCK = hex(0xc9c2b2);
     const mix = (a: number[], b: number[], t: number) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
     const hs: number[] = [];
@@ -1011,7 +1056,10 @@ export class MapView {
             if (ht > 3 && ht % 10 < 0.9) col = mix(col, [42, 58, 70], 0.18);
           } else {
             const r = Math.hypot(wx, wz);
-            col = r < 400 ? SEA_N : r < 900 ? SEA_M : SEA_F;
+            col = r < 400 * WS ? SEA_N : r < 900 * WS ? SEA_M : SEA_F;
+            // бурхливі райони — сірувата «штормова» вода
+            const rg = roughness(wx, wz);
+            if (rg > 0.01) col = mix(col, SEA_ROUGH, Math.min(1, rg * 1.6) * 0.55);
             // мілина біля берега світліша
             if (ht > -6 && ht > -90) col = mix(col, [222, 236, 230], Math.max(0, Math.min(1, (ht + 6) / 6)) * 0.6);
           }

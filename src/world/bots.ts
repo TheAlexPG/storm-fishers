@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { clampToWorld } from '../core/region';
 import { isUk, L } from '../core/i18n';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Ocean } from '../core/ocean';
@@ -34,11 +35,11 @@ interface Def {
 
 const QUAY_Z = -36.6;
 const DEFS: Def[] = [
-  { name: 'Ластівка', kind: 'trawler', hull: 0x2f6f9f, trim: 0xf1ece0, berth: { x: 34, z: QUAY_Z, h: -Math.PI / 2 }, zone: [160, 380], cruise: 6.2 },
-  { name: 'Стара Марта', kind: 'trawler', hull: 0xb8432e, trim: 0xf3e6c8, berth: { x: 45, z: QUAY_Z, h: -Math.PI / 2 }, zone: [420, 820], cruise: 5.6 },
-  { name: 'Чайка', kind: 'sloop', hull: 0xf4f1ea, trim: 0x24878c, berth: { x: 56, z: QUAY_Z, h: -Math.PI / 2 }, zone: [200, 520], cruise: 6.8 },
-  { name: 'Дельфін', kind: 'trawler', hull: 0x3e7d4f, trim: 0xf1ece0, berth: { x: -47, z: QUAY_Z, h: Math.PI / 2 }, zone: [300, 700], cruise: 5.9 },
-  { name: 'Бриз', kind: 'sloop', hull: 0x22303b, trim: 0xe2674a, berth: { x: -58, z: QUAY_Z, h: Math.PI / 2 }, zone: [140, 420], cruise: 7.2 },
+  { name: 'Ластівка', kind: 'trawler', hull: 0x2f6f9f, trim: 0xf1ece0, berth: { x: 34, z: QUAY_Z, h: -Math.PI / 2 }, zone: [240, 665], cruise: 6.2 },
+  { name: 'Стара Марта', kind: 'trawler', hull: 0xb8432e, trim: 0xf3e6c8, berth: { x: 45, z: QUAY_Z, h: -Math.PI / 2 }, zone: [630, 1435], cruise: 5.6 },
+  { name: 'Чайка', kind: 'sloop', hull: 0xf4f1ea, trim: 0x24878c, berth: { x: 56, z: QUAY_Z, h: -Math.PI / 2 }, zone: [300, 910], cruise: 6.8 },
+  { name: 'Дельфін', kind: 'trawler', hull: 0x3e7d4f, trim: 0xf1ece0, berth: { x: -47, z: QUAY_Z, h: Math.PI / 2 }, zone: [450, 1225], cruise: 5.9 },
+  { name: 'Бриз', kind: 'sloop', hull: 0x22303b, trim: 0xe2674a, berth: { x: -58, z: QUAY_Z, h: Math.PI / 2 }, zone: [210, 735], cruise: 7.2 },
 ];
 
 /** точка на підході до причалу (з моря — прямо на північ) */
@@ -281,7 +282,7 @@ export class Bots {
     for (let k = 0; k < 40; k++) {
       const a = (Math.random() - 0.5) * 2.6; // на південь від берега
       const r = b.d.zone[0] + Math.random() * (b.d.zone[1] - b.d.zone[0]);
-      const x = Math.sin(a) * r, z = Math.cos(a) * r;
+      const [x, z] = clampToWorld(Math.sin(a) * r, Math.cos(a) * r, 80);
       if (this.free(x, z, 14)) return [x, z];
     }
     return [b.d.berth.x * 3, 200];

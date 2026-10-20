@@ -1,4 +1,5 @@
 import { clamp, mulberry32 } from '../core/math';
+import { WS } from '../core/region';
 import { FISH, FISH_BY_ID, fishSellPrice, zoneFromDist } from './fish';
 import { isUk, L, plural } from '../core/i18n';
 import { avgKg, FishMarket, PortMarket, glutUnits, speciesGen, type MarketCtx, type MarketEvent, type MarketSave } from './market';
@@ -505,6 +506,7 @@ export class GameState {
   buildSave(): SaveData {
     return {
       version: 1,
+      worldScale: WS,
       money: this.money,
       fuel: this.fuel,
       hull: this.hull,
@@ -569,7 +571,7 @@ export class GameState {
     try {
       const raw = localStorage.getItem(GameState.saveKey);
       if (!raw) return null;
-      return JSON.parse(raw) as Partial<SaveData>;
+      return migrateWorld(JSON.parse(raw) as Partial<SaveData>);
     } catch {
       return null;
     }
@@ -710,4 +712,28 @@ export function newsText(text: string, who: string): string {
   const name = (FISH_BY_ID[top]?.name ?? top).toLowerCase();
   const m = more > 0 ? ` and ${more} more species` : '';
   return `unloaded ${kg} kg of fish — mostly ${name}${m}${drop ? ` · ${name} price is falling` : ''}`;
+}
+
+/**
+ * Старий сейв із меншого світу (region.ts WS): координати маршруту, сіток і якоря
+ * переносимо в новий масштаб, а човен main ставить заново (relocate) — у порту
+ * на причал, у морі — у ту саму «відносну» точку, якщо там вода.
+ */
+export function migrateWorld(d: Partial<SaveData>): Partial<SaveData> {
+  const old = Number(d.worldScale) || 1;
+  if (Math.abs(old - WS) < 1e-6) return d;
+  const k = WS / old;
+  const sc = <T extends { x: number; z: number }>(p: T): T => ({ ...p, x: p.x * k, z: p.z * k });
+  if (Array.isArray(d.route)) d.route = d.route.map(sc);
+  if (d.waypoint) d.waypoint = sc(d.waypoint);
+  if (d.anchor) d.anchor = { ...d.anchor, x: d.anchor.x * k, z: d.anchor.z * k };
+  const nets = d.nets as { nets?: Array<{ x0: number; z0: number; x1: number; z1: number }> } | undefined;
+  if (nets && Array.isArray(nets.nets)) nets.nets = nets.nets.map((n) => ({ ...n, x0: n.x0 * k, z0: n.z0 * k, x1: n.x1 * k, z1: n.z1 * k }));
+  if (Number.isFinite(d.boatX) && Number.isFinite(d.boatZ)) {
+    d.boatX = d.boatX! * k;
+    d.boatZ = d.boatZ! * k;
+  }
+  d.relocate = true;
+  d.worldScale = WS;
+  return d;
 }

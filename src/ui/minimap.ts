@@ -4,6 +4,7 @@ import { terrainHeight } from '../world/portTerrain';
 import { ISLANDS, islandHeight } from '../world/islandShape';
 import { PORT_SITES, pierRect, siteBox, siteServices } from '../world/portSites';
 import { L } from '../core/i18n';
+import { WS } from '../core/region';
 
 /** суходоли поза підкладкою домашнього берега: гавані й острови (bbox x0,z0,x1,z1) */
 const LANDS: Array<[number, number, number, number]> = [
@@ -103,11 +104,11 @@ export class Minimap {
       c.drawImage(this.extraLand(k), ax, az, (x1 - x0) * this.scale, (z1 - z0) * this.scale);
     }
 
-    // кільця зон (400 м, 900 м)
+    // кільця зон (fish.ts zoneFromDist)
     c.strokeStyle = 'rgba(42, 58, 70, 0.3)';
     c.setLineDash([2, 4]);
     c.lineWidth = 1;
-    for (const r of [400, 900]) {
+    for (const r of [400 * WS, 900 * WS]) {
       const [zx, zz] = toMap(0, 0);
       c.beginPath();
       c.arc(zx, zz, r * this.scale, 0, Math.PI * 2);
