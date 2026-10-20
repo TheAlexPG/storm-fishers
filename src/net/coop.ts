@@ -693,6 +693,8 @@ export class Coop {
       if (this.myHat !== 'captain') st.h = this.myHat;
       const fs = fishing.netState();
       if (fs) st.f = fs;
+      const rd = fishing.netHand;
+      if (rd) st.rd = rd;
       const msg: GameMsg = { k: 'p', s: st };
       if (this.crewing && player.wheeling) msg.helm = [r(this.myHelm[0]), r(this.myHelm[1])];
       if (pumping) msg.pump = 1;
