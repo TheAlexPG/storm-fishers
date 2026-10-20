@@ -1,3 +1,4 @@
+import { seaDist } from '../core/region';
 import * as THREE from 'three';
 import { clamp, rand } from '../core/math';
 import { Boat } from '../world/boat';
@@ -487,7 +488,7 @@ export class Fishing {
     if (!r || r.state !== 'bite') return;
     const info = ROD_INFO[r.kind];
     const pier = r.pier;
-    const zone = pier ? 'shore' : zoneFromDist(Math.hypot(this.boat.pos.x, this.boat.pos.z));
+    const zone = pier ? 'shore' : zoneFromDist(seaDist(this.boat.pos.x, this.boat.pos.z));
     const day = !time.isNight;
     const pool = FISH.filter((f) => f.zones.includes(zone) && (day ? f.day : f.night));
     if (pool.length === 0) pool.push(...FISH.filter((f) => f.zones.includes(zone)));

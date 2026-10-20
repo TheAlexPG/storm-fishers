@@ -1,7 +1,7 @@
 import type { FishItem, FishSpecies, ZoneId } from '../core/types';
 import { L } from '../core/i18n';
 import { paceMul } from './pace';
-import { WS, seaMul } from '../core/region';
+import { WS, seaDist, seaMul } from '../core/region';
 
 // ─────────────────────────────────────────────────────────────
 // 12 видів риби, 3 зони, денні/нічні вікна.
@@ -102,7 +102,7 @@ export interface FishingSpot {
 export const SCHOOL_R = 120;
 
 export function fishingSpot(x: number, z: number, reports: ReadonlyArray<{ zone: ZoneId }>): FishingSpot {
-  const d = Math.hypot(x, z);
+  const d = seaDist(x, z);
   const far = Math.min(1, Math.max(0, (d - 120 * WS) / (1000 * WS)));
   let heat = 0;
   for (const r of reports) {

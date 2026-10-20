@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { FishItem } from '../core/types';
 import type { Ocean } from '../core/ocean';
 import { offshore, type Weather } from '../core/weather';
-import { localIntensity, seaMul } from '../core/region';
+import { localIntensity, seaDist, seaMul } from '../core/region';
 import type { GameState } from '../game/state';
 import { FISH, makeFish, zoneFromDist } from '../game/fish';
 import { netCount, netHaulSpeed, netLength } from '../game/upgrades';
@@ -243,7 +243,7 @@ export class Nets {
   /** скільки риби дасть сітка зараз (для витягування) */
   private rollCatch(n: NetSet, level: number, game: GameState): FishItem[] {
     const mx = (n.x0 + n.x1) / 2, mz = (n.z0 + n.z1) / 2;
-    const zone = zoneFromDist(Math.hypot(mx, mz));
+    const zone = zoneFromDist(seaDist(mx, mz));
     const off = offshore(mx, mz);
     const base = zone === 'shore' ? 7 : zone === 'mid' ? 11 : 15;
     const soakF = 1 - Math.exp(-n.soakH / 4);

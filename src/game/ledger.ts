@@ -5,8 +5,8 @@
 // гравця своя (кооп-гість пише у свій слот сейву).
 // ─────────────────────────────────────────────────────────────
 
-export type EarnKind = 'exchange' | 'buyers' | 'contracts' | 'kitchen' | 'finds' | 'insurance' | 'other';
-export type SpendKind = 'fuel' | 'repair' | 'upgrades' | 'insurance' | 'nets' | 'kitchen' | 'tow' | 'fees' | 'other';
+export type EarnKind = 'exchange' | 'buyers' | 'contracts' | 'kitchen' | 'finds' | 'insurance' | 'cargo' | 'other';
+export type SpendKind = 'fuel' | 'repair' | 'upgrades' | 'insurance' | 'nets' | 'kitchen' | 'tow' | 'fees' | 'base' | 'other';
 
 export interface LedgerDay {
   /** номер ігрового дня */
@@ -33,8 +33,8 @@ const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0
 
 export class Ledger {
   days: LedgerDay[] = [];
-  earned: Record<EarnKind, number> = { exchange: 0, buyers: 0, contracts: 0, kitchen: 0, finds: 0, insurance: 0, other: 0 };
-  spent: Record<SpendKind, number> = { fuel: 0, repair: 0, upgrades: 0, insurance: 0, nets: 0, kitchen: 0, tow: 0, fees: 0, other: 0 };
+  earned: Record<EarnKind, number> = { exchange: 0, buyers: 0, contracts: 0, kitchen: 0, finds: 0, insurance: 0, cargo: 0, other: 0 };
+  spent: Record<SpendKind, number> = { fuel: 0, repair: 0, upgrades: 0, insurance: 0, nets: 0, kitchen: 0, tow: 0, fees: 0, base: 0, other: 0 };
   /** пройдено на яхті, м */
   distM = 0;
   /** час у морі (на борту, не біля причалу), с реального часу */

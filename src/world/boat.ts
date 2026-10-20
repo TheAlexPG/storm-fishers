@@ -1,3 +1,4 @@
+import { seaDist } from '../core/region';
 import * as THREE from 'three';
 import { Ocean } from '../core/ocean';
 import { clamp, rand, compassDeg, wrapAngle } from '../core/math';
@@ -120,6 +121,8 @@ export class Boat {
   angVel = new THREE.Vector3();
   /** зараз тримається на шварті (для HUD) */
   mooredNow = false;
+  /** вантаж у слотах (game/cargo.ts code) — для кооп-екіпажу */
+  cargoCode = 0;
   /** висота дна/суші (для відштовхування від причалу під парусами) */
   landAt: ((x: number, z: number) => number) | null = null;
   /** стоїть біля причалу без газу (пришвартована) — не тоне */
@@ -1044,6 +1047,7 @@ export class Boat {
       this.hatchOpen ? 1 : 0, r(this.bilge, 10), this.doorOpen ? 1 : 0,
       ...this.anchor.netState(),
       this.tentClosed ? 1 : 0, this.tentFolded ? 1 : 0,
+      this.cargoCode,
       this.lampsOff,
     ];
   }
@@ -1072,7 +1076,8 @@ export class Boat {
       this.tentClosed = b[25] >= 0.5;
       this.tentFolded = b[26] >= 0.5;
     }
-    if (b.length > 27) this.lampsOff = b[27];
+    if (b.length > 27) this.cargoCode = b[27];
+    if (b.length > 28) this.lampsOff = b[28];
   }
 
   /** сили вітрил → загальні сили/моменти кадру; анімація парусів */
@@ -1126,7 +1131,7 @@ export class Boat {
         overload: s.overload,
         luffing: s.luffing,
         wave: 0.1 + weather.intensity * 2.5,
-        zone: ZONE_NAMES[zoneFromDist(Math.hypot(this.pos.x, this.pos.z))],
+        zone: ZONE_NAMES[zoneFromDist(seaDist(this.pos.x, this.pos.z))],
         hull: game.hull,
         hullMax: game.maxHull,
         night,

@@ -79,6 +79,20 @@ explore islands, outrun Beaufort‑scale storms and come home with a hold full o
 - **Hidden hats & treasure** — find an ushanka, a sou'wester, a straw hat, a pirate tricorn and a crown of shells (plus a bonus hat for discovering every island), message bottles and a pirate chest.
 - **Wardrobe** — pick your hat in the pause menu; in co‑op your friends see it too.
 
+### 🌍 Continents across the ocean
+- **Two continents** 3–5 km away across open water, each with its own look, climate and harbours:
+  - **The Azure Coast** — a Mediterranean shore in the spirit of Italy and Greece: white villages with blue domes and terracotta roofs, cypresses and olive groves, terraced hills, a wide turquoise shallow and calm warm sea. Harbours: **Porto Azzurro** and the Greek village **Agios Nikos**.
+  - **The Northern Reach** — a cold coast like Maine or Alaska: dark fir forests, granite shores, snow on the peaks, red-and-white lighthouses, more fog and more frequent storms. Harbours: **Cedar Harbor** and the remote trading post **Grizzly Cove**.
+- Small islands off each coast (a cypress isle, a chapel rock, an olive island; a fir island, granite skerries, a seal islet) and **three lighthouse refuges** in the middle of the ocean to shelter from a front.
+- Mountains are visible from far out at sea as hazy silhouettes; every harbour has its own fish prices — northern fish fetches more on the Azure Coast and the other way round.
+- **Cargo ships** ply between the continents (and politely steer around your yacht).
+
+### 📦 Cargo runs
+- Every harbour has a **cargo office** with waybills: wine, pottery, olives and lemons from the Azure Coast, furs, maple syrup and cedar boards from the North, tackle and mail from home — and **iced fish** from anywhere.
+- Take an order and the crates appear on the pier — **carry them aboard by hand** (E) and set them on the **cockpit benches** (strapped down automatically) or, with a bigger hold, in the **forepeak**. Deliver to the destination's cargo office before the deadline.
+- Pay grows with distance and the roughness of the route; **runs across the ocean pay the most**. Fragile goods crack when waves slam the boat, iced fish spoils on a slow trip, and late delivery pays half.
+- **Settle on another continent** — buy a home base (a villa in Porto Azzurro or a log cabin in Cedar Harbor) to sleep, save and be towed to after a wreck.
+
 ### 🗺️ Navigation
 - **Full‑screen nautical chart (M)** — zoom with the mouse wheel, drag to pan, plot **multi‑point routes**; the compass leads you to the next waypoint and advances automatically.
 - **Minimap, compass tape, bearing & distance chips**, your sailed track and discovered landmarks.
@@ -113,7 +127,7 @@ explore islands, outrun Beaufort‑scale storms and come home with a hold full o
 | **W A S D** | walk · throttle & rudder at the wheel |
 | **Mouse** | look around |
 | **Hold RMB** | binoculars ×2 — read the radio, scan the horizon |
-| **E** | interact (wheel, sails, doors, shops, chart table, nets…) · go ashore / back aboard |
+| **E** | interact (wheel, sails, doors, shops, chart table, nets…) · go ashore / back aboard · pick up / set down a cargo crate |
 | **E at the mast** | sail wheel — drop, reef 2 (40 %), reef 1 (70 %), full, gennaker · pick with the mouse or **1–5**, haul with **LMB** / **E** |
 | **LMB** | cast / strike · place a route point on the chart |
 | **Space** | reel in during a fight · jump |
@@ -158,8 +172,8 @@ In a room the host keeps the world clock and weather; each boat owner simulates 
 ```
 src/
   core/    ocean, weather, time, input, audio, music
-  world/   yacht, sails, cabin & radio, port, islands, NPC boats, nets, avatars
-  game/    state & saves, fish, fishing, market, upgrades, insurance
+  world/   yacht, sails, cabin & radio, port, islands, continents, cargo crates, NPC boats & cargo ships, nets, avatars
+  game/    state & saves, fish, fishing, market, cargo orders, upgrades, insurance
   net/     co-op session (relay / P2P) and fleet sync
   ui/      HUD, chart (map), minimap, dialogs, exchange
 ```

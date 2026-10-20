@@ -1163,6 +1163,16 @@ export class Dialogs {
     this.panel.querySelector('[data-close]')?.addEventListener('click', () => this.close());
   }
 
+  /** довільне вікно (склад, дім-база): HTML + прив'язка кнопок; прокрутка зберігається між оновленнями */
+  custom(html: string, cls: string, bind: (panel: HTMLElement) => void) {
+    const scroll = this.open ? (this.panel.querySelector('.cg-body')?.scrollTop ?? 0) : 0;
+    this.show(html, true, cls);
+    const body = this.panel.querySelector('.cg-body');
+    if (body) body.scrollTop = scroll;
+    bind(this.panel);
+    this.panel.querySelector('[data-close]')?.addEventListener('click', () => this.close());
+  }
+
   // ── РАДІО ──
 
   radio(game: GameState, weather: Weather, time: TimeCycle) {
