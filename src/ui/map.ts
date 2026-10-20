@@ -8,7 +8,8 @@ import { LANDMARKS } from '../world/landmarks';
 import type { RockObstacle } from '../world/boat';
 import type { GameState } from '../game/state';
 import { HOTSPOTS, SCHOOL_ANCHORS, SCHOOL_R } from '../game/fish';
-import { ROUGH, WORLD, WS, roughness } from '../core/region';
+import { CALM, ROUGH, WORLD, WS, roughness, seaDist } from '../core/region';
+import { DOCK_BY_ID, GOODS_BY_ID } from '../game/cargo';
 import { L, plural } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
@@ -574,20 +575,34 @@ export class MapView {
     // ── пам'ятки: відкриті — з назвою, решта — «?» ──
     // ── бурхливі райони: підпис із попередженням ──
     c.textAlign = 'center';
-    for (const a of ROUGH) {
+    for (const a of [...ROUGH, ...CALM]) {
+      const calm = a.k < 0;
       const ax = Math.max(W0 + 160, Math.min(W1 - 160, a.x)), az = Math.max(H0 + 60, Math.min(H1 - 60, a.z));
+      // райони-смуги (клімат континенту) — підпис над смугою; кола — над центром
+      const up = a.hh != null ? a.hh + a.r * 0.35 : a.r * 0.55;
       c.font = `700 11px ${FONT_D}`;
-      c.fillStyle = 'rgba(70,86,104,0.85)';
-      c.fillText(`⚠ ${spaced(a.name)}`, mx(ax), my(az) - a.r * 0.55 * s);
+      c.fillStyle = calm ? 'rgba(36,120,140,0.85)' : 'rgba(70,86,104,0.85)';
+      c.fillText(`${calm ? '☀' : '⚠'} ${spaced(a.name)}`, mx(ax), my(az) - up * s);
       c.font = `600 10.5px ${FONT}`;
-      c.fillStyle = 'rgba(70,86,104,0.7)';
-      c.fillText(L('вища хвиля · лютіші шторми', `higher seas · fiercer storms`), mx(ax), my(az) - a.r * 0.55 * s + 14);
+      c.fillStyle = calm ? 'rgba(36,120,140,0.7)' : 'rgba(70,86,104,0.7)';
+      c.fillText(calm ? L('тихе тепле море · рідкі шторми', `calm warm sea · rare storms`) : a.id === 'northc' ? L('холодно · туман і часті шторми', `cold · fog and frequent storms`) : L('вища хвиля · лютіші шторми', `higher seas · fiercer storms`), mx(ax), my(az) - up * s + 14);
     }
 
     for (const l of LANDMARKS) {
       if (l.id.startsWith('hot-')) continue;
       const px = mx(l.x), pz = my(l.z);
       const found = game.places.includes(l.id);
+      // континенти — велика назва посередині суходолу (їх знають усі моряки)
+      if (l.id.startsWith('cont-')) {
+        c.textAlign = 'center';
+        c.font = `800 ${Math.round(Math.min(26, 13 + s * 18))}px ${FONT_D}`;
+        c.fillStyle = 'rgba(42,58,70,0.72)';
+        c.fillText(spaced(l.name), px, pz);
+        c.font = `600 ${Math.round(Math.min(14, 9 + s * 8))}px ${FONT}`;
+        c.fillStyle = 'rgba(42,58,70,0.55)';
+        c.fillText(found ? l.sub : L('ще не бував', `not visited yet`), px, pz + 18);
+        continue;
+      }
       // гавані — якір; назву знають і до відвідин (чутки моряків), відкриті — яскраві
       if (l.id.startsWith('port-')) {
         c.beginPath();
@@ -684,6 +699,32 @@ export class MapView {
       c.font = `800 11.5px ${FONT}`;
       c.fillStyle = '#1d6f73';
       c.fillText(`${game.speciesName(r.speciesId)} ×${r.boost.toFixed(1).replace('.', L(',', '.'))}`, px, pz + Math.max(38, rr + 16));
+    }
+
+    // ── доставки: звідки → куди (коричневий пунктир, ящик біля гавані призначення) ──
+    for (const o of game.cargo.orders) {
+      const a = DOCK_BY_ID[o.from], b = DOCK_BY_ID[o.to];
+      if (!a || !b) continue;
+      const g = GOODS_BY_ID[o.goods];
+      const aboard = o.items.every((it) => it.where === 'boat');
+      c.strokeStyle = aboard ? 'rgba(168,98,15,0.85)' : 'rgba(168,98,15,0.45)';
+      c.lineWidth = 2;
+      c.setLineDash([2, 6]);
+      c.lineCap = 'round';
+      c.beginPath();
+      c.moveTo(mx(a.x), my(a.z));
+      c.lineTo(mx(b.x), my(b.z));
+      c.stroke();
+      c.setLineDash([]);
+      c.lineCap = 'butt';
+      const bx = mx(b.x), bz = my(b.z) + 22;
+      c.font = '15px -apple-system, "Segoe UI", sans-serif';
+      c.textAlign = 'center';
+      c.fillText('📦', bx, bz);
+      c.font = `700 11px ${FONT}`;
+      c.fillStyle = '#a8620f';
+      const late = game.clockH > o.dueH;
+      c.fillText(`${g.icon} ${g.name} ×${o.crates}${late ? L(' · прострочено', ' · overdue') : ''}`, bx, bz + 14);
     }
 
     // ── маршрут: яхта → 1 → 2 …, перша точка — поточна ціль (прапор) ──
@@ -1052,10 +1093,12 @@ export class MapView {
           ht = terrainHeight(wx, wz);
           if (ht > 0.05) {
             col = ht < 2.2 ? SAND : ht < 14 ? mix(GRASS, GRASS2, (ht - 2.2) / 12) : ht < 45 ? mix(GRASS2, HILL, (ht - 14) / 31) : mix(HILL, ROCK, Math.min(1, (ht - 45) / 30));
+            // вершини Північного краю — сніг
+            if (ht > 175) col = mix(col, [246, 248, 250], Math.min(1, (ht - 175) / 30));
             // горизонталі кожні 10 м
             if (ht > 3 && ht % 10 < 0.9) col = mix(col, [42, 58, 70], 0.18);
           } else {
-            const r = Math.hypot(wx, wz);
+            const r = seaDist(wx, wz);
             col = r < 400 * WS ? SEA_N : r < 900 * WS ? SEA_M : SEA_F;
             // бурхливі райони — сірувата «штормова» вода
             const rg = roughness(wx, wz);

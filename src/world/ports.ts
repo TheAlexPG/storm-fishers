@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mulberry32 } from '../core/math';
 import { Batch, T, boxGeo, cylGeo, gableBodyGeo, roofSlabGeo, fbm, noise2, smoothstep } from './portKit';
 import { cobbleTex, corrugatedTex, glowTex, groundDetailTex, planksTex, plasterTex, roofTilesTex, sidingTex, stoneTex, windowGlowTex, windowTex } from './textures';
-import { PORT_SITES, siteHeight, siteRect, siteToWorld, worldToSite, siteBerths, siteServices, pierRect, type PortSite } from './portSites';
+import { PORT_SITES, siteGround as siteHeight, siteRect, siteToWorld, worldToSite, siteBerths, siteServices, pierRect, type PortSite } from './portSites';
 import type { Platform, Solid } from './port';
 
 // ─────────────────────────────────────────────────────────────
@@ -51,6 +51,10 @@ function makeMats() {
     whitePaint: std({ color: 0xf2f1ec, roughness: 0.55 }),
     bone: std({ color: 0xe8e0cc, roughness: 0.7 }),
     leaf: std({ color: 0x4f8a3c, roughness: 0.75, flatShading: true }),
+    cypress: std({ color: 0x2f4f2c, roughness: 0.85, flatShading: true }),
+    olive: std({ color: 0x8a9a68, roughness: 0.9, flatShading: true }),
+    vine: std({ color: 0x5f8a3a, roughness: 0.85, flatShading: true }),
+    domeBlue: std({ color: 0x2f6fb5, roughness: 0.5 }),
     pine: std({ color: 0x2f5a35, roughness: 0.9, flatShading: true }),
     trunk: std({ color: 0x6a4a32, roughness: 0.9, flatShading: true }),
     canvasA: std({ color: 0xe2674a, roughness: 0.8, side: THREE.DoubleSide }),
@@ -68,12 +72,16 @@ const STYLE_WALLS: Record<PortSite['style'], Array<keyof Mats>> = {
   town: ['plWhite', 'plCream', 'plOchre', 'plBlue', 'sdGreen'],
   resort: ['plPink', 'plMint', 'plBlue', 'plWhite', 'plOchre'],
   whaling: ['sdTar', 'sdGrey', 'sdRed'],
+  med: ['plWhite', 'plWhite', 'plCream', 'plOchre', 'plWhite'],
+  north: ['sdRed', 'sdGrey', 'sdTar', 'sdYellow', 'woodGrey'],
 };
 const STYLE_ROOFS: Record<PortSite['style'], Array<keyof Mats>> = {
   village: ['roofBrown', 'roofDark'],
   town: ['roofRed', 'roofBrown', 'roofDark'],
   resort: ['roofTeal', 'roofRed'],
   whaling: ['metalRust', 'metalGrey', 'roofDark'],
+  med: ['roofRed', 'roofRed', 'roofBrown'],
+  north: ['roofDark', 'roofDark', 'metalGrey'],
 };
 
 interface Built {
@@ -247,7 +255,7 @@ export class Ports {
 
     // ── маяк на мисі ──
     const lp = this.lighthouseSpot(p);
-    const lanternPos = this.lighthouse(batch, lp[0], lp[1], H(lp[0], lp[1]), p.style === 'whaling' ? 13 : p.size === 'tiny' ? 7 : 10, p.style === 'resort' ? M.plMint : M.whitePaint, p.style === 'whaling' ? M.iron : M.redPaint);
+    const lanternPos = this.lighthouse(batch, lp[0], lp[1], H(lp[0], lp[1]), p.style === 'whaling' || p.style === 'north' ? 13 : p.size === 'tiny' ? 7 : 10, p.style === 'resort' ? M.plMint : M.whitePaint, p.style === 'whaling' ? M.iron : p.style === 'med' ? M.domeBlue : M.redPaint);
     solidCircle(lp[0], lp[1], 2.2);
     const lantern = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: 0xfff0c0, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
     lantern.position.copy(lanternPos);
@@ -284,6 +292,52 @@ export class Ports {
         const [x, z] = W(-6.5, b + 4);
         this.palm(batch, x, z, p.plY, 0.65, rng);
         solidCircle(x, z, 0.4);
+      }
+    } else if (p.style === 'med') {
+      // Середземномор'я: кипариси, оливи, блакитні куполи над білими будиночками, виноградна пергола на набережній
+      for (let i = 0; i < 22; i++) {
+        const s = landSpot(2.2, 60);
+        if (!s) continue;
+        const y = H(s[0], s[1]), k = 0.8 + rng() * 0.6;
+        if (rng() < 0.55) {
+          batch.add(cylGeo(0.12, 0.16, 1.2 * k, 5), M.trunk, T(s[0], y + 0.5 * k, s[1]));
+          batch.add(new THREE.ConeGeometry(0.8 * k, 7 * k, 7), M.cypress, T(s[0], y + 4.2 * k, s[1]));
+        } else {
+          batch.add(cylGeo(0.15, 0.22, 1.4 * k, 5), M.trunk, T(s[0], y + 0.6 * k, s[1]));
+          batch.add(new THREE.IcosahedronGeometry(1.4 * k, 0), M.olive, T(s[0], y + 1.9 * k, s[1], rng() * 6, 0, 0, 1.25, 0.75, 1.15));
+        }
+        solidCircle(s[0], s[1], 0.45);
+      }
+      // куполи: на кількох «службових» будинках (над дахом — синя напівсфера на барабані)
+      for (const [i, s] of p.svc.entries()) {
+        if (i % 2) continue;
+        const d = s.kind === 'fuel' ? 2.6 : 5;
+        const [x, z] = W(s.a - 1.2 - d / 2, s.b);
+        const y = Math.min(H(x, z), p.plY) + 5.6;
+        batch.add(cylGeo(1.1, 1.1, 0.7, 14), M.plWhite, T(x, y, z));
+        batch.add(new THREE.SphereGeometry(1.15, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), M.domeBlue, T(x, y + 0.35, z));
+      }
+      // пергола з виноградом уздовж набережної
+      for (let b = -hw + 6; b < hw - 6; b += 9) {
+        if (Math.abs(b) < p.pierW / 2 + 3) continue;
+        const [x, z] = W(-7.5, b);
+        for (const d of [-1.6, 1.6]) {
+          const [px, pz] = W(-7.5, b + d);
+          batch.add(boxGeo(0.14, 2.5, 0.14), M.woodDark, T(px, p.plY + 1.25, pz));
+          solidCircle(px, pz, 0.2);
+        }
+        batch.add(boxGeo(1.6, 0.25, 3.8), M.vine, T(x, p.plY + 2.6, z, ry));
+      }
+    } else if (p.style === 'north') {
+      // Північ: густі ялиці, гранітні брили, штабелі колод і сніг на дахах складів
+      for (let i = 0; i < 34; i++) {
+        const s = landSpot(2.4, 60);
+        if (s) { this.pineTree(batch, s[0], s[1], H(s[0], s[1]), 0.8 + rng() * 0.8); solidCircle(s[0], s[1], 0.5); }
+      }
+      for (let i = 0; i < 4; i++) {
+        const [x, z] = W(-9 - (i % 2) * 2.2, -hw + 5 + Math.floor(i / 2) * 3);
+        for (let r = 0; r < 3; r++) batch.add(cylGeo(0.28, 0.28, 4.2, 8), M.trunk, T(x, p.plY + 0.3 + r * 0.5, z + (r % 2) * 0.25, ry, 0, Math.PI / 2));
+        solidCircle(x, z, 1.4);
       }
     } else {
       const n = p.size === 'tiny' ? 14 : p.style === 'whaling' ? 10 : 26;
@@ -358,9 +412,9 @@ export class Ports {
     const col = new Float32Array(n * n * 3);
     const uv = new Float32Array(n * n * 2);
     const hs = new Float32Array(n * n);
-    const grassA = new THREE.Color(p.style === 'whaling' ? 0x7e8a5e : p.style === 'resort' ? 0x8fae5a : 0x6f9447);
-    const grassB = new THREE.Color(p.style === 'whaling' ? 0x66704c : 0x557a37);
-    const sand = new THREE.Color(p.style === 'resort' ? 0xeedcb0 : 0xdcc9a0);
+    const grassA = new THREE.Color(p.style === 'whaling' ? 0x7e8a5e : p.style === 'resort' ? 0x8fae5a : p.style === 'med' ? 0xa8a463 : p.style === 'north' ? 0x4d6b3e : 0x6f9447);
+    const grassB = new THREE.Color(p.style === 'whaling' ? 0x66704c : p.style === 'med' ? 0x8e9450 : p.style === 'north' ? 0x3a5533 : 0x557a37);
+    const sand = new THREE.Color(p.style === 'resort' || p.style === 'med' ? 0xeedcb0 : p.style === 'north' ? 0xa8a49a : 0xdcc9a0);
     const wet = new THREE.Color(0xa39274), bed = new THREE.Color(0x5d6655);
     const rock = new THREE.Color(0x8a867d), rockD = new THREE.Color(0x66625c), town = new THREE.Color(0xb9ad95);
     const c = new THREE.Color();

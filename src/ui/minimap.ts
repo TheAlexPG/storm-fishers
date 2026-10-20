@@ -5,9 +5,18 @@ import { ISLANDS, islandHeight } from '../world/islandShape';
 import { PORT_SITES, pierRect, siteBox, siteServices } from '../world/portSites';
 import { L } from '../core/i18n';
 import { WS } from '../core/region';
+import { CONT_BOXES } from '../world/continents';
 
-/** суходоли поза підкладкою домашнього берега: гавані й острови (bbox x0,z0,x1,z1) */
+/** континенти — плитками по 512 м (рахуються ліниво, лише ті, що поруч) */
+const CONT_TILES: Array<[number, number, number, number]> = CONT_BOXES.flatMap(([x0, z0, x1, z1]) => {
+  const out: Array<[number, number, number, number]> = [];
+  for (let z = z0; z < z1; z += 512) for (let x = x0; x < x1; x += 512) out.push([x, z, Math.min(x1, x + 512), Math.min(z1, z + 512)]);
+  return out;
+});
+
+/** суходоли поза підкладкою домашнього берега: гавані, острови й континенти (bbox x0,z0,x1,z1) */
 const LANDS: Array<[number, number, number, number]> = [
+  ...CONT_TILES,
   ...PORT_SITES.map((p) => siteBox(p)),
   ...ISLANDS.map((d): [number, number, number, number] => {
     const r = d.r * Math.sqrt(d.elong) * 1.35 + 6;
@@ -280,7 +289,7 @@ export class Minimap {
         if (h <= 0.05) continue;
         const o = (j * W + i) * 4;
         const coast = (i > 0 && hs[j * W + i - 1] <= 0.05) || (j > 0 && hs[(j - 1) * W + i] <= 0.05) || (i < W - 1 && hs[j * W + i + 1] <= 0.05) || (j < H - 1 && hs[(j + 1) * W + i] <= 0.05);
-        const col = coast ? [42, 58, 70] : h < 2.2 ? [230, 211, 168] : h < 14 ? [169, 192, 138] : [158, 174, 120];
+        const col = coast ? [42, 58, 70] : h < 2.2 ? [230, 211, 168] : h < 14 ? [169, 192, 138] : h < 60 ? [158, 174, 120] : h < 175 ? [196, 188, 168] : [244, 246, 248];
         d[o] = col[0];
         d[o + 1] = col[1];
         d[o + 2] = col[2];

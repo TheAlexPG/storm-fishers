@@ -203,6 +203,8 @@ uniform float uWaveLen[NW];
 uniform float uWaveSwell[NW];
 uniform sampler2D uShore;
 uniform vec4 uShoreRect;
+uniform sampler2D uShoreFar;
+uniform vec4 uShoreFarRect;
 uniform float uIntensity;
 uniform vec2 uGroupPh;
 varying vec3 vWorldPos;
@@ -230,8 +232,10 @@ void main() {
   // на мілині хвилі слабшають (дзеркало Ocean.shoreDamp)
   float damp = 1.0;
   vec2 suv = (p - uShoreRect.xy) * uShoreRect.zw;
-  if (suv.x > 0.0 && suv.x < 1.0 && suv.y > 0.0 && suv.y < 1.0) {
-    float bed = texture2D(uShore, suv).r * 20.0 - 10.0;
+  vec2 fuv = (p - uShoreFarRect.xy) * uShoreFarRect.zw;
+  bool inFine = suv.x > 0.0 && suv.x < 1.0 && suv.y > 0.0 && suv.y < 1.0;
+  if (inFine || (fuv.x > 0.0 && fuv.x < 1.0 && fuv.y > 0.0 && fuv.y < 1.0)) {
+    float bed = (inFine ? texture2D(uShore, suv).r : texture2D(uShoreFar, fuv).r) * 20.0 - 10.0;
     damp = ${SHORE_MIN.toFixed(2)} + ${(1 - SHORE_MIN).toFixed(2)} * (1.0 - smoothstep(-${SHORE_DEEP.toFixed(1)}, -0.6, bed));
   }
   // відкрите море: погода сильніша — хвилі вищі (набір хвиль рахується для загальної сили)
@@ -286,6 +290,9 @@ uniform float uBoatSpeed;
 // глибина біля берега (мапа висот суші): x/z → uv, значення = висота дна/суші
 uniform sampler2D uShore;
 uniform vec4 uShoreRect; // x0, z0, 1/w, 1/h
+// груба мапа дна на весь великий світ (континенти) — там, де дрібної немає
+uniform sampler2D uShoreFar;
+uniform vec4 uShoreFarRect;
 // брижі: тайлова карта нормалей (мипмапи самі гасять дрібне вдалині)
 uniform sampler2D uRipple;
 // переломлення: підводна частина сцени (колір + глибина) з окремого проходу
@@ -652,7 +659,9 @@ void main() {
   // Прибій: смуги піни біля берега, що набігають і тануть
   {
     vec2 suv = (vWorldPos.xz - uShoreRect.xy) * uShoreRect.zw;
-    float bed = suv.x > 0.0 && suv.x < 1.0 && suv.y > 0.0 && suv.y < 1.0 ? texture2D(uShore, suv).r * 20.0 - 10.0 : -10.0; // висота дна, м
+    vec2 fuv = (vWorldPos.xz - uShoreFarRect.xy) * uShoreFarRect.zw;
+    float bed = suv.x > 0.0 && suv.x < 1.0 && suv.y > 0.0 && suv.y < 1.0 ? texture2D(uShore, suv).r * 20.0 - 10.0
+      : fuv.x > 0.0 && fuv.x < 1.0 && fuv.y > 0.0 && fuv.y < 1.0 ? texture2D(uShoreFar, fuv).r * 20.0 - 10.0 : -10.0; // висота дна, м
     // глибока вода (майже весь світ) — без прибою й шуму: дешево
     if (bed > -4.6) {
       float shallow = smoothstep(-4.5, -0.4, bed);        // 0 глибоко … 1 біля самої кромки
@@ -818,6 +827,8 @@ export class Ocean {
         uBoatSpeed: { value: 0 },
         uShore: { value: null },
         uShoreRect: { value: new THREE.Vector4(0, 0, 0, 0) },
+        uShoreFar: { value: null },
+        uShoreFarRect: { value: new THREE.Vector4(0, 0, 0, 0) },
         uGroupPh: { value: new THREE.Vector2() },
       },
     });
@@ -831,7 +842,7 @@ export class Ocean {
    * Мапа висот біля берега для прибою: height(x,z) — висота суші/дна (м).
    * Прямокутник x0..x0+w, z0..z0+h, роздільність res м на піксель.
    */
-  setShore(height: (x: number, z: number) => number, x0: number, z0: number, w: number, h: number, res = 2) {
+  setShore(height: (x: number, z: number) => number, x0: number, z0: number, w: number, h: number, res = 2, far = false) {
     const nx = Math.ceil(w / res), nz = Math.ceil(h / res);
     const data = new Uint8Array(nx * nz * 4);
     for (let j = 0; j < nz; j++) {
@@ -842,13 +853,15 @@ export class Ocean {
         data[o + 3] = 255;
       }
     }
-    this.shore = { data, nx, nz, x0, z0, w: nx * res, h: nz * res };
+    const S = { data, nx, nz, x0, z0, w: nx * res, h: nz * res };
+    if (far) this.shoreFar = S;
+    else this.shore = S;
     const tex = new THREE.DataTexture(data, nx, nz, THREE.RGBAFormat);
     tex.magFilter = THREE.LinearFilter;
     tex.minFilter = THREE.LinearFilter;
     tex.needsUpdate = true;
-    this.material.uniforms.uShore.value = tex;
-    (this.material.uniforms.uShoreRect.value as THREE.Vector4).set(x0, z0, 1 / (nx * res), 1 / (nz * res));
+    this.material.uniforms[far ? 'uShoreFar' : 'uShore'].value = tex;
+    (this.material.uniforms[far ? 'uShoreFarRect' : 'uShoreRect'].value as THREE.Vector4).set(x0, z0, 1 / (nx * res), 1 / (nz * res));
   }
 
   /** матриця корпусу човна (світ → локаль), щоб не малювати воду всередині */
@@ -869,6 +882,7 @@ export class Ocean {
   private windDir = 0;
 
   private shore: { data: Uint8Array; nx: number; nz: number; x0: number; z0: number; w: number; h: number } | null = null;
+  private shoreFar: { data: Uint8Array; nx: number; nz: number; x0: number; z0: number; w: number; h: number } | null = null;
 
   /** локальна сила погоди в точці (відкрите море — сильніша; дзеркало шейдера) */
   localI(x: number, z: number): number {
@@ -877,10 +891,17 @@ export class Ocean {
 
   /** множник амплітуди хвиль на мілині (дзеркало вершинного шейдера; білінійно як LinearFilter) */
   shoreDamp(x: number, z: number): number {
-    const S = this.shore;
+    let S = this.shore;
     if (!S) return 1;
-    const u = (x - S.x0) / S.w, v = (z - S.z0) / S.h;
-    if (u <= 0 || u >= 1 || v <= 0 || v >= 1) return 1;
+    let u = (x - S.x0) / S.w, v = (z - S.z0) / S.h;
+    if (u <= 0 || u >= 1 || v <= 0 || v >= 1) {
+      // поза дрібною — груба (континенти)
+      S = this.shoreFar;
+      if (!S) return 1;
+      u = (x - S.x0) / S.w;
+      v = (z - S.z0) / S.h;
+      if (u <= 0 || u >= 1 || v <= 0 || v >= 1) return 1;
+    }
     const fx = u * S.nx - 0.5, fz = v * S.nz - 0.5;
     const ix = Math.max(0, Math.min(S.nx - 2, Math.floor(fx))), iz = Math.max(0, Math.min(S.nz - 2, Math.floor(fz)));
     const tx = Math.min(1, Math.max(0, fx - ix)), tz = Math.min(1, Math.max(0, fz - iz));

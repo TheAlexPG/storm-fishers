@@ -608,7 +608,7 @@ export class Coop {
       const dh = Math.atan2(Math.sin(b.b[3] - a.b[3]), Math.cos(b.b[3] - a.b[3]));
       out[3] = a.b[3] + dh * f;
       // дискретні — від новішого
-      for (const i of [11, 13, 14, 15, 17, 18, 19, 20, 23, 25, 26]) if (i < b.b.length) out[i] = b.b[i];
+      for (const i of [11, 13, 14, 15, 17, 18, 19, 20, 23, 25, 26, 27]) if (i < b.b.length) out[i] = b.b[i];
     }
   }
 

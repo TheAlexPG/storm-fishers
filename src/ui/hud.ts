@@ -1,3 +1,4 @@
+import { seaDist } from '../core/region';
 import { formatMoney, formatTime, compassDeg } from '../core/math';
 import { MOOR } from '../world/boat';
 import type { GameState } from '../game/state';
@@ -449,7 +450,7 @@ export class Hud {
     this.elWeather.title = L(`${bf.b} балів за Бофортом — ${bf.name}, ${weather.windMs.toFixed(0)} м/с`, `Beaufort ${bf.b} — ${bf.name}, ${weather.windMs.toFixed(0)} m/s`);
     if (this.elWeather.textContent !== wName) this.elWeather.textContent = wName;
     this.elWeather.className = 'w' + (ws === 'storm' ? ' weather-storm' : '');
-    this.elZone.textContent = ZONE_NAMES[zoneFromDist(Math.hypot(boatPos.x, boatPos.z))];
+    this.elZone.textContent = ZONE_NAMES[zoneFromDist(seaDist(boatPos.x, boatPos.z))];
     const sail = extra.sail ?? '';
     if (sail !== this.lastSail) {
       this.elSail.textContent = sail;

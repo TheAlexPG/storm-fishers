@@ -1,10 +1,11 @@
 import { clamp, mulberry32 } from '../core/math';
-import { WS } from '../core/region';
+import { WS, seaDist } from '../core/region';
 import { FISH, FISH_BY_ID, fishSellPrice, zoneFromDist } from './fish';
 import { isUk, L, plural } from '../core/i18n';
 import { avgKg, FishMarket, PortMarket, glutUnits, speciesGen, type MarketCtx, type MarketEvent, type MarketSave } from './market';
 import { Kitchen, type KitchenSave } from './cooking';
 import { Ledger, type EarnKind, type LedgerSave, type SpendKind } from './ledger';
+import { CargoBook, type CargoSave } from './cargo';
 import { BUYER_BY_ID, contractNeed, fitsContract, FishTrade, type BuyerId, type Contract, type TradeSave } from './buyers';
 import { PORT_SITES, PORT_SITE_BY_ID, type PortSite } from '../world/portSites';
 import { defaultUpgrades, eff, UPGRADES, MAX_LEVEL, upgradeCost, upgradeLock } from './upgrades';
@@ -64,6 +65,10 @@ export class GameState {
   stats: PlayerStats = { totalCaught: 0, totalEarned: 0, stormsSurvived: 0, tripsOut: 0 };
   /** книга капітана: доходи/витрати по днях, шлях, улов (стенд у хаті) */
   ledger = new Ledger();
+  /** вантажі: замовлення на доставку, ящики на причалі й на яхті (game/cargo.ts) */
+  cargo = new CargoBook();
+  /** куплені доми-бази на континентах (id гаваней): сон, збереження, порятунок */
+  bases: string[] = [];
 
   /** номер ігрового дня (clockH = день × 24 + години) */
   get today(): number {
@@ -556,6 +561,8 @@ export class GameState {
       market: this.market.serialize(),
       trade: this.trade.serialize(),
       kitchen: this.kitchen.save(),
+      cargo: this.cargo.serialize(),
+      bases: this.bases,
       portMarkets: Object.fromEntries(Object.entries(this.portMarkets).map(([id, m]) => [id, { stock: m.serialize().stock, hist: m.hist }])),
       port: this.portId,
       stats: this.stats,
@@ -664,6 +671,8 @@ export class GameState {
     this.market.backfill(this.priceMult, this.priceWeek);
     this.trade.load(data.trade as Partial<TradeSave> | undefined);
     this.kitchen.load(data.kitchen as Partial<KitchenSave> | undefined);
+    this.cargo.load(data.cargo as CargoSave | undefined);
+    this.bases = Array.isArray(data.bases) ? data.bases.filter((v) => typeof v === 'string' && PORT_SITE_BY_ID[v]) : [];
     const ok = (p: unknown): p is { x: number; z: number } => !!p && Number.isFinite((p as { x: number }).x) && Number.isFinite((p as { z: number }).z);
     this.route = [];
     if (Array.isArray(data.route)) this.route = data.route.filter(ok).slice(0, GameState.ROUTE_MAX).map((p) => ({ x: p.x, z: p.z }));
@@ -716,7 +725,7 @@ const PORT_SCALE: Record<PortSite['size'], number> = { tiny: 0.45, medium: 0.8, 
 
 /** біржа іншого порту: місцеві ціни видів, розмір, улов місцевої флотилії (риба «своєї» зони — більше) */
 function makePortMarket(home: FishMarket, site: PortSite): PortMarket {
-  const zone = zoneFromDist(Math.hypot(site.x, site.z));
+  const zone = zoneFromDist(seaDist(site.x, site.z));
   return new PortMarket(
     home,
     (id) => site.econ.species[id] ?? site.econ.fish,

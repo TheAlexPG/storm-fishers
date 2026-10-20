@@ -1,6 +1,7 @@
 import { fbm, smoothstep } from './portKit';
 import { portLandHeight } from './portSites';
-import { WS } from '../core/region';
+import { continentHeight, continentAt, type ContinentDef } from './continents';
+import { WS, addHaven } from '../core/region';
 import { L } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
@@ -9,7 +10,7 @@ import { L } from '../core/i18n';
 // мілину, а карта й мінікарта малювали їх через terrainHeight.
 // ─────────────────────────────────────────────────────────────
 
-export type IslandKind = 'gull' | 'pine' | 'palm' | 'pirate' | 'shell';
+export type IslandKind = 'gull' | 'pine' | 'palm' | 'pirate' | 'shell' | 'cypress' | 'fir' | 'refuge';
 
 export interface IslandDef {
   id: string;
@@ -26,6 +27,8 @@ export interface IslandDef {
   /** висота вершини, м */
   peak: number;
   seed: number;
+  /** острівці біля континентів і притулки в океані (не входять у «відкрий усі острови») */
+  far?: boolean;
 }
 
 const RAW_ISLANDS: IslandDef[] = [
@@ -35,8 +38,26 @@ const RAW_ISLANDS: IslandDef[] = [
   { id: 'isl-pirate', name: L('Піратська бухта', `Pirate Cove`), sub: L('кажуть, тут закопали скриню', `they say a chest is buried here`), kind: 'pirate', x: 690, z: 520, r: 40, elong: 1.35, rot: 1.1, peak: 13, seed: 41 },
   { id: 'isl-shell', name: L('Мушлевий острів', `Shell Island`), sub: L('море приносить сюди найкращі мушлі', `the sea brings the finest shells here`), kind: 'shell', x: -668, z: 590, r: 30, elong: 1.4, rot: -1.0, peak: 7, seed: 53 },
 ];
-/** позиції — у масштабі світу (region.ts WS) */
-export const ISLANDS: IslandDef[] = RAW_ISLANDS.map((d) => ({ ...d, x: Math.round(d.x * WS), z: Math.round(d.z * WS) }));
+/** острівці біля континентів і притулки посеред океану (абсолютні координати) */
+const FAR_ISLANDS: IslandDef[] = [
+  // Лазурове узбережжя
+  { id: 'isl-cypress', name: L('Острів Кипарисів', `Cypress Isle`), sub: L('кипариси й біла каплиця над бірюзою', `cypresses and a white chapel above turquoise water`), kind: 'cypress', x: 2150, z: 2480, r: 40, elong: 1.35, rot: 0.4, peak: 14, seed: 201, far: true },
+  { id: 'isl-chapel', name: L('Скеля Святого Ніколаса', `Saint Nicholas Rock`), sub: L('каплиця з блакитним куполом', `a chapel with a blue dome`), kind: 'cypress', x: 3250, z: 1500, r: 32, elong: 1.2, rot: -0.6, peak: 18, seed: 213, far: true },
+  { id: 'isl-olive', name: L('Оливковий острів', `Olive Island`), sub: L('старий гай і теплий пісок', `an old grove and warm sand`), kind: 'cypress', x: 2560, z: 3900, r: 46, elong: 1.5, rot: 1.0, peak: 11, seed: 227, far: true },
+  // Північний край
+  { id: 'isl-fir', name: L('Ялиновий острів', `Fir Island`), sub: L('темний ліс до самої води', `dark forest right down to the water`), kind: 'fir', x: -2250, z: 2250, r: 44, elong: 1.3, rot: -0.3, peak: 22, seed: 239, far: true },
+  { id: 'isl-granite', name: L('Гранітні Брати', `Granite Brothers`), sub: L('голі скелі, тюлені й мох', `bare rocks, seals and moss`), kind: 'fir', x: -2300, z: 3350, r: 38, elong: 1.6, rot: 0.8, peak: 20, seed: 251, far: true },
+  { id: 'isl-seal', name: L('Тюленячий острівець', `Seal Islet`), sub: L('холодно, але тюлені щасливі', `cold, but the seals are happy`), kind: 'fir', x: -3300, z: 1100, r: 30, elong: 1.3, rot: 0.2, peak: 12, seed: 263, far: true },
+  // притулки посеред океану: маяк і затишок від шторму
+  { id: 'isl-refuge-e', name: L('Маяк Півдороги', `Halfway Light`), sub: L('притулок на шляху до Лазурового узбережжя', `a refuge on the way to the Azure Coast`), kind: 'refuge', x: 1950, z: 2150, r: 28, elong: 1.3, rot: 0.5, peak: 7, seed: 271, far: true },
+  { id: 'isl-refuge-w', name: L('Вартовий маяк', `Sentinel Light`), sub: L('притулок на шляху до Північного краю', `a refuge on the way to the Northern Reach`), kind: 'refuge', x: -1950, z: 1900, r: 28, elong: 1.3, rot: -0.4, peak: 8, seed: 283, far: true },
+  { id: 'isl-refuge-s', name: L('Острів Середини', `Midsea Isle`), sub: L('посеред Великого океану — сховатися від фронту', `in the middle of the Great Ocean — shelter from a front`), kind: 'refuge', x: 120, z: 3150, r: 32, elong: 1.4, rot: 0.1, peak: 9, seed: 293, far: true },
+];
+
+/** позиції — у масштабі світу (region.ts WS); далі — острівці континентів і притулки */
+export const ISLANDS: IslandDef[] = [...RAW_ISLANDS.map((d) => ({ ...d, x: Math.round(d.x * WS), z: Math.round(d.z * WS) })), ...FAR_ISLANDS];
+// притулки — гавані-затишки від шторму
+for (const d of FAR_ISLANDS) if (d.kind === 'refuge') addHaven({ x: d.x, z: d.z, r: 320, name: d.name });
 
 /** найдовший радіус з урахуванням витягнутості й шуму берега (+ підводний схил) */
 const reach = (d: IslandDef) => d.r * Math.sqrt(d.elong) * 1.3 + 14;
@@ -72,7 +93,7 @@ export function islandHeightOf(d: IslandDef, x: number, z: number): number {
 /** найвища точка серед островів (або −99, якщо поруч немає жодного) */
 export function islandHeight(x: number, z: number): number {
   // суходоли інших портів (portSites.ts) — та сама ходьба, мілина й карта
-  let h = portLandHeight(x, z);
+  let h = Math.max(portLandHeight(x, z), continentHeight(x, z));
   for (const d of ISLANDS) {
     const R = reach(d);
     if (Math.abs(x - d.x) > R || Math.abs(z - d.z) > R) continue;
@@ -81,14 +102,26 @@ export function islandHeight(x: number, z: number): number {
   return h;
 }
 
-/** острів, біля якого точка (у межах dist м від берега) */
+/** псевдо-«острів» для берега континенту (зійти на берег із яхти) */
+const CONT_AS_ISLAND = new Map<string, IslandDef>();
+function contIsland(c: ContinentDef): IslandDef {
+  let d = CONT_AS_ISLAND.get(c.id);
+  if (!d) {
+    d = { id: c.id, name: c.name, sub: c.sub, kind: c.style === 'med' ? 'cypress' : 'fir', x: c.m.x, z: c.m.z, r: Math.min(c.m.rx, c.m.rz), elong: 1, rot: 0, peak: c.peak, seed: c.seed, far: true };
+    CONT_AS_ISLAND.set(c.id, d);
+  }
+  return d;
+}
+
+/** острів (чи берег континенту), біля якого точка (у межах dist м від берега) */
 export function islandNear(x: number, z: number, dist = 0): IslandDef | null {
   for (const d of ISLANDS) {
     const R = reach(d) + dist;
     if (Math.abs(x - d.x) > R || Math.abs(z - d.z) > R) continue;
     if (islandInside(d, x, z) > -dist) return d;
   }
-  return null;
+  const c = continentAt(x, z, dist);
+  return c ? contIsland(c) : null;
 }
 
 /** тверді перешкоди на островах (хатина, дерева, скелі) — кола; заповнює Islands */

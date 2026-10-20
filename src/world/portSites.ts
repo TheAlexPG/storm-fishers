@@ -1,6 +1,7 @@
 import { fbm, smoothstep } from './portKit';
 import { L } from '../core/i18n';
 import { WS, addHaven } from '../core/region';
+import { CONT_PORTS, continentHeight } from './continents';
 
 // ─────────────────────────────────────────────────────────────
 // Порти світу (чиста математика й дані — без three.js). Домашній «Шторм»
@@ -75,8 +76,10 @@ export interface PortSite {
   pierL: number;
   pierW: number;
   econ: PortEcon;
-  /** кольори будинків/дахів — характер місця */
-  style: 'village' | 'town' | 'resort' | 'whaling';
+  /** кольори будинків/дахів — характер місця (med — Середземномор'я, north — холодна Північ) */
+  style: 'village' | 'town' | 'resort' | 'whaling' | 'med' | 'north';
+  /** гавань на континенті (continents.ts): суходіл — континент, порт лише «прорізає» його */
+  cont?: string;
   /** послуги в локальних (a, b): a < 0 — на набережній */
   svc: Array<{ kind: ServiceKind; a: number; b: number; name: string; icon: string; label: string }>;
 }
@@ -137,9 +140,75 @@ const RAW_SITES: PortSite[] = [
   },
 ];
 
+/** склад вантажів — у кожній гавані (game/cargo.ts): місце на набережній збоку від причалу */
+const CARGO_SVC = (a: number, b: number): PortSite['svc'][number] => ({ kind: 'cargo', a, b, name: L('Склад', `Cargo office`), icon: '📦', label: L('Склад — замовлення на доставку вантажів', `Cargo office — delivery orders`) });
+const CARGO_AT: Record<string, [number, number]> = { 'port-kut': [-9, 1], 'port-zorya': [-17, -10], 'port-marina': [-19, -29], 'port-kray': [-12, -12] };
+
+/** гавані континентів (continents.ts): корінь причалу — на березі, що знайшла математика берега */
+const CP = Object.fromEntries(CONT_PORTS.map((c) => [c.id, c]));
+const cpos = (id: string) => {
+  const c = CP[id];
+  return { x: c.x, z: c.z, ox: c.ox, oz: c.oz, plW: c.plW, plD: c.plD, plY: c.plY, pierL: c.pierL, pierW: c.pierW, cont: c.cont };
+};
+const BASE_SVC = (a: number, b: number, name: string): PortSite['svc'][number] => ({ kind: 'base', a, b, name, icon: '🏡', label: L(`${name} — дім-база на цьому континенті (сон, збереження, порятунок)`, `${name} — a home base on this continent (sleep, save, rescue)`) });
+
+const CONT_SITES: PortSite[] = [
+  {
+    id: 'port-azzurro', name: L('Порто-Аццурро', `Porto Azzurro`), sub: L('Лазурове узбережжя · білі вілли, оливи й вино', `the Azure Coast · white villas, olives and wine`), size: 'large', style: 'med',
+    ...cpos('port-azzurro'), R: 56, elong: 1.4, peak: 18, seed: 111,
+    econ: { fuel: 7.5, repair: 1.1, fish: 1.05, species: { lusk: 1.6, shoraga: 1.45, sula: 1.4, plyotka: 1.3, tunets: 0.85, hamsa: 1.2, makrel: 0.9 } },
+    svc: [
+      { kind: 'fuel', a: -3, b: -30, name: L('Заправка', `Fuel dock`), icon: '⛽', label: L('Заправка Порто-Аццурро — пальне', `Porto Azzurro fuel dock — fuel`) },
+      { kind: 'exchange', a: -5, b: -14, name: L('Рибний ринок', `Fish market`), icon: '🐟', label: L('Рибний ринок — північна риба тут у ціні', `Fish market — northern fish fetches a good price here`) },
+      { kind: 'cargo', a: -5, b: 12, name: L('Склад', `Cargo office`), icon: '📦', label: L('Склад порту — вино, оливки й кераміка на експорт', `Port cargo office — wine, olives and pottery for export`) },
+      { kind: 'yard', a: -5, b: 28, name: L('Верф', `Shipyard`), icon: '🔧', label: L('Верф Порто-Аццурро — ремонт корпусу', `Porto Azzurro shipyard — hull repairs`) },
+      { kind: 'shop', a: -20, b: -6, name: L('Яхтова крамниця', `Yacht chandlery`), icon: '🛠', label: L('Яхтова крамниця — каталог речей', `Yacht chandlery — item catalogue`) },
+      BASE_SVC(-20, 18, L('Вілла на пагорбі', `Hillside villa`)),
+    ],
+  },
+  {
+    id: 'port-nikos', name: L('Айос-Нікос', `Agios Nikos`), sub: L('грецьке село з блакитними куполами', `a Greek village with blue domes`), size: 'medium', style: 'med',
+    ...cpos('port-nikos'), R: 40, elong: 1.3, peak: 14, seed: 127,
+    econ: { fuel: 8, repair: null, fish: 1.0, species: { forel: 1.5, lusk: 1.4, krap: 1.25, hamsa: 1.1, tunets: 0.8 } },
+    svc: [
+      { kind: 'fuel', a: -3, b: 15, name: L('Бочка з пальним', `Fuel barrel`), icon: '⛽', label: L('Пальне в бочках', `Fuel from barrels`) },
+      { kind: 'exchange', a: -4, b: -10, name: L('Таверна-скупка', `Taverna buyer`), icon: '🐟', label: L('Таверна купує рибу — лосось і тріска в ціні', `The taverna buys fish — salmon and cod fetch a lot`) },
+      { kind: 'cargo', a: -12, b: 6, name: L('Склад', `Cargo office`), icon: '📦', label: L('Склад села — оливкова олія й мед', `Village store — olive oil and honey`) },
+      { kind: 'sleep', a: -16, b: -8, name: L('Кімнати в таверні', `Taverna rooms`), icon: '🛏', label: L('Кімнати в таверні (сон)', `Taverna rooms (sleep)`) },
+    ],
+  },
+  {
+    id: 'port-cedar', name: L('Сідар-Гарбор', `Cedar Harbor`), sub: L('Північний край · лісопилки, хутро й кленовий сироп', `the Northern Reach · sawmills, furs and maple syrup`), size: 'large', style: 'north',
+    ...cpos('port-cedar'), R: 58, elong: 1.35, peak: 30, seed: 139,
+    econ: { fuel: 6.5, repair: 0.9, fish: 1.0, species: { tunets: 1.6, akula: 1.4, krap: 1.3, makrel: 1.3, lusk: 0.75, shoraga: 0.8, balyk: 0.8 } },
+    svc: [
+      { kind: 'fuel', a: -3, b: 30, name: L('Заправка', `Fuel dock`), icon: '⛽', label: L('Заправка Сідар-Гарбор — дешеве пальне', `Cedar Harbor fuel dock — cheap fuel`) },
+      { kind: 'exchange', a: -5, b: 14, name: L('Рибна біржа', `Fish exchange`), icon: '🐟', label: L('Рибна біржа — теплолюбна риба тут рідкість і в ціні', `Fish exchange — warm-water fish is rare and pricey here`) },
+      { kind: 'cargo', a: -5, b: -12, name: L('Склад', `Cargo office`), icon: '📦', label: L('Склад порту — деревина, хутро й сироп', `Port warehouse — timber, furs and syrup`) },
+      { kind: 'yard', a: -5, b: -28, name: L('Верф', `Shipyard`), icon: '🔧', label: L('Верф Сідар-Гарбор — ремонт (дешево)', `Cedar Harbor shipyard — repairs (cheap)`) },
+      { kind: 'shop', a: -20, b: 6, name: L('Яхтова крамниця', `Yacht chandlery`), icon: '🛠', label: L('Яхтова крамниця — каталог речей', `Yacht chandlery — item catalogue`) },
+      BASE_SVC(-20, -18, L('Хатина з колод', `Log cabin`)),
+    ],
+  },
+  {
+    id: 'port-grizzly', name: L('Бухта Гризлі', `Grizzly Cove`), sub: L('далека факторія під снігами', `a remote trading post under the snow`), size: 'outpost', style: 'north',
+    ...cpos('port-grizzly'), R: 42, elong: 1.3, peak: 26, seed: 151,
+    econ: { fuel: 9.5, repair: 1.3, fish: 1.0, species: { akula: 1.7, tunets: 1.5, forel: 1.3, hamsa: 0.6, balyk: 0.6 } },
+    svc: [
+      { kind: 'fuel', a: -3, b: 12, name: L('Цистерна', `Fuel tank`), icon: '⛽', label: L('Цистерна — пальне (дороге: глушина)', `Fuel tank — fuel (expensive: the back of beyond)`) },
+      { kind: 'exchange', a: -5, b: -8, name: L('Факторія', `Trading post`), icon: '🐟', label: L('Факторія — купує рибу', `Trading post — buys fish`) },
+      { kind: 'cargo', a: -12, b: 5, name: L('Склад', `Cargo office`), icon: '📦', label: L('Склад факторії — хутро й риб\'ячий жир', `Trading post store — furs and fish oil`) },
+      { kind: 'yard', a: -14, b: -10, name: L('Слип', `Slipway`), icon: '🔧', label: L('Слип факторії — ремонт (дорого)', `Trading post slipway — repairs (expensive)`) },
+    ],
+  },
+];
+
 /** позиції — у масштабі світу (region.ts WS); кожна гавань — затишок від шторму */
-export const PORT_SITES: PortSite[] = RAW_SITES.map((p) => ({ ...p, x: Math.round(p.x * WS), z: Math.round(p.z * WS) }));
-for (const p of PORT_SITES) addHaven({ x: p.x + p.ox * p.pierL * 0.5, z: p.z + p.oz * p.pierL * 0.5, r: 150 + p.R * 1.3 });
+export const PORT_SITES: PortSite[] = [
+  ...RAW_SITES.map((p) => ({ ...p, x: Math.round(p.x * WS), z: Math.round(p.z * WS), svc: [...p.svc, CARGO_SVC(...(CARGO_AT[p.id] ?? [-10, 6]))] })),
+  ...CONT_SITES,
+];
+for (const p of PORT_SITES) addHaven({ x: p.x + p.ox * p.pierL * 0.5, z: p.z + p.oz * p.pierL * 0.5, r: 150 + p.R * 1.3, name: p.name });
 
 /**
  * Гачок для нових видів послуг (напр. окремі покупці риби): додай запис у
@@ -241,6 +310,12 @@ export function siteHeight(p: PortSite, x: number, z: number): number {
     h = h + (Math.min(h, deep) - h) * side;
   }
   return h;
+}
+
+/** земля гавані з урахуванням континенту (будинки, рельєф гавані) */
+export function siteGround(p: PortSite, x: number, z: number): number {
+  const h = siteHeight(p, x, z);
+  return p.cont ? Math.max(h, continentHeight(x, z)) : h;
 }
 
 /** найвища точка суходолів портів (−99 — далеко) */

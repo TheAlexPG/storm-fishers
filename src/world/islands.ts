@@ -51,6 +51,9 @@ const GRASS: Record<IslandDef['kind'], [number, number]> = {
   palm: [0x8fa95a, 0x7e9c4c],
   pirate: [0x9a9a5a, 0x7f8048],
   shell: [0xa3a062, 0x8f9a5c],
+  cypress: [0xa8a463, 0x8e9450],
+  fir: [0x4d6b3e, 0x3a5533],
+  refuge: [0x7f9655, 0x6b8648],
 };
 
 interface Pickup {
@@ -109,7 +112,7 @@ export class Islands {
     const hs = new Float32Array(n * n);
     const [g0, g1] = GRASS[d.kind];
     const cA = new THREE.Color(g0), cB = new THREE.Color(g1);
-    const sand = new THREE.Color(d.kind === 'shell' ? 0xe8cfb4 : 0xdcc9a0);
+    const sand = new THREE.Color(d.kind === 'shell' ? 0xe8cfb4 : d.kind === 'cypress' ? 0xeedfb8 : d.kind === 'fir' ? 0xa8a49a : 0xdcc9a0);
     const wet = new THREE.Color(0xa39274), bed = new THREE.Color(0x5d6655);
     const rock = new THREE.Color(0x84817a), rockD = new THREE.Color(0x5f5d58);
     const c = new THREE.Color();
@@ -130,7 +133,7 @@ export class Islands {
         const sandTop = d.kind === 'palm' ? 3.0 : d.kind === 'shell' ? 1.9 : 1.25;
         c.lerp(sand, smoothstep(sandTop + 0.4, sandTop - 0.3, h));
         if (h < 0.3) c.copy(wet).lerp(bed, smoothstep(0.1, -2.5, h));
-        c.lerp(noise2(x * 0.1, z * 0.1) > 0.5 ? rock : rockD, Math.max(smoothstep(0.8, 1.2, sl) * 0.85, d.kind === 'pirate' ? smoothstep(7, 11, h) * 0.7 : 0));
+        c.lerp(noise2(x * 0.1, z * 0.1) > 0.5 ? rock : rockD, Math.max(smoothstep(0.8, 1.2, sl) * 0.85, d.kind === 'pirate' ? smoothstep(7, 11, h) * 0.7 : d.kind === 'fir' ? smoothstep(9, 15, h) * 0.75 : 0));
         col[k * 3] = c.r;
         col[k * 3 + 1] = c.g;
         col[k * 3 + 2] = c.b;
@@ -372,6 +375,73 @@ export class Islands {
       for (let i = 0; i < 4; i++) {
         const p = spot(2);
         if (p) pine(p[0], p[1], 0.55 + rng() * 0.3);
+      }
+    } else if (d.kind === 'cypress') {
+      // Середземномор'я: кипариси-свічки, кругленькі оливи й біла каплиця з блакитним куполом
+      const cyp = flat(0x2f4f2c), olive = flat(0x8a9a68, 0.9), bark = flat(0x6a5a46);
+      for (let i = 0; i < 9; i++) {
+        const p = spot(1.6);
+        if (!p) continue;
+        const s = 0.8 + rng() * 0.5;
+        add(new THREE.CylinderGeometry(0.12, 0.16, 1.2 * s, 5), bark, p[0], at(p[0], p[1]) + 0.5 * s, p[1]);
+        add(new THREE.ConeGeometry(0.85 * s, 7.5 * s, 7), cyp, p[0], at(p[0], p[1]) + 4.4 * s, p[1]);
+        solid(p[0], p[1], 0.4 * s);
+      }
+      for (let i = 0; i < 7; i++) {
+        const p = spot(1.2, 9);
+        if (!p) continue;
+        const s = 0.8 + rng() * 0.6;
+        add(new THREE.CylinderGeometry(0.15, 0.22, 1.4 * s, 5), bark, p[0], at(p[0], p[1]) + 0.6 * s, p[1]).rotation.z = (rng() - 0.5) * 0.4;
+        const crown = add(new THREE.IcosahedronGeometry(1.5 * s, 0), olive, p[0], at(p[0], p[1]) + 2.0 * s, p[1]);
+        crown.scale.set(1.25, 0.75, 1.15);
+        solid(p[0], p[1], 0.45 * s);
+      }
+      // каплиця на найвищій точці
+      let best: [number, number] = [d.x, d.z], bh = -9;
+      for (let i = 0; i < 40; i++) {
+        const p = spot(3);
+        if (p && at(p[0], p[1]) > bh) { bh = at(p[0], p[1]); best = p; }
+      }
+      const [cx, cz] = best;
+      const y0 = at(cx, cz) - 0.3;
+      add(new THREE.BoxGeometry(3.6, 3.2, 4.4), flat(0xf6f3ec, 0.8), cx, y0 + 1.6, cz);
+      add(new THREE.CylinderGeometry(1.25, 1.25, 0.6, 14), flat(0xf6f3ec, 0.8), cx, y0 + 3.5, cz);
+      add(new THREE.SphereGeometry(1.3, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), flat(0x2f6fb5, 0.5), cx, y0 + 3.8, cz);
+      add(new THREE.BoxGeometry(0.9, 1.7, 0.08), flat(0x2f6fb5, 0.6), cx, y0 + 0.85, cz + 2.22);
+      add(new THREE.BoxGeometry(0.08, 0.7, 0.08), flat(0xd9d4c8), cx, y0 + 5.4, cz);
+      add(new THREE.BoxGeometry(0.45, 0.08, 0.08), flat(0xd9d4c8), cx, y0 + 5.5, cz);
+      solid(cx, cz, 2.8);
+    } else if (d.kind === 'fir') {
+      // Північ: темні ялиці, гранітні брили
+      for (let i = 0; i < 16; i++) {
+        const p = spot(1.6);
+        if (p) pine(p[0], p[1], 0.8 + rng() * 0.7);
+      }
+      for (let i = 0; i < 7; i++) {
+        const p = spot(0.3);
+        if (p) boulder(p[0], p[1], 1.0 + rng() * 1.8);
+      }
+    } else if (d.kind === 'refuge') {
+      // притулок: червоно-білий маяк і хатина доглядача
+      let best: [number, number] = [d.x, d.z], bh = -9;
+      for (let i = 0; i < 40; i++) {
+        const p = spot(2);
+        if (p && at(p[0], p[1]) > bh) { bh = at(p[0], p[1]); best = p; }
+      }
+      const [lx, lz] = best;
+      const y0 = at(lx, lz) - 0.2;
+      for (let k = 0; k < 5; k++) add(new THREE.CylinderGeometry(1.25 - k * 0.12, 1.37 - k * 0.12, 2.2, 14), flat(k % 2 ? 0xc23a2c : 0xf2f1ec, 0.6), lx, y0 + 1.1 + k * 2.2, lz);
+      add(new THREE.CylinderGeometry(0.7, 0.7, 1.2, 10), new THREE.MeshStandardMaterial({ color: 0xfff6d8, emissive: 0xffe39a, emissiveIntensity: 1.2, roughness: 0.1 }), lx, y0 + 11.6, lz);
+      add(new THREE.ConeGeometry(0.95, 1.1, 10), flat(0x24292d, 0.5), lx, y0 + 12.8, lz);
+      solid(lx, lz, 1.6);
+      const hx = lx + 5, hz = lz + 3;
+      add(new THREE.BoxGeometry(4, 2.6, 3.2), flat(0xe8e2d2, 0.85), hx, at(hx, hz) + 1.1, hz);
+      const roof = add(new THREE.ConeGeometry(3.2, 1.6, 4), flat(0xa9442f, 0.8), hx, at(hx, hz) + 3.2, hz);
+      roof.rotation.y = Math.PI / 4;
+      solid(hx, hz, 2.4);
+      for (let i = 0; i < 4; i++) {
+        const p = spot(0.4);
+        if (p) boulder(p[0], p[1], 0.7 + rng() * 1.0);
       }
     }
   }
