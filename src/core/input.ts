@@ -28,6 +28,9 @@ export class Input {
   };
   private moveHandler = (e: MouseEvent) => {
     if (!this.pointerLocked) return;
+    // Chrome на захопленні/відпусканні миші шле один «стрибок» на сотні пікселів —
+    // камера від нього відлітала; такі події пропускаємо
+    if (Math.abs(e.movementX) > 280 || Math.abs(e.movementY) > 280) return;
     this.mouseDX += e.movementX;
     this.mouseDY += e.movementY;
   };
@@ -47,6 +50,9 @@ export class Input {
   };
   private lockHandler = () => {
     this.pointerLocked = document.pointerLockElement != null;
+    // накопичений рух за мить до/після захоплення — не крутить камеру
+    this.mouseDX = 0;
+    this.mouseDY = 0;
   };
 
   attach(el: HTMLElement) {
