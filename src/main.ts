@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { Input } from './core/input';
 import { TimeCycle, DAY_SECONDS } from './core/time';
-import { offshore, seaFactor, Weather } from './core/weather';
+import { seaMul, Weather } from './core/weather';
+import { WORLD, nearestHaven, roughAt, shoreRes } from './core/region';
 import { Ocean, UNDERWATER_LAYER } from './core/ocean';
 import { AudioEngine } from './core/audio';
 import { clamp, rand, formatMoney } from './core/math';
@@ -194,6 +195,8 @@ class Game {
   /** місцеві рибалки на човнах (боти) */
   private bots!: Bots;
   private stormWarned = false;
+  private localStormWarned = false;
+  private inRough = false;
   private netsSyncT = 0;
   private netsSyncKey = '';
   private netsSyncMode = 'idle';
@@ -300,7 +303,8 @@ class Game {
     this.shopCounter = new ShopCounter(this.scene, this.port.solids);
     this.exchangeBoard = new ExchangeBoard(this.scene);
     // прибій уздовж берега бухти
-    this.ocean.setShore(terrainHeight, -520, -780, 1040, 860, 2);
+    // мапа дна на весь світ (2 м/піксель, у більшому світі — грубіше: region.ts shoreRes): мілини й прибій біля всіх берегів, островів і гаваней
+    this.ocean.setShore(terrainHeight, WORLD.W0, WORLD.H0, WORLD.W1 - WORLD.W0, WORLD.H1 - WORLD.H0, shoreRes());
     this.particles = new ParticlePool(this.scene, 1100);
     this.windLines = new WindLines(this.scene);
     this.foamTrail = new FoamTrail(this.scene);
@@ -933,9 +937,20 @@ class Game {
     if (bx > dock.x0 && bx < dock.x1 && bz > dock.z0 && bz < dock.z1) {
       bx = this.homeMoorX; bz = MOOR.z; bh = MOOR_HEADING;
     }
+    // сейв із меншого світу: у гавані — на причал тієї ж гавані, у морі — та сама відносна точка, якщо там вода
+    let relocated = false;
+    if (data.relocate) {
+      const site = PORT_SITES.find((p) => Math.hypot(p.x - bx, p.z - bz) < 200);
+      if (site) {
+        const b = this.berthIn(site.id);
+        bx = b.x; bz = b.z; bh = b.h; relocated = true;
+      } else if (Math.hypot(bx, bz) < 220 || terrainHeight(bx, bz) > -2.5) {
+        bx = this.homeMoorX; bz = MOOR.z; bh = MOOR_HEADING; relocated = true;
+      }
+    }
     this.boat.reset(bx, bz, bh);
     const an = data.anchor;
-    if (an && Number.isFinite(an.x) && Number.isFinite(an.z) && Number.isFinite(an.chain) && seabedDepth(an.x, an.z) <= ANCHOR_MAX_DEPTH + 5) this.boat.anchor.setDown(an.x, an.z, an.chain);
+    if (!relocated && an && Number.isFinite(an.x) && Number.isFinite(an.z) && Number.isFinite(an.chain) && seabedDepth(an.x, an.z) <= ANCHOR_MAX_DEPTH + 5) this.boat.anchor.setDown(an.x, an.z, an.chain);
     this.player.resetToBoat();
     this.stations.dispose();
     this.stations = new Stations(this.boat, this.game, this.audio);
@@ -1153,7 +1168,7 @@ class Game {
       news: g.market.news.map((n) => ({ who: `«${botName(n.who)}»`, text: newsText(n.text, n.who), h: n.h })),
       reports: g.reports.map((r) => ({ zone: ZONE_NAMES[r.zone], name: g.speciesName(r.speciesId), boost: r.boost })),
       hold: { count: g.hold.length, cap: g.holdCap, value: g.hold.reduce((a, f) => a + g.sellPrice(f), 0) },
-      stormSoon: w.stormEta != null || snap.forecast > 0.74 || w.base > 0.74,
+      stormSoon: w.localStormEta != null || snap.forecast > 0.74 || w.base > 0.74,
       tip: (() => {
         const zone = zoneFromDist(Math.hypot(this.boat.pos.x, this.boat.pos.z));
         const night = this.time.isNight;
@@ -1439,7 +1454,7 @@ class Game {
     // погода: у відкритому морі сильніша (множник від відстані до берега)
     {
       const wp = this.player.mode === 'boat' ? this.boat.pos : this.player.head;
-      this.weather.localMul = seaFactor(offshore(wp.x, wp.z));
+      this.weather.localMul = seaMul(wp.x, wp.z);
     }
     if (this.coop.isClient) this.weather.updatePassive(dt);
     else this.weather.update(dt);
@@ -1449,6 +1464,28 @@ class Game {
       this.stormWarned = true;
       this.hud.toast(L(`📻 Штормове попередження: шторм приблизно за ${Math.max(1, Math.round(eta / 60))} хв (≈${Math.max(1, Math.round(eta / 25))} год гри). Рибалки вертаються в порт${this.boat.doorOpen || this.boat.hatchOpen ? L(' · зачини двері каюти й люк трюму', ` · close the cabin doors and the hold hatch`) : ''}`, `📻 Storm warning: a storm in about ${Math.max(1, Math.round(eta / 60))} min (≈${Math.max(1, Math.round(eta / 25))} game hours). Fishermen are heading back to port${this.boat.doorOpen || this.boat.hatchOpen ? L(' · зачини двері каюти й люк трюму', ` · close the cabin doors and the hold hatch`) : ''}`), 'warn', 6500);
     } else if (eta == null && this.weather.state() !== 'storm') this.stormWarned = false;
+    // бурхливий район: фронт без шторму тут однаково стане штормом — попереджаємо так само заздалегідь
+    {
+      const wp = this.player.mode === 'boat' ? this.boat.pos : this.player.head;
+      const ra = roughAt(wp.x, wp.z);
+      // у бурхливому районі шторм починається вже з фронтом (раніше за загальний)
+      const fe = this.weather.roughHere ? this.weather.frontEta : null;
+      const le = fe;
+      if (le != null && le > 45 && !this.localStormWarned) {
+        this.localStormWarned = true;
+        this.hud.toast(L(`📻 Фронт приблизно за ${Math.max(1, Math.round(le / 60))} хв. Тут, ${ra.area ? `у районі «${ra.area.name}»` : 'у відкритому морі'}, він принесе шторм — рушай до гавані чи ближче до берега`, `📻 A front in about ${Math.max(1, Math.round(le / 60))} min. Out here${ra.area ? ` in ${ra.area.name}` : ' in the open sea'} it will bring a storm — head for a harbour or closer to shore`), 'warn', 7000);
+      } else if (this.weather.frontEta == null && this.weather.state() !== 'storm') this.localStormWarned = false;
+      // увійшли в бурхливий район — підказка, де найближчий затишок
+      if (!this.inRough && ra.v > 0.35 && ra.area) {
+        this.inRough = true;
+        const nh = nearestHaven(wp.x, wp.z);
+        const site = PORT_SITES.find((p) => Math.hypot(p.x - nh.h.x, p.z - nh.h.z) < 80);
+        const port = site ? site.name : L('«Шторм»', `Storm Harbour`);
+        const fNow = this.weather.frontEta;
+        const soon = fNow != null ? L(` · ⛈ фронт ${fNow < 30 ? 'уже йде' : `за ${Math.max(1, Math.round(fNow / 60))} хв`}!`, ` · ⛈ front ${fNow < 30 ? 'is already here' : `in ${Math.max(1, Math.round(fNow / 60))} min`}!`) : '';
+        this.hud.toast(L(`⚠ ${ra.area.name}: хвиля вища, шторм тут лютіший — зате риба більша. Найближча гавань — ${port} (${(nh.d / 1000).toFixed(1).replace('.', ',')} км)${soon}`, `⚠ ${ra.area.name[0].toUpperCase() + ra.area.name.slice(1)}: higher seas and fiercer storms — but bigger fish. Nearest harbour: ${port} (${(nh.d / 1000).toFixed(1)} km)${soon}`), 'warn', 6500);
+      } else if (this.inRough && ra.v < 0.12) this.inRough = false;
+    }
     if (this.weather.state() !== this.lastWeather) {
       const st = this.weather.state();
       if (st === 'storm') {
@@ -2993,7 +3030,7 @@ class Game {
     if (depth < 2) fish *= 0.3;
     fish = clamp(fish + (Math.sin(this.simTime * 0.37) * 0.04), 0, 1);
     const snap = this.weather.snapshot();
-    const falling = this.weather.stormEta != null || snap.forecast > this.weather.base + 0.12;
+    const falling = this.weather.localStormEta != null || snap.forecast > this.weather.base + 0.12;
     const s = b.sails;
     this.instruments.update(dt, {
       x: b.pos.x,

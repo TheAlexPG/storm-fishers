@@ -48,9 +48,10 @@ export function terrainHeight(x: number, z: number): number {
   const s = coastZ(x) - z;
   const shore = -3.2 + s * 0.3 + Math.max(0, s - 14) * 0.55 + (fbm(x * 0.05, z * 0.05, 2) - 0.5) * 1.0;
   let h = Math.min(H, shore);
-  // краї мапи тонуть у морі (острів, а не обрізаний край)
+  // краї мапи тонуть у морі (острів, а не обрізаний край); далі — глибоке море
+  // (−12 м: не «мілина» для прибою й хвиль, коли мапа дна покриває весь світ)
   const e = smoothstep(EXT_X, EXT_X - 170, ax) * smoothstep(EXT_Z1, EXT_Z1 + 160, z);
-  h = -7 + (h + 7) * e;
+  h = -12 + (h + 12) * e;
   // острови в морі (islandShape.ts)
   return Math.max(h, islandHeight(x, z));
 }

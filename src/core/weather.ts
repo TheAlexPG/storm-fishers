@@ -1,6 +1,7 @@
 import { clamp, damp, rand, mulberry32 } from './math';
 import type { WeatherState, WeatherSnapshot } from './types';
 import { L } from './i18n';
+import { localIntensity, offshore as regionOffshore } from './region';
 
 // ─────────────────────────────────────────────────────────────
 // Погода: Тиша → Повіє → Вітер → Шторм — довгими фазами, щоб встигнути
@@ -26,17 +27,10 @@ export function stateFromIntensity(v: number): WeatherState {
   return 'storm';
 }
 
-/** наскільки «відкрите» море в точці: 0 біля берега (до ~350 м) … 1 далеко (2 км+) */
-export function offshore(x: number, z: number): number {
-  const d = Math.hypot(x, z);
-  const t = Math.min(1, Math.max(0, (d - 350) / 1650));
-  return t * t * (3 - 2 * t);
-}
-
-/** множник сили погоди: біля берега затишно, у відкритому морі — значно сильніше */
-export function seaFactor(off: number): number {
-  return 0.7 + 0.75 * off;
-}
+/** наскільки «відкрите» море в точці: 0 біля берега … 1 далеко (region.ts) */
+export const offshore = regionOffshore;
+/** множник місця — region.ts seaMul (відкрите море + бурхливі райони − затишок гаваней) */
+export { seaMul } from './region';
 
 /** шкала Бофорта за швидкістю вітру (м/с) */
 const BEAUFORT: Array<[number, string]> = [
@@ -51,11 +45,11 @@ export function beaufort(ms: number): { b: number; name: string } {
 export class Weather {
   /** загальна сила погоди (синхронізується в коопі); локальна — intensity */
   base = 0.1;
-  /** множник «відкритого моря» в точці гравця (seaFactor) */
+  /** множник місця в точці гравця (region.ts seaMul) */
   localMul = 1;
-  /** локальна сила погоди 0..~1.6 біля гравця */
+  /** локальна сила погоди 0..~1.75 біля гравця (у бурхливому районі шторм лютіший) */
   get intensity(): number {
-    return this.base * this.localMul;
+    return localIntensity(this.base, this.localMul);
   }
   set intensity(v: number) {
     this.base = v;
@@ -214,6 +208,32 @@ export class Weather {
   }
   /** кооп-гість: прогноз від капітана */
   private netEta: number | null = null;
+  private netFront: number | null = null;
+
+  /** через скільки секунд почнеться наступний фронт (зі штормом чи без; 0 — вже йде) */
+  get frontEta(): number | null {
+    if (this.holdTimer >= 1e8) return this.netFront;
+    if (this.phase === 'fair' && this.phaseLeft < 420) return this.phaseLeft;
+    if (this.phase === 'front') return 0;
+    return null;
+  }
+
+  /** гравець у бурхливому районі: там уже фронт дає шторм */
+  get roughHere(): boolean {
+    return localIntensity(0.6, this.localMul) > 0.74;
+  }
+
+  /**
+   * Коли тут, де гравець, стане штормово: у бурхливому районі — з початком
+   * фронту (≈7 хв попередження), деінде — зі штормовою фазою (≈7,5 хв).
+   */
+  get localStormEta(): number | null {
+    if (this.roughHere) {
+      const f = this.frontEta;
+      if (f != null) return f;
+    }
+    return this.stormEta;
+  }
 
   /** сила вітру 0..1 (трохи нижча за інтенсивність) */
   get wind(): number {
@@ -264,10 +284,11 @@ export class Weather {
   }
 
   /** кооп-клієнт: стан погоди від капітана */
-  applyNet(intensity: number, target: number, windDir: number, flash: number, eta?: number) {
+  applyNet(intensity: number, target: number, windDir: number, flash: number, eta?: number, front?: number) {
     this.base = intensity;
     this.target = target;
     this.netEta = eta == null || eta < 0 ? null : eta;
+    this.netFront = front == null || front < 0 ? null : front;
     this.windDir = windDir;
     this.flash = Math.max(this.flash, flash);
     this.holdTimer = 1e9;
