@@ -5,6 +5,7 @@ import { CONTINENTS, CONT_BOXES, CONT_PORTS, continentHeight, contInside, type C
 import { PORT_SITES } from './portSites';
 import { ISLAND_SOLIDS } from './islandShape';
 import { glowTex } from './textures';
+import { addCloudUniforms } from './clouds';
 
 // ─────────────────────────────────────────────────────────────
 // Вигляд континентів: рельєф одним мешем (крок 10 м, дрібніше — гавані
@@ -17,6 +18,8 @@ import { glowTex } from './textures';
 /** туман зі стелею: зблизька — як у решти сцени, здалеку — силует у серпанку */
 export function farFog<M extends THREE.Material>(mat: M): M {
   mat.onBeforeCompile = (sh) => {
+    // тіні хмар: глобальний патч освітлення читає ці uniform-и
+    addCloudUniforms(sh.uniforms);
     sh.fragmentShader = sh.fragmentShader.replace(
       '#include <fog_fragment>',
       `#ifdef USE_FOG
