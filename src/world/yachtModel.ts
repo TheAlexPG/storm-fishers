@@ -1083,6 +1083,12 @@ export class YachtBuilder {
     guard.rotation.x = -Math.PI / 2;
     guard.rotation.z = Math.PI;
     g.add(guard);
+    // ноги поручня до підлоги кокпіту (без пульта поручень висів у повітрі);
+    // на них — грибки-основи для циферблатів лагу й вітроміра (HelmInstruments)
+    for (const sx of [-1, 1]) {
+      this.rod(g, new THREE.Vector3(sx * 0.3, DECK_Y, -2.95), new THREE.Vector3(sx * 0.3, DECK_Y + 0.92, -2.95), 0.018, steel);
+      this.cyl(g, 0.03, 0.045, 0.03, sx * 0.3, DECK_Y + 0.015, -2.95, steel, 10);
+    }
     // пульт приборів на тумбі (нахилений до стерновика)
     const pod = this.box(g, 1.36, 0.12, 0.4, 0, DECK_Y + 1.1, -2.98, dark);
     pod.rotation.x = -0.55; // верхня грань — до стерновика

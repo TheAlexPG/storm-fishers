@@ -651,7 +651,8 @@ export class Hud {
     // прилади: швидкість (лаг), глибина й вітер (ехолот/вітромір), риба (сонар), автопілот
     const ins = this.instr;
     const parts: string[] = [];
-    if (ins.lvl >= 1) parts.push(`⛵ ${(ins.speed * 1.944).toFixed(1).replace('.', ',')} вуз`);
+    // лаг стоїть на тумбі з самого початку (рівень 0)
+    parts.push(`⛵ ${(ins.speed * 1.944).toFixed(1).replace('.', ',')} вуз`);
     if (ins.lvl >= 2) parts.push(`⇣ ${ins.depth > 240 ? '>250' : ins.depth.toFixed(ins.depth < 10 ? 1 : 0).replace('.', ',')} м`, `🌬 ${Math.round(ins.wind)} м/с`);
     else if (ins.lvl >= 1 && ins.falling) parts.push('🌡 тиск падає');
     if (ins.lvl >= 4) parts.push(ins.fish > 0.62 ? '🐟 густо' : ins.fish > 0.32 ? '🐟 помірно' : '🐟 рідко');
