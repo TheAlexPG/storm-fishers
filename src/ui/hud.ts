@@ -41,6 +41,8 @@ export interface FightHud {
 }
 
 export class Hud {
+  /** кооп: поточна точка маршруту капітана (коли в екіпажі й свого маршруту нема) */
+  crewWaypoint: { x: number; z: number } | null = null;
   private root: HTMLElement;
   private elMoney!: HTMLElement;
   private elClock!: HTMLElement;
@@ -551,8 +553,10 @@ export class Hud {
     }
 
     // навігація: компасна стрічка + чіпи до порту/точки
-    this.drawCompass(extra.heading ?? 0, boatPos, game.waypoint, weather.windDir, weather.wind);
-    this.updateNavChips(boatPos, game.waypoint);
+    // свого маршруту нема, а ти в екіпажі — компас веде маршрутом капітана
+    const wp = game.waypoint ?? this.crewWaypoint;
+    this.drawCompass(extra.heading ?? 0, boatPos, wp, weather.windDir, weather.wind);
+    this.updateNavChips(boatPos, wp);
   }
 
   /** азимут у градусах: 0 = північ (-Z), за годинниковою стрілкою */

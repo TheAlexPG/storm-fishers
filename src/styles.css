@@ -526,6 +526,14 @@ body.intro-mode #vignette { opacity: 0.6; }
 .map-route-btns { display: flex; gap: 6px; }
 .map-route-btns button { border-radius: 999px; padding: 5px 11px; font-size: 12px; }
 .map-route.empty .map-route-btns { display: none; }
+/* кооп: маршрути екіпажу свого борту — хто проклав і кнопка «взяти» */
+.map-route { flex-wrap: wrap; }
+.map-crew { flex-basis: 100%; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.map-crew[hidden] { display: none; }
+.map-crew-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.map-crew-row i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; box-shadow: 0 0 0 1.5px #fffaf0; }
+.map-crew-row button { font-family: var(--font); font-weight: 800; font-size: 11.5px; color: var(--text); background: var(--glass); border: 1px solid rgba(34, 48, 59, 0.16); border-radius: 999px; padding: 3px 10px; cursor: pointer; }
+.map-crew-row button:hover { background: #fffaf0; }
 .map-note {
   position: absolute;
   left: 50%;

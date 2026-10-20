@@ -1,4 +1,5 @@
 import { PORT_POINTS } from '../world/port';
+import type { CrewRoute } from '../net/coop';
 import { PORT_SITES, pierRect, siteServices } from '../world/portSites';
 
 /** послуги інших гаваней — для підписів на зумі */
@@ -148,6 +149,7 @@ export class MapView {
             <button data-r="undo" title="Прибрати останню точку (Backspace)">↶ Остання</button>
             <button data-r="clear" title="Стерти весь маршрут">Стерти маршрут</button>
           </div>
+          <div class="map-crew"></div>
         </div>
         <div class="map-note"></div>
       </div>
@@ -181,6 +183,7 @@ export class MapView {
             <button data-r="undo" title="Remove the last point (Backspace)">↶ Last</button>
             <button data-r="clear" title="Clear the whole route">Clear route</button>
           </div>
+          <div class="map-crew"></div>
         </div>
         <div class="map-note"></div>
       </div>
@@ -278,6 +281,17 @@ export class MapView {
       const g = this.last.game;
       if (r === 'undo') g.removeRoutePoint(g.route.length - 1);
       else g.clearWaypoint();
+      this.changed();
+    });
+    // кооп: «взяти маршрут» члена екіпажу — скопіювати його точки собі
+    this.el.querySelector('.map-crew')!.addEventListener('click', (e) => {
+      const id = Number((e.target as HTMLElement).closest('button')?.dataset.take);
+      const cr = this.crew.find((r) => r.id === id);
+      if (!cr || !this.last) return;
+      const g = this.last.game;
+      g.clearWaypoint();
+      for (const p of cr.pts) g.addRoutePoint(p.x, p.z);
+      this.note(L(`Маршрут ${cr.nick} — тепер і твій`, `${cr.nick}'s route is now yours too`));
       this.changed();
     });
     window.addEventListener('keydown', (e) => {
@@ -391,6 +405,8 @@ export class MapView {
     return this.el.classList.contains('open');
   }
 
+  /** кооп: маршрути інших гравців свого борту — кожен своїм кольором */
+  crew: CrewRoute[] = [];
   /** кооп: друзі (світові координати) */
   friends: Array<{ x: number; z: number; nick: string; color: string; onBoat: boolean; fishing: boolean }> = [];
   /** поставлені сітки: лінія між двома буями, номер і скільки стоїть */
@@ -685,6 +701,10 @@ export class MapView {
       c.fillStyle = '#1d6f73';
       c.fillText(`${game.speciesName(r.speciesId)} ×${r.boost.toFixed(1).replace('.', L(',', '.'))}`, px, pz + Math.max(38, rr + 16));
     }
+
+    // ── маршрути екіпажу (кооп, свій борт): кольором автора, під своїм ──
+    this.drawCrewRoutes(c, mx, my, boatX, boatZ, zk);
+    if (main) this.updateCrewPanel();
 
     // ── маршрут: яхта → 1 → 2 …, перша точка — поточна ціль (прапор) ──
     {
@@ -1145,6 +1165,69 @@ export class MapView {
   }
 
   /** паперова карта: відстань (у пікселях полотна) від (u,v) до найближчої точки маршруту */
+  /** маршрути екіпажу: тонка лінія й кружечки кольору гравця, нік біля першої точки */
+  private drawCrewRoutes(c: CanvasRenderingContext2D, mx: (x: number) => number, my: (z: number) => number, boatX: number, boatZ: number, zk: number) {
+    for (const cr of this.crew) {
+      const r = cr.pts;
+      if (!r.length) continue;
+      c.save();
+      c.lineCap = 'round';
+      c.globalAlpha = 0.9;
+      c.strokeStyle = cr.color;
+      c.lineWidth = 2;
+      c.setLineDash([2, 5]);
+      c.beginPath();
+      // маршрут капітана веде яхту — починається від неї
+      if (cr.captain) c.moveTo(mx(boatX), my(boatZ));
+      else c.moveTo(mx(r[0].x), my(r[0].z));
+      for (const p of r) c.lineTo(mx(p.x), my(p.z));
+      c.stroke();
+      c.setLineDash([]);
+      for (let i = 0; i < r.length; i++) {
+        const qx = mx(r[i].x), qz = my(r[i].z);
+        c.beginPath();
+        c.arc(qx, qz, 6 * zk, 0, Math.PI * 2);
+        c.fillStyle = cr.color;
+        c.fill();
+        c.lineWidth = 1.5;
+        c.strokeStyle = '#fffaf0';
+        c.stroke();
+        c.font = `800 ${Math.round(8 * zk)}px ${FONT}`;
+        c.textAlign = 'center';
+        c.fillStyle = '#fffaf0';
+        c.fillText(String(i + 1), qx, qz + 3 * zk);
+      }
+      // ярлик з ніком над першою точкою
+      const lab = (cr.captain ? '⚓ ' : '') + cr.nick;
+      const qx = mx(r[0].x), qz = my(r[0].z) - 16 * zk;
+      c.font = `800 ${Math.round(10.5 * zk)}px ${FONT}`;
+      const tw = c.measureText(lab).width;
+      c.globalAlpha = 1;
+      c.fillStyle = 'rgba(255,250,240,0.9)';
+      c.beginPath();
+      c.roundRect(qx - tw / 2 - 5, qz - 11 * zk, tw + 10, 15 * zk, 7);
+      c.fill();
+      c.fillStyle = cr.color;
+      c.fillText(lab, qx, qz);
+      c.restore();
+    }
+  }
+
+  private crewKey = '';
+  /** панель маршруту: хто з екіпажу проклав свій маршрут — кнопка «взяти» */
+  private updateCrewPanel() {
+    const key = this.crew.map((r) => `${r.id}:${r.pts.length}:${r.color}`).join('|');
+    if (key === this.crewKey) return;
+    this.crewKey = key;
+    const el = this.el.querySelector('.map-crew') as HTMLElement;
+    el.innerHTML = this.crew.map((r) => {
+      const who = `<i style="background:${r.color}"></i>${r.captain ? '⚓ ' : ''}${escapeHtml(r.nick)}`;
+      const n = `${r.pts.length} ${plural(r.pts.length, ['точка', 'точки', 'точок'], ['point', 'points'])}`;
+      return `<div class="map-crew-row"><span>${who} · ${n}</span><button data-take="${r.id}" title="${L('Скопіювати цей маршрут собі', 'Copy this route as yours')}">${L('Взяти', 'Take')}</button></div>`;
+    }).join('');
+    el.hidden = !this.crew.length;
+  }
+
   chartHit(u: number, v: number, cw: number, ch: number, route: Pt[]): number {
     let best = -1, bd = 16 * 1.7;
     for (let i = 0; i < route.length; i++) {
@@ -1185,4 +1268,8 @@ export class MapView {
     if (wx >= -24 && wx <= 24 && wz >= -40 && wz <= -18) return true; // причал
     return terrainHeight(wx, wz) > 0;
   }
+}
+
+function escapeHtml(t: string): string {
+  return t.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!);
 }
