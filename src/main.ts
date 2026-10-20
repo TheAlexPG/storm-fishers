@@ -22,7 +22,7 @@ import { Hud, type FightHud } from './ui/hud';
 import { Minimap } from './ui/minimap';
 import { MapView } from './ui/map';
 import { Dialogs } from './ui/dialogs';
-import { zoneFromDist, ZONE_NAMES } from './game/fish';
+import { zoneFromDist, ZONE_NAMES, FISH } from './game/fish';
 
 /** м'яке навчання: крок → підказка; умова виконання — у Game.updateTutorial */
 const TUTORIAL = [
@@ -42,7 +42,9 @@ import { WindLines } from './world/windLines';
 import { FoamTrail } from './world/foamTrail';
 import { FishJump } from './world/fishJump';
 import { DeckFish } from './world/deckFish';
-import { RadioSet, RADIO_CHANNELS } from './world/radioSet';
+import { RadioSet, type RadioCtl, type RadioData } from './world/radioSet';
+import { forecast3 } from './game/forecast';
+import { CabinDecor } from './world/cabinDecor';
 import { CabinDoor } from './world/cabinDoor';
 import { ChartTable, CHART_CENTER } from './world/chartTable';
 import { Nets, type NetsNet } from './world/nets';
@@ -140,6 +142,7 @@ class Game {
   private leapJump: FishJump;
   private deckFish: DeckFish;
   private radio!: RadioSet;
+  private cabinDecor!: CabinDecor;
   private shopCounter!: ShopCounter;
   private cabinDoor!: CabinDoor;
   private chart!: ChartTable;
@@ -158,6 +161,8 @@ class Game {
   private _chM = new THREE.Matrix4();
   private doorWarnT = 0;
   private radioTextT = 0;
+  /** орган радіо, на який дивиться гравець (кнопка/ручка) */
+  private radioCtl: RadioCtl | null = null;
   private hl = new Highlighter();
   private _hv = new THREE.Vector3();
   private landmarks: Landmarks;
@@ -244,6 +249,7 @@ class Game {
     this.fishing = new Fishing(this.scene, this.audio, this.boat);
     this.deckFish = new DeckFish(this.scene, this.boat);
     this.radio = new RadioSet(this.boat.group);
+    this.cabinDecor = new CabinDecor(this.boat.group);
     this.cabinDoor = new CabinDoor(this.boat.group);
     this.chart = new ChartTable(this.boat.group);
     this.nets = new Nets(this.scene);
@@ -266,7 +272,7 @@ class Game {
     this.player.onJump = () => this.audio.step(this.player.mode === 'boat' ? 0 : 2, true);
     this.player.stationText = (id) =>
       id === 'radio'
-        ? `Радіо — крутити ручку (${RADIO_CHANNELS[this.radio.channel].name.toLowerCase()})`
+        ? this.radio.label(this.radioCtl)
         : id === 'fishbox'
         ? !this.boat.hatchOpen
           ? `Відкрити люк трюму (${this.game.hold.length}/${this.game.holdCap})${this.deckFish.carried ? ' й покласти рибу' : ''}`
@@ -802,8 +808,10 @@ class Game {
         key = id + (this.game.upgrades.nets ?? 0);
         objs = near(key, 0.6, 0.95, -4.95, 0.8, 1.4);
       } else if (id === 'st:radio') {
-        key = id;
-        objs = [this.radio.group];
+        // підсвічуємо лише орган, на який дивишся (вимкнене радіо — кнопку живлення)
+        const o = this.radio.object(this.radioCtl ?? (this.radio.on ? 'tune' : 'power'));
+        key = id + ':' + (this.radioCtl ?? (this.radio.on ? '' : 'power'));
+        objs = o && (this.radioCtl || !this.radio.on) ? [o] : null;
       } else if (id === 'st:door') {
         key = id;
         objs = [this.cabinDoor.group];
@@ -884,25 +892,34 @@ class Game {
     this.saveGame();
   }
 
-  /** що говорить станція, на яку налаштоване радіо */
-  private radioText(): string {
+  /** дані для екрана радіо: прогноз, біржа, звіти, трюм */
+  private radioData(): RadioData {
     const g = this.game, w = this.weather;
-    switch (this.radio.channel) {
-      case 1: {
-        const fc = w.snapshot().forecast;
-        const bf = w.beaufort;
-        const f = fc > 0.74 ? 'УВАГА: очікується ШТОРМ, у відкритому морі — до 10–11 балів' : fc > 0.45 ? 'вітер посилюється, хвилі ростуть' : fc < 0.14 ? 'погода покращується, море спокійне' : 'погода стабільна';
-        return `зараз ${bf.b} б. (${bf.name}, ${w.windMs.toFixed(0)} м/с) · прогноз: ${f} · далі від берега завжди сильніше`;
-      }
-      case 2:
-        return g.reports.length ? g.reports.map((r) => `${ZONE_NAMES[r.zone]}: добре клює ${g.speciesName(r.speciesId).toLowerCase()} ×${r.boost.toFixed(1).replace('.', ',')}`).join(' · ') : 'сигнал загубився…';
-      case 3:
-        return `${g.priceTrendText} (тиждень ${g.priceWeek})` + g.market.events.map((e) => ` · ${e.mult > 1 ? '↑' : '↓'} ${e.text}`).join('');
-      case 4:
-        return '♪ «Ой, у морі хвилі…» · морські пісні до світанку ♪';
-      default:
-        return '';
-    }
+    const snap = w.snapshot();
+    const bf = w.beaufort;
+    const h = Math.floor(this.time.hours), m = Math.floor((this.time.hours % 1) * 60);
+    return {
+      clock: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')} · день ${this.time.dayCount}`,
+      now: { bf: bf.b, name: bf.name, ms: w.windMs, wave: Math.round((0.2 + w.intensity * w.intensity * 4.2) * 10) / 10, dir: w.windDir },
+      forecast: forecast3(w.base, snap.forecast, w.windDir, this.time.dayCount),
+      market: FISH.map((sp) => ({
+        name: sp.name,
+        price: g.market.perKg(sp.id, g.priceMult),
+        hist: g.market.hist[sp.id] ?? [],
+        demand: g.market.demand(sp.id),
+        event: g.market.eventFor(sp.id)?.text,
+      })),
+      events: g.market.events.map((e) => `${e.mult > 1 ? '▲' : '▼'} ${e.text}`),
+      reports: g.reports.map((r) => ({ zone: ZONE_NAMES[r.zone], name: g.speciesName(r.speciesId), boost: r.boost })),
+      hold: { count: g.hold.length, cap: g.holdCap, value: g.hold.reduce((a, f) => a + g.sellPrice(f), 0) },
+      stormSoon: snap.forecast > 0.74 || w.base > 0.74,
+      tip: (() => {
+        const zone = zoneFromDist(Math.hypot(this.boat.pos.x, this.boat.pos.z));
+        const night = this.time.isNight;
+        const here = FISH.filter((f) => f.zones.includes(zone) && (night ? f.night : f.day)).map((f) => f.name.toLowerCase());
+        return here.length ? `${night ? 'Ніч' : 'День'} · ${ZONE_NAMES[zone]}: тут зараз ловиться ${here.join(', ')}` : '';
+      })(),
+    };
   }
 
   /** затоплення: улов на борту (трюм + палуба + руки) і модулі за полісом */
@@ -1097,6 +1114,9 @@ class Game {
       const [cw, ch] = this.chart.size;
       this.mapView.chartZoom(wheelSteps, this.chart.u, this.chart.v, cw, ch);
       this.chart.markDirty();
+    } else if (wheelSteps && (this.radioCtl === 'tune' || this.radioCtl === 'vol')) {
+      this.radio.turn(this.radioCtl, -wheelSteps);
+      this.audio.click();
     } else if (wheelSteps && this.rig.mode === 'chase') this.rig.zoom(wheelSteps);
     if (this.photo) {
       const [mdx, mdy] = input.consumeMouse();
@@ -1277,7 +1297,12 @@ class Game {
     this.fishing.update(dt, t, this.boat, this.ocean, input, g, this.weather, this.time);
     // вудка в руках: ЛКМ — закид / підсічка, R — змотати
     if (locked && this.phase === 'play' && !this.dialogs.isOpen && !this.photo && !this.chartMode && this.player.mode === 'boat' && !this.player.wheeling) {
-      if (input.pressed('Mouse0')) this.fishing.click(this.boat, g, this.weather, this.time);
+      if (this.radioCtl && (input.pressed('Mouse0') || input.pressed('Mouse2'))) {
+        // кнопки й ручки радіо
+        this.radio.use(this.radioCtl, input.pressed('Mouse0') ? 1 : -1);
+        this.radioTextT = 0;
+        this.audio.click();
+      } else if (input.pressed('Mouse0')) this.fishing.click(this.boat, g, this.weather, this.time);
       if (input.pressed('KeyR')) this.fishing.reelHand();
     }
     const bobW = this._v3.copy(this.fishing.lastBobber);
@@ -1311,8 +1336,12 @@ class Game {
     this.nets.update(dt, this.time.gameHourDelta(dt), t, this.boat, this.ocean, this.weather, this.camera.position);
     this.syncNets(dt);
     this.deckFish.update(dt, t, this.time.gameHourDelta(dt), this.boat.deckWater, g.hold, this.boat.hatchOpen);
-    // радіо: текст станції й звук (чути в каюті, тихіше — з палуби)
-    this.radio.update(dt);
+    // радіо: екран і звук (чути в каюті, тихіше — з палуби крізь двері)
+    const inCabin = this.player.mode === 'boat' && this.player.inCabin;
+    this.radioCtl = inCabin && this.phase === 'play' && !this.dialogs.isOpen && this.player.nearest?.id === 'st:radio' ? this.radio.aim(this.camera) : null;
+    this.radio.spectrum = this.audio.radioSpectrum();
+    this.radio.update(dt, inCabin);
+    this.cabinDecor.update(dt, this.time.hours, this.weather.base, this.boat.group, 1 - this.time.daylight);
     if ((this.chartMode || (this.player.mode === 'boat' && this.player.inCabin)) && this.chart.due(dt, this.chartMode)) {
       this.mapView.drawChart(this.chart.canvas, this.boat.pos.x, this.boat.pos.z, this.boat.heading, this.port.rocks, this.game);
       this.chart.textureUpdated();
@@ -1320,10 +1349,14 @@ class Game {
     this.updateHighlight(t);
     this.radioTextT -= dt;
     if (this.radioTextT <= 0) {
-      this.radioTextT = 2;
-      this.radio.setText(this.radioText());
+      this.radioTextT = 1;
+      this.radio.data = this.radioData();
     }
-    this.audio.setRadio(this.radio.on && this.player.mode === 'boat' && this.player.inCabin, this.radio.tuning, this.radio.channel >= 1 && this.radio.channel <= 3, dt);
+    {
+      const tn = this.radio.tuned;
+      const audible = inCabin ? 1 : this.player.mode === 'boat' ? (this.boat.doorOpen ? 0.3 : 0.1) : 0;
+      this.audio.radio({ audible, on: this.radio.on, signal: tn.signal, sweep: this.radio.sweep, content: tn.st?.content ?? 'none', style: tn.st?.style ?? 0, volume: this.radio.volume }, dt);
+    }
 
     // вода тече у відкритий люк — гучне попередження
     if (this.boat.hatchOpen && this.boat.deckWater > 8) {
@@ -1621,10 +1654,9 @@ class Game {
       return;
     }
     if (id === 'st:radio') {
-      // фізичне радіо: ручка настройки — наступна станція
-      this.radio.next();
+      // фізичне радіо: E — те саме, що ЛКМ по органу, на який дивишся (або живлення)
+      this.radio.use(this.radioCtl ?? 'power', 1);
       this.radioTextT = 0;
-      this.audio.click();
       return;
     }
     if (id === 'st:bed' || id === 'port:house') {
