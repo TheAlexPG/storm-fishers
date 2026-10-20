@@ -27,6 +27,69 @@ export const ZONE_NAMES: Record<ZoneId, string> = {
   open: 'Відкрите море',
 };
 
+/** де на карті стоять стаї з радіо-звітів (за зонами) — карта малює їх тут */
+export const SCHOOL_ANCHORS: Record<ZoneId, [number, number]> = {
+  shore: [150, 110],
+  mid: [-380, 520],
+  open: [600, 720],
+};
+
+// ─────────────────────────────────────────────────────────────
+// Місце лову: далеко від берега й від стай клює рідко, але риба більша
+// й частіше трапляється трофей; на стаї — часто, але дрібніше.
+// ─────────────────────────────────────────────────────────────
+
+export interface FishingSpot {
+  /** віддаленість від порту 0..1 */
+  far: number;
+  /** близькість до стаї з радіо-звіту 0..1 */
+  heat: number;
+  /** множник часу очікування клювання */
+  wait: number;
+  /** шанс трофея (без вудки) */
+  trophy: number;
+  /** коротка підказка гравцю */
+  hint: string;
+}
+
+export const SCHOOL_R = 120;
+
+export function fishingSpot(x: number, z: number, reports: ReadonlyArray<{ zone: ZoneId }>): FishingSpot {
+  const d = Math.hypot(x, z);
+  const far = Math.min(1, Math.max(0, (d - 120) / 1000));
+  let heat = 0;
+  for (const r of reports) {
+    const [ax, az] = SCHOOL_ANCHORS[r.zone];
+    const q = Math.hypot(x - ax, z - az) / SCHOOL_R;
+    heat = Math.max(heat, Math.exp(-q * q));
+  }
+  const cold = 1 - heat;
+  const wait = (0.75 + 0.95 * far) * (1 - 0.55 * heat);
+  const trophy = 0.02 + 0.15 * far * cold;
+  const hint =
+    heat > 0.45 ? '🐟 Тут стая — клює часто, риба дрібніша'
+    : far > 0.55 ? '🌊 Глибока вода — клює рідко · шанс на трофей ↑'
+    : far > 0.25 ? 'Відкрита вода — клює помірно, трапляються великі'
+    : 'Біля берега — клює швидко, риба невелика';
+  return { far, heat, wait, trophy, hint };
+}
+
+/** вага риби: на стаї — дрібніша; далеко й поза стаями — «товстий хвіст» трофеїв */
+export function rollKg(sp: FishSpecies, spot: FishingSpot, rodTrophy: number, rnd: () => number = Math.random): { kg: number; trophy: boolean } {
+  const r = (a: number, b: number) => a + (b - a) * rnd();
+  let kg = r(sp.minKg, sp.maxKg) * r(0.85, 1.15) * (1 - 0.18 * spot.heat) * (1 + 0.15 * spot.far) * (1 + rodTrophy * 0.2);
+  const p = spot.trophy + rodTrophy * 0.08;
+  const trophy = rnd() < p;
+  if (trophy) kg = Math.max(kg, sp.maxKg) * r(1.25, 1.9);
+  return { kg, trophy };
+}
+
+/** трофей — набагато більший за звичайний максимум виду */
+export function isTrophy(speciesId: string, kg: number): boolean {
+  const sp = FISH_BY_ID[speciesId];
+  return !!sp && kg >= sp.maxKg * 1.2;
+}
+
 /** зона за відстанню від порту (м) */
 export function zoneFromDist(d: number): ZoneId {
   if (d < 400) return 'shore';

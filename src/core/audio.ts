@@ -263,6 +263,18 @@ export class AudioEngine {
     this.beep(660, 0.04, 'sine', 0.15);
   }
 
+  /** волосінь на межі: тонкий писк, вищий і гучніший ближче до обриву */
+  strain(level: number) {
+    const k = Math.min(1.4, Math.max(0, level));
+    this.beep(1300 + k * 600, 0.06, 'triangle', 0.08 + k * 0.08);
+  }
+
+  /** трофей! */
+  trophy() {
+    const notes = [392, 523, 659, 784, 1046, 1318];
+    notes.forEach((n, i) => setTimeout(() => this.beep(n, i === notes.length - 1 ? 0.5 : 0.12, 'triangle', 0.26), i * 95));
+  }
+
   private beep(freq: number, dur: number, type: OscillatorType, vol: number) {
     const ctx = this.ensure();
     if (!ctx || !this.master) return;

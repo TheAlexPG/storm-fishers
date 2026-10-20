@@ -30,7 +30,7 @@ const TUTORIAL = [
   'Виведи яхту з гавані: W — газ, A/D — кермо',
   'Підніми паруси: біля щогли натисни E. Найкраще йти, коли вітер збоку',
   'Візьми вудку з носової стійки (E). Тримай ЛКМ і відпусти в зеленій зоні — закид',
-  'Чекай, поки поплавок піде під воду, — клікни ЛКМ. Тягни Space у зеленій зоні, A/D — проти ривка. Рибу з палуби неси в трюм на баку',
+  'Коли поплавок пірне — клікни ЛКМ. Далі тримай/відпускай Space, щоб натяг був у зеленій зоні; A/D — проти ривка. Рибу з палуби неси в трюм на баку',
   'Повертайся в порт і продай улов на рибній біржі (навіс на східній набережній)',
 ];
 
@@ -1371,13 +1371,21 @@ class Game {
       this.audio.splash(0.6);
       const name = g.speciesName(catched.speciesId);
       const isNew = !g.discovered.includes(catched.speciesId);
+      const prevRec = g.records[catched.speciesId] ?? 0;
+      const trophy = this.fishing.lastTrophy;
+      const record = prevRec > 0 && catched.kg > prevRec;
       g.recordCatch(catched);
+      this.bumpFishSkill();
+      if (trophy) {
+        this.audio.trophy();
+        this.hud.toast(`🏆 Трофей! ${name} ${catched.kg.toFixed(1).replace('.', ',')} кг — ${record || !prevRec ? 'новий рекорд виду' : `рекорд ${prevRec.toFixed(1).replace('.', ',')} кг`}`, 'good', 5000);
+      }
       if (this.player.mode === 'boat') {
         // риба падає на палубу й б'ється — її треба віднести в ящик на баку
         this.deckFish.drop(catched, me, 1.05);
-        this.hud.catchCard(name, catched.kg, catched.speciesId, isNew, catched.storm ? 'штормова · на палубі' : 'на палубі — неси в ящик');
+        this.hud.catchCard(name, catched.kg, catched.speciesId, isNew, catched.storm ? 'штормова · на палубі' : 'на палубі — неси в ящик', trophy, record);
       } else if (g.storeFish(catched)) {
-        this.hud.catchCard(name, catched.kg, catched.speciesId, isNew, catched.storm ? 'штормова' : '');
+        this.hud.catchCard(name, catched.kg, catched.speciesId, isNew, catched.storm ? 'штормова' : '', trophy, record);
       }
     }
     // риба на палубі: б'ється, псується, хвиля може змити
@@ -1988,9 +1996,20 @@ class Game {
         jump: f.jump,
         lo: f.lo,
         hi: f.hi,
+        windup: f.windup,
+        jumpWarn: f.jumpWarn,
+        strain: f.strain,
+        trophy: f.trophy,
+        coach: this.fishSkill < 4,
       };
+      // волосінь на межі — легке тремтіння
+      if (f.strain > 0) this.slamShake = Math.max(this.slamShake, 0.12 + f.strain * 0.25);
     }
-    this.hud.setCast(this.fishing.state === 'charge' ? this.fishing.castPower : null, this.fishing.status);
+    this.hud.setCast(this.fishing.state === 'charge' ? this.fishing.castPower : null, this.fishing.status, this.fishing.castSweet);
+    {
+      const st = this.fishing.state;
+      this.hud.setFishSpot((st === 'waiting' || st === 'bite') && this.fishing.spot ? this.fishing.spot.hint : null);
+    }
     this.hud.setRoster(this.coop.active ? this.coop.roster() : []);
     {
       const atSea = Math.hypot(this.boat.pos.x - this.boat.moor.x, this.boat.pos.z - this.boat.moor.z) > 80;
@@ -2012,6 +2031,7 @@ class Game {
       {
         prompt: prompt.text,
         promptBite: prompt.bite,
+        promptBiteLeft: prompt.bite ? this.fishing.biteLeft : null,
         promptKey: prompt.key ?? 'E',
         actionLabel: this.stations.active ? this.stations.active.label : null,
         actionProgress: this.stations.progress,
@@ -2079,8 +2099,27 @@ class Game {
     return Math.atan2(ax, az);
   }
 
+  /** скільки риб уже піймав цей гравець (підказки боротьби зникають після кількох) */
+  private fishSkill = (() => {
+    try {
+      return Number(localStorage.getItem('storm-fish-skill')) || 0;
+    } catch {
+      return 0;
+    }
+  })();
+
+  private bumpFishSkill() {
+    this.fishSkill++;
+    try {
+      localStorage.setItem('storm-fish-skill', String(this.fishSkill));
+    } catch {
+      /* ок */
+    }
+  }
+
   private applySettings(st: Settings) {
     this.settings = st;
+    this.fishing.easy = st.easyFish;
     this.audio.setLevels(st.volume, st.music);
     Input.instance.sens = st.sens;
     Input.instance.invertY = st.invertY;

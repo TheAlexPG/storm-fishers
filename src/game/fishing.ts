@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { clamp, rand } from '../core/math';
 import { Boat } from '../world/boat';
-import { FISH, FISH_BY_ID, makeFish, zoneFromDist } from './fish';
+import { FISH, FISH_BY_ID, fishingSpot, makeFish, rollKg, zoneFromDist, type FishingSpot } from './fish';
 import { eff, holderBiteSpeed, holderBiteWindow } from './upgrades';
 import { rodModel, RACK_SLOTS, HOLDER_MOUNTS, type PartKit } from '../world/upgradeParts';
 import type { GameState } from './state';
@@ -21,7 +21,10 @@ import type { Input } from '../core/input';
 //  • стійки на бортах (апгрейд): закинуту вудку можна поставити в стійку й
 //    узяти іншу; клює в стійці — дзвіночок, біжи й хапай (E) за кілька секунд;
 //  • боротьба: риба рветься вбік — нахиляй вудку навпаки (A/D), тягни Space,
-//    тримай натяг у зеленій зоні, на стрибку відпусти.
+//    тримай натяг у зеленій зоні, на стрибку відпусти. Ривки й стрибки риба
+//    «готує» (видно заздалегідь), натяг змінюється плавно, а волосінь рветься
+//    лише після кількох секунд перетягу — з попередженням.
+//  • місце: далеко від берега й стай клює рідше, але частіше трофеї.
 // ─────────────────────────────────────────────────────────────
 
 export type FishingState = 'idle' | 'charge' | 'waiting' | 'bite' | 'fight';
@@ -36,9 +39,21 @@ const ROD_INFO: Record<RodKind, { name: string; cast: number; bite: number; trop
 };
 const HOLDER_NAMES = ['лівий борт', 'правий борт', 'корма'];
 
-/** зелена зона натягу (в межах 0..100) */
-const SWEET_LO = 42;
-const SWEET_HI = 74;
+/** зелена зона натягу (в межах 0..100): звичайна / «легка риболовля» */
+const SWEET = { lo: 42, hi: 74 };
+const SWEET_EASY = { lo: 36, hi: 78 };
+/** скільки секунд перетягу волосінь витримує */
+const GRACE = 1.5;
+const GRACE_EASY = 2.4;
+/** скільки секунд слабини риба терпить */
+const SLACK = 3.5;
+const SLACK_EASY = 5;
+/** вікно підсічки, с */
+const BITE_WINDOW = 1.6;
+const BITE_WINDOW_EASY = 2.3;
+/** шкала закиду: зелена зона */
+export const CAST_SWEET = { lo: 0.74, hi: 0.95 };
+export const CAST_SWEET_EASY = { lo: 0.66, hi: 0.97 };
 /** понад цю швидкість (м/с) волосінь не втримати — вудки змотуються */
 const MAX_TROLL_SPEED = 5;
 
@@ -55,6 +70,7 @@ class Rod {
   castDist = 10;
   biteAt = 0;
   biteWindow = 0;
+  biteWindow0 = 1;
   biteAge = 0;
   nibble = 0;
   nibbleT = 0;
@@ -125,6 +141,25 @@ export class Fishing {
   private fishSpeciesId = 'hamsa';
   private overTension = 0;
   private lineBreakAt = 90;
+  /** згладжена швидкість зміни натягу (без ривків) */
+  private tRate = 0;
+  /** сила поточного ривка 0..1 (наростає плавно) */
+  private pullK = 0;
+  /** риба «готує» ривок у бік nextPull */
+  private windup = 0;
+  private nextPull = 0;
+  /** риба готується вистрибнути */
+  private jumpWarn = 0;
+  private canJump = true;
+  private small = false;
+  private strainBeep = 0;
+  private fishTrophy = false;
+  /** фрикціон травить волосінь (0..1) */
+  private dragSlip = 0;
+  /** «легка риболовля» (налаштування) */
+  easy = true;
+  /** місце, де закинута вудка в руках (для підказки в HUD) */
+  spot: FishingSpot | null = null;
   private stamina = 100;
   private staminaMax = 100;
   /** куди рветься риба: −1 ліворуч, +1 праворуч, 0 — тягне в глибину */
@@ -315,6 +350,8 @@ export class Fishing {
       this.hook(game, weather, time);
     } else if (r.nibble > 0.05) {
       this.strikeEarly(r);
+    } else if (r.state === 'waiting' && r.fly >= 1) {
+      this.say('Ще не клює — чекай, поки поплавок пірне під воду', 1.6);
     }
   }
 
@@ -341,19 +378,20 @@ export class Fishing {
   }
 
   private strikeEarly(r: Rod) {
-    r.biteAt += rand(4, 8);
-    r.nibbleT = rand(2, 4);
+    // риба лише обережніша — наживка ціла, чекаємо далі
+    r.biteAt += this.easy ? rand(1.5, 3) : rand(3, 5);
+    r.nibbleT = rand(1.5, 3);
     r.nibble = 0;
-    this.audio.splash(0.25);
-    this.onEvent?.('Зарано! Риба злякалась — чекай, поки поплавок піде під воду.', 'warn');
+    this.audio.splash(0.2);
+    this.say('Зарано! Це була поклювка — підсікай, коли поплавок ПІРНЕ', 2.4);
   }
 
   private cast(r: Rod, boat: Boat, game: GameState, weather: Weather, power: number) {
     this.charging = false;
     if (!game.spendEnergy(2)) return;
     const info = ROD_INFO[r.kind];
-    const zone = zoneFromDist(Math.hypot(boat.pos.x, boat.pos.z));
-    r.perfect = power >= 0.78 && power <= 0.95;
+    const cs = this.easy ? CAST_SWEET_EASY : CAST_SWEET;
+    r.perfect = power >= cs.lo && power <= cs.hi;
     const k = power > 0.95 ? 0.75 : 0.45 + 0.6 * power;
     r.castDist = eff.castDist(game.upgrades.rod) * info.cast * k * (r.perfect ? 1.1 : rand(0.9, 1.05));
     // туди, куди дивишся (по горизонталі)
@@ -371,19 +409,20 @@ export class Fishing {
     r.flyFrom.copy(this.tipW);
     r.fly = 0;
     r.state = 'waiting';
-    let t = rand(6, 28);
-    t *= zone === 'shore' ? 0.7 : zone === 'mid' ? 1.0 : 1.45;
+    // далеко від берега й стай — довше, біля стаї — швидко (fish.ts fishingSpot)
+    const spot = fishingSpot(r.bobberPos.x, r.bobberPos.z, game.reports);
+    if (r.where === 'hand') this.spot = spot;
+    let t = rand(5, 15) * spot.wait;
     t /= eff.biteSpeed(game.upgrades.rod) * info.bite;
-    if (weather.intensity > 0.6) t *= 0.7;
-    if (game.reports.some((rep) => rep.zone === zone)) t /= 1.3;
-    if (r.perfect) t *= 0.55;
+    if (weather.intensity > 0.6) t *= 0.75;
+    if (r.perfect) t *= 0.6;
     r.biteAt = Math.max(2.5, t);
     r.nibbleT = Math.min(r.biteAt * 0.5, rand(1.5, 4));
     r.nibble = 0;
     r.bobber.visible = true;
     r.line.visible = true;
     this.audio.splash(0.2);
-    this.say(r.perfect ? 'Ідеальний закид!' : power > 0.95 ? 'Перетягнув — недоліт' : '', 2);
+    this.say(r.perfect ? 'Ідеальний закид! Клюватиме швидше' : power > cs.hi ? 'Перетягнув — недоліт' : power < cs.lo ? 'Слабкий закид — у зеленій зоні клює швидше' : '', 2);
   }
 
   /** зачепити рибу на вудці в руках (вона клює) */
@@ -397,10 +436,12 @@ export class Fishing {
     if (pool.length === 0) pool.push(...FISH.filter((f) => f.zones.includes(zone)));
     // ваги: рідкісність, радіо, шторм; «трофейні» вудки тягнуть рідкісну велику рибу
     const off = offshore(this.boat.pos.x, this.boat.pos.z);
+    const spot = fishingSpot(r.bobberPos.x, r.bobberPos.z, game.reports);
     const weights = pool.map((f) => {
       let w = 1 / f.rarity;
+      // радіо-звіт діє в межах стаї (на карті), трохи — по всій зоні
       const rep = game.reportBoost(f.id, zone);
-      if (rep > 1) w *= rep;
+      if (rep > 1) w *= 1 + (rep - 1) * (0.35 + 0.65 * spot.heat);
       if (weather.intensity > 0.6 && f.zones.includes('open')) w *= 1.6;
       w *= 1 + info.trophy * (f.rarity - 1) * 1.5;
       // далі від берега — рідкісніша риба
@@ -418,26 +459,36 @@ export class Fishing {
       }
     }
     this.fishSpeciesId = sp.id;
-    this.fishKg = rand(sp.minKg, sp.maxKg) * rand(0.85, 1.3) * (1 + info.trophy * 0.25) * (1 + off * 0.45);
+    const roll = rollKg(sp, spot, info.trophy);
+    this.fishKg = roll.kg;
+    this.fishTrophy = roll.trophy;
     r.tip.getWorldPosition(this.tipW);
     this.fightDir.set(r.bobberPos.x - this.tipW.x, 0, r.bobberPos.z - this.tipW.z);
     this.fightMaxDist = Math.max(6, this.fightDir.length() - 2);
     this.fightDist = this.fightMaxDist;
-    this.fightTension = 35;
+    this.fightTension = 50;
+    this.tRate = 0;
     this.overTension = 0;
-    this.lineBreakAt = 86 + eff.lineStrength(game.upgrades.rod) * 14 - 14;
-    const rel = clamp(this.fishKg / sp.maxKg, 0, 1.3);
-    this.staminaMax = 60 + rel * 50 + sp.rarity * 25;
-    const perfect = r.biteAge < 0.4;
-    this.stamina = this.staminaMax * (perfect ? 0.72 : 1);
+    this.lineBreakAt = Math.max(88, 86 + eff.lineStrength(game.upgrades.rod) * 14 - 14);
+    // велика риба — довша боротьба, але не різкіша; дрібна — швидко й спокійно
+    const rel = clamp(this.fishKg / sp.maxKg, 0, 2.4);
+    this.staminaMax = 30 + 18 * sp.rarity + 40 * rel;
+    this.small = this.fishKg < 0.5 && sp.rarity < 1.2;
+    this.canJump = !this.small;
+    const perfect = r.biteAge < 0.5;
+    this.stamina = this.staminaMax * (perfect ? 0.75 : 1);
     this.pull = 0;
+    this.pullK = 0;
+    this.windup = 0;
+    this.nextPull = 0;
+    this.jumpWarn = 0;
     this.lean = 0;
     this.side = 0;
     this.jumpT = 0;
-    this.nextJump = rand(4, 8);
+    this.nextJump = rand(6, 10);
     this.slackT = 0;
-    this.pullT = rand(0.8, 1.6);
-    this.say(perfect ? 'Ідеальна підсічка!' : 'Є! Риба на гачку', 1.8);
+    this.pullT = rand(1.5, 2.5);
+    this.say(this.fishTrophy ? 'Ого, щось велике! Не поспішай' : perfect ? 'Ідеальна підсічка!' : 'Є! Риба на гачку', 2);
     this.fightRod = r;
     r.state = 'idle';
     r.bobber.visible = true;
@@ -484,7 +535,7 @@ export class Fishing {
     }
     if (this.charging) {
       const r = this.hand;
-      this.castPhase += dt / 0.7;
+      this.castPhase += dt / (this.easy ? 1.15 : 0.95);
       const ph = this.castPhase % 2;
       this.castPower = ph < 1 ? ph : 2 - ph;
       if (!r) this.charging = false;
@@ -531,7 +582,8 @@ export class Fishing {
       if (r.biteAt <= 0) {
         r.state = 'bite';
         r.biteAge = 0;
-        r.biteWindow = inHolder ? holderBiteWindow(holderLvl) : 1.1;
+        r.biteWindow = inHolder ? holderBiteWindow(holderLvl) : this.easy ? BITE_WINDOW_EASY : BITE_WINDOW;
+        r.biteWindow0 = r.biteWindow;
         this.spawnRipple(r.bobberPos.x, r.bobberPos.z, 1);
         this._d.set(r.bobberPos.x, ocean.heightAt(r.bobberPos.x, r.bobberPos.z, t), r.bobberPos.z);
         this.onSplash?.(this._d, 0.35);
@@ -545,8 +597,17 @@ export class Fishing {
       r.biteWindow -= dt;
       if (inHolder && Math.floor(r.biteAge * 2.2) !== Math.floor((r.biteAge - dt) * 2.2)) this.audio.tinkle(holderLvl >= 3 ? 0.9 : 0.4);
       if (r.biteWindow <= 0) {
-        this.reel(r);
-        this.onEvent?.(inHolder ? `${r.name}: риба з'їла наживку й пішла. Закинь знову.` : 'Проґавив клювання — риба зірвалась з гачка.', 'warn');
+        if (inHolder) {
+          this.reel(r);
+          this.onEvent?.(`${r.name}: риба з'їла наживку й пішла. Закинь знову.`, 'warn');
+        } else {
+          // запізно — але наживка ціла: риба ще повернеться
+          r.state = 'waiting';
+          r.biteAt = rand(3, 7) * (this.spot?.wait ?? 1);
+          r.nibbleT = rand(1, 2.5);
+          r.nibble = 0;
+          this.say('Запізно — риба зійшла. Наживка ціла, чекай наступного клювання', 2.6);
+        }
       }
     }
   }
@@ -598,22 +659,48 @@ export class Fishing {
   private fightStep(dt: number, t: number, boat: Boat, ocean: Ocean, input: Input, game: GameState, weather: Weather) {
     const r = this.fightRod!;
     const sp = FISH_BY_ID[this.fishSpeciesId];
-    const power = 0.45 + clamp(this.fishKg / (sp ? sp.maxKg : 1), 0, 1) * 0.35 + (sp ? sp.rarity * 0.12 : 0);
+    const easy = this.easy;
+    const rel = clamp(this.fishKg / (sp ? sp.maxKg : 1), 0, 1.2);
+    // сила ривків майже не росте з вагою — велика риба просто довше бореться
+    const power = Math.min(0.85, 0.4 + rel * 0.2 + (sp ? (sp.rarity - 1) * 0.12 : 0));
     const tired = this.stamina < this.staminaMax * 0.25;
 
+    // ривки: спершу риба «готується» (стрілку видно заздалегідь), потім сила наростає
     this.pullT -= dt;
-    if (this.pullT <= 0) {
-      const x = Math.random();
-      this.pull = tired ? (x < 0.6 ? 0 : x < 0.8 ? -1 : 1) : x < 0.42 ? -1 : x < 0.84 ? 1 : 0;
-      this.pullT = tired ? rand(1.4, 2.6) : rand(1.1, 2.4);
+    if (this.windup > 0) {
+      this.windup -= dt;
+      if (this.windup <= 0) {
+        if (this.pull !== 0 && this.pull !== this.nextPull) this.pullK *= 0.3;
+        this.pull = this.nextPull;
+      }
+    } else if (this.pullT <= 0) {
+      const calm = tired ? 0.6 : this.small ? 0.45 : 0.22;
+      const np = Math.random() < calm ? 0 : Math.random() < 0.5 ? -1 : 1;
+      if (np !== 0 && np !== this.pull) {
+        this.nextPull = np;
+        this.windup = (easy ? 0.95 : 0.65) + rel * 0.15;
+        this.pullT = this.windup + rand(1.8, 3.2);
+      } else {
+        this.pull = np;
+        this.pullT = rand(1.5, 3);
+      }
     }
+    this.pullK += ((this.pull !== 0 ? 1 : 0) - this.pullK) * (1 - Math.exp(-dt * 2.4));
+
+    // стрибок: попередження → стрибок
     this.nextJump -= dt;
-    if (this.jumpT <= 0 && this.nextJump <= 0 && !tired) {
-      this.jumpT = 1.15;
-      this.nextJump = rand(6, 11);
-      this.onLeap?.(this.fishSpeciesId, this.fishKg, r.bobber.position);
-      this.onSplash?.(r.bobber.position, 0.7);
-      this.say('СТРИБОК! Відпусти Space!', 1.2);
+    if (this.canJump && !tired && this.jumpT <= 0 && this.jumpWarn <= 0 && this.windup <= 0 && this.nextJump <= 0) {
+      this.jumpWarn = easy ? 1.1 : 0.75;
+      this.audio.splash(0.15);
+    }
+    if (this.jumpWarn > 0) {
+      this.jumpWarn -= dt;
+      if (this.jumpWarn <= 0) {
+        this.jumpT = 1.1;
+        this.nextJump = rand(8, 14);
+        this.onLeap?.(this.fishSpeciesId, this.fishKg, r.bobber.position);
+        this.onSplash?.(r.bobber.position, 0.7);
+      }
     }
     const jumping = this.jumpT > 0;
     if (jumping) this.jumpT -= dt;
@@ -622,58 +709,73 @@ export class Fishing {
     const leanIn = (input.down('KeyD') ? 1 : 0) - (input.down('KeyA') ? 1 : 0);
     this.lean += (leanIn - this.lean) * (1 - Math.exp(-dt * 8));
     const counter = this.pull === 0 ? 1 - Math.abs(this.lean) * 0.4 : clamp(-this.pull * this.lean, -1, 1);
-    const effort = this.pull === 0 ? 0.5 : 1;
 
-    let dT = 0;
-    if (reeling) dT += (26 + power * 22) * (jumping ? 3.2 : 1);
-    else dT -= 48;
-    dT += this.pull !== 0 ? (1 - counter) * 30 * power * effort : 6 * power;
-    this.fightTension = clamp(this.fightTension + dT * dt, 0, 100);
-    const sweet = this.fightTension >= SWEET_LO && this.fightTension <= SWEET_HI;
+    // натяг: цільова швидкість зміни, згладжена — без різких стрибків
+    const swz = easy ? SWEET_EASY : SWEET;
+    // фрикціон: вище зеленої зони котушка травить волосінь — натяг росте ледве-ледве
+    const over = clamp((this.fightTension - swz.hi) / Math.max(1, this.lineBreakAt - swz.hi), 0, 1);
+    const drag = 1 - over * (easy ? 0.8 : 0.5);
+    this.dragSlip = reeling && over > 0.25 ? over : 0;
+    let rate = reeling ? (24 + power * 18) * drag * (jumping ? (easy ? 1.6 : 2.2) : 1) : -42;
+    rate += this.pull !== 0 ? (1 - counter) * 26 * power * this.pullK : 6 * power;
+    if (easy) rate *= 0.85;
+    this.tRate += (rate - this.tRate) * (1 - Math.exp(-dt * 6));
+    // «легка»: фрикціон налаштовано нижче межі — сам по собі натяг волосінь не рве,
+    // небезпечно лише тягнути під час стрибка (про нього попереджаємо)
+    const cap = easy && !(jumping && reeling) ? this.lineBreakAt - 2 : 100;
+    this.fightTension = clamp(this.fightTension + this.tRate * dt, 0, cap);
+    if (this.fightTension >= cap && this.tRate > 0) this.tRate = 0;
+    const sw = easy ? SWEET_EASY : SWEET;
+    const sweet = this.fightTension >= sw.lo && this.fightTension <= sw.hi;
 
     let drain = 1.2;
     if (sweet) drain += 3 + Math.max(0, counter) * 3.5;
     if (jumping && !reeling) drain += 9;
     this.stamina = Math.max(0, this.stamina - drain * dt);
 
-    const reelSpeed = (1.0 + eff.biteSpeed(game.upgrades.rod) * 0.45) * (tired ? 1.8 : sweet ? 1.0 : 0.45);
-    if (reeling && !jumping) this.fightDist -= reelSpeed * dt;
-    const run = tired ? 0.25 : this.pull !== 0 ? 1.1 * (1 - Math.max(0, counter)) * power + 0.3 : 0.5 * power;
+    // поки риба має сили — підтягується повільно; важка — ще повільніше
+    const sf = this.staminaMax > 0 ? this.stamina / this.staminaMax : 0;
+    const heavy = 1 / (1 + Math.max(0, this.fishKg - 1) * 0.07);
+    const reelSpeed = (1.0 + eff.biteSpeed(game.upgrades.rod) * 0.45) * (tired ? 1.8 : sweet ? (0.5 + 0.5 * (1 - sf)) * heavy : 0.4 * heavy);
+    if (reeling && !jumping) this.fightDist -= reelSpeed * dt * (1 - this.dragSlip);
+    // фрикціон травить: риба забирає волосінь
+    this.fightDist += this.dragSlip * 0.6 * dt;
+    const run = tired ? 0.25 : this.pull !== 0 ? (1.1 * (1 - Math.max(0, counter)) * power + 0.3) * (0.4 + 0.6 * this.pullK) : 0.5 * power;
     this.fightDist += run * dt * (reeling ? 0.6 : 1);
     this.fightDist = clamp(this.fightDist, 0, this.fightMaxDist * 1.4);
     if (reeling) game.spendEnergy(0.45 * dt);
 
-    const sideTarget = tired ? 0 : this.pull * Math.min(5, 1.5 + this.fightDist * 0.25) * (1 - 0.6 * Math.max(0, counter));
+    const sideTarget = tired ? 0 : this.pull * this.pullK * Math.min(5, 1.5 + this.fightDist * 0.25) * (1 - 0.6 * Math.max(0, counter));
     this.side += (sideTarget - this.side) * (1 - Math.exp(-dt * 1.4));
 
+    // перетяг: волосінь тримає кілька секунд, попереджає писком і тремтінням
+    const grace = easy ? GRACE_EASY : GRACE;
     if (this.fightTension >= this.lineBreakAt) {
       this.overTension += dt;
-      if (this.overTension > 0.8) {
+      if (this.overTension > grace) {
         this.endFight();
         this.audio.snap();
-        this.onEvent?.('💥 Волосінь обірвалась — перетягнув!', 'bad');
+        this.onEvent?.('💥 Волосінь обірвалась — надто довго в червоній зоні. Коли натяг червоний, відпускай Space.', 'bad');
         return;
       }
-    } else this.overTension = Math.max(0, this.overTension - dt * 2);
+    } else this.overTension = Math.max(0, this.overTension - dt * 1.2);
+    this.strainBeep -= dt;
+    if ((this.overTension > 0 || this.fightTension > this.lineBreakAt - 6) && this.strainBeep <= 0) {
+      this.strainBeep = this.overTension > grace * 0.5 ? 0.18 : 0.32;
+      this.audio.strain(0.4 + this.overTension / grace);
+    }
+    const slackMax = easy ? SLACK_EASY : SLACK;
     if (this.fightTension < 12) {
       this.slackT += dt;
-      if (this.slackT > 2.6) {
+      if (this.slackT > slackMax) {
         this.endFight();
         this.audio.snap();
-        this.onEvent?.('Риба зірвалась — волосінь провисла. Тримай натяг у зеленій зоні.', 'warn');
+        this.onEvent?.('Риба зірвалась — волосінь довго провисала. Тримай Space, щоб натяг був у зеленій зоні.', 'warn');
         return;
       }
     } else this.slackT = Math.max(0, this.slackT - dt);
 
-    if (this.statusT <= 0) {
-      if (jumping) this.status = 'СТРИБОК! Відпусти Space!';
-      else if (this.slackT > 1.2) this.status = 'Слабина! Тягни Space';
-      else if (this.overTension > 0.2) this.status = 'Занадто туго! Відпусти';
-      else if (tired) this.status = 'Риба втомилась — тягни!';
-      else if (this.pull < 0) this.status = 'Рветься ліворуч → тисни D';
-      else if (this.pull > 0) this.status = 'Рветься праворуч → тисни A';
-      else this.status = 'Тягне в глибину — тримай натяг';
-    }
+    if (this.statusT <= 0) this.status = this.fightAdvice(tired, jumping);
 
     if (this.fightDist <= 0.5) {
       this.catchFish(weather);
@@ -689,12 +791,28 @@ export class Fishing {
     const tz = this.tipW.z + dir.z * (this.fightDist + 2) + rz * this.side;
     r.bobberPos.set(tx, 0, tz);
     const h = ocean.heightAt(tx, tz, t);
-    r.bobber.position.set(tx, h + 0.02 - (this.pull === 0 && !tired ? 0.12 : 0) + Math.sin(t * 14) * 0.02, tz);
+    const warnBob = this.jumpWarn > 0 || this.windup > 0 ? Math.sin(t * 30) * 0.05 : 0;
+    r.bobber.position.set(tx, h + 0.02 - (this.pull === 0 && !tired ? 0.12 : 0) + Math.sin(t * 14) * 0.02 + warnBob, tz);
     this.rippleT -= dt;
     if (this.rippleT <= 0) {
-      this.rippleT = tired ? 0.9 : 0.35;
+      this.rippleT = tired ? 0.9 : this.windup > 0 || this.jumpWarn > 0 ? 0.18 : 0.35;
       this.spawnRipple(tx, tz, tired ? 0.4 : 0.9);
     }
+  }
+
+  /** що зараз робити — одна коротка порада */
+  private fightAdvice(tired: boolean, jumping: boolean): string {
+    if (this.jumpWarn > 0) return 'Зараз вистрибне — відпусти Space!';
+    if (jumping) return 'СТРИБОК! Не тягни, чекай';
+    if (this.overTension > 0) return 'Занадто туго! Відпусти Space';
+    if (this.fightTension > this.lineBreakAt - 6) return 'Натяг майже червоний — відпусти';
+    if (this.dragSlip > 0) return 'Фрикціон травить волосінь — відпусти Space';
+    if (this.slackT > 1) return 'Слабина! Тягни Space';
+    if (this.windup > 0) return this.nextPull < 0 ? 'Риба збирається рвонути ліворуч — тримай D' : 'Риба збирається рвонути праворуч — тримай A';
+    if (this.pull < 0) return 'Рветься ліворуч → тримай D';
+    if (this.pull > 0) return 'Рветься праворуч → тримай A';
+    if (tired) return 'Риба втомилась — тягни!';
+    return 'Тягни Space помалу — натяг у зеленій зоні';
   }
 
   private endFight() {
@@ -706,6 +824,7 @@ export class Fishing {
 
   private catchFish(weather: Weather) {
     const item = makeFish(this.fishSpeciesId, this.fishKg, weather.stormBonus);
+    this.lastTrophy = this.fishTrophy;
     this.lastBobber.copy(this.fightRod!.bobber.position);
     this.endFight();
     this.audio.catchJingle();
@@ -714,6 +833,8 @@ export class Fishing {
 
   /** де була риба в момент улову (для ефекту вильоту) */
   readonly lastBobber = new THREE.Vector3();
+  /** останній улов — трофей */
+  lastTrophy = false;
   private _lastCatch: ReturnType<typeof makeFish> | null = null;
   takeCatch(): ReturnType<typeof makeFish> | null {
     const c = this._lastCatch;
@@ -721,8 +842,13 @@ export class Fishing {
     return c;
   }
 
-  get fightInfo(): { speciesId: string; kg: number; tension: number; limit: number; dist: number; stamina: number; pull: number; lean: number; status: string; jump: boolean; lo: number; hi: number } {
+  get fightInfo(): { speciesId: string; kg: number; tension: number; limit: number; dist: number; stamina: number; pull: number; lean: number; status: string; jump: boolean; lo: number; hi: number; windup: number; jumpWarn: boolean; strain: number; trophy: boolean } {
+    const sw = this.easy ? SWEET_EASY : SWEET;
     return {
+      windup: this.windup > 0 ? this.nextPull : 0,
+      jumpWarn: this.jumpWarn > 0,
+      strain: clamp(this.overTension / (this.easy ? GRACE_EASY : GRACE), 0, 1),
+      trophy: this.fishTrophy,
       speciesId: this.fishSpeciesId,
       kg: this.fishKg,
       tension: this.fightTension,
@@ -733,8 +859,8 @@ export class Fishing {
       lean: this.lean,
       status: this.status,
       jump: this.jumpT > 0,
-      lo: SWEET_LO,
-      hi: SWEET_HI,
+      lo: sw.lo,
+      hi: sw.hi,
     };
   }
 
@@ -745,6 +871,18 @@ export class Fishing {
     const s = this.fightRod ? 3 : r.state === 'waiting' ? 1 : 2;
     const q = (v: number) => Math.round(v * 100) / 100;
     return [s, q(r.bobber.position.x), q(r.bobber.position.z), Math.round(this.fightRod ? this.fightTension : 0)];
+  }
+
+  /** скільки лишилось вікна підсічки (0..1) для вудки в руках; null — не клює */
+  get biteLeft(): number | null {
+    const r = this.hand;
+    if (!r || r.state !== 'bite' || this.fightRod) return null;
+    return clamp(r.biteWindow / r.biteWindow0, 0, 1);
+  }
+
+  /** шкала закиду: зелена зона */
+  get castSweet() {
+    return this.easy ? CAST_SWEET_EASY : CAST_SWEET;
   }
 
   /** підпис станції вудок (залежить від того, що в руках) */
@@ -775,8 +913,8 @@ export class Fishing {
     if (!r) return null;
     switch (r.state) {
       case 'idle': return `${r.name}: тримай ЛКМ — закид`;
-      case 'waiting': return 'Чекай, поки поплавок піде під воду · ЛКМ — підсікти · R — змотати';
-      case 'bite': return 'КЛЮЄ! Клікни ЛКМ!';
+      case 'waiting': return r.nibble > 0.05 ? 'Поклювка… ще рано — чекай, поки поплавок пірне' : 'Чекай клювання — поплавок пірне під воду · R — змотати';
+      case 'bite': return 'КЛЮЄ! Підсікай — ЛКМ!';
     }
   }
 }
