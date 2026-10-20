@@ -354,10 +354,15 @@ export class GameState {
     this.hold.splice(0, n);
   }
 
-  /** свіжість падає: dt — години гри */
+  /** риба в трюмі на льоду: від свіжої до зовсім несвіжої — ~60 год гри (≈25 хв реального часу) */
+  static readonly FRESH_HOURS = 60;
+
+  /** свіжість падає: dt — години гри (перші години на льоду — майже без втрат) */
   decayFreshness(dtHours: number) {
     for (const f of this.hold) {
-      if (!f.cooked) f.freshness = clamp(f.freshness - (dtHours / 2) * 100, 0, 100);
+      if (f.cooked) continue;
+      const k = f.freshness > 92 ? 0.5 : 1;
+      f.freshness = clamp(f.freshness - (dtHours / GameState.FRESH_HOURS) * 100 * k, 0, 100);
     }
   }
 

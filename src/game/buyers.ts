@@ -73,7 +73,7 @@ export const BUYERS: BuyerDef[] = [
     open: [7, 24],
     species: TAVERN,
     reject: (f) => (TAVERN.includes(f.speciesId) ? null : 'для кухні завелика — неси в ресторан або на біржу'),
-    mult: (f) => (f.cooked ? 0.85 : 0.85),
+    mult: () => 1.09,
     freshW: 0.5,
     free: 3,
     drop: 0.07,
@@ -91,7 +91,7 @@ export const BUYERS: BuyerDef[] = [
     open: [5, 21],
     species: SMOKE,
     reject: (f) => (f.cooked ? 'варену не коптимо' : SMOKE.includes(f.speciesId) ? null : 'пісна — для диму не годиться'),
-    mult: () => 0.6,
+    mult: () => 1.05,
     freshW: 0.25,
     free: 5,
     drop: 0.05,
@@ -115,7 +115,7 @@ export const BUYERS: BuyerDef[] = [
       if (f.kg < avg(f.speciesId)) return 'замала для подачі';
       return null;
     },
-    mult: (f) => 1.3 * (isTrophy(f) ? 1.6 : 1),
+    mult: (f) => 1.75 * (isTrophy(f) ? 1.6 : 1),
     freshW: 0.4,
     free: 1,
     drop: 0.15,
@@ -133,7 +133,7 @@ export const BUYERS: BuyerDef[] = [
     open: null,
     species: null,
     reject: () => null,
-    mult: (f) => (f.cooked ? 0.6 : 0.33),
+    mult: (f) => (f.cooked ? 0.75 : 0.63),
     freshW: 0.15,
     free: Infinity,
     drop: 0,
@@ -152,7 +152,7 @@ export const BUYERS: BuyerDef[] = [
     open: null,
     species: null, // + риба дня
     reject: () => null, // перевіряється з урахуванням риби дня (buyerReject)
-    mult: (f) => (HERMIT.includes(f.speciesId) ? 1.15 : 0.8),
+    mult: (f) => (HERMIT.includes(f.speciesId) ? 1.77 : 0.9),
     freshW: 0.3,
     free: 2,
     drop: 0.1,
@@ -290,7 +290,8 @@ function fmtKg(v: number): string {
 
 /** типова ціна рибини виду на біржі (без трендів) */
 /** типова ціна сирої рибини на біржі, коли привезена в порт (свіжість уже зійшла) */
-const typical = (id: string) => (FISH_BY_ID[id]?.basePrice ?? 10) * 0.35;
+// типова виручка за рибину: свіжість у середньому ~70 % → множник біржі ≈0.8
+const typical = (id: string) => (FISH_BY_ID[id]?.basePrice ?? 10) * 0.6;
 
 function rollOffers(day: number, b: BuyerDef, rep: number, discovered: string[]): Contract[] {
   const lvl = repLevel(rep);
