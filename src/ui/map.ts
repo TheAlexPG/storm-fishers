@@ -488,7 +488,7 @@ export class MapView {
     c.fillStyle = INK;
     c.fillText(L('Порт «Шторм»', `Storm Harbour`), mx(0), my(-150));
     // точки порту
-    for (const pt of PORT_POINTS) {
+    for (const pt of PORT_POINTS.filter((q) => !q.mapHide)) {
       c.beginPath();
       c.arc(mx(pt.x), my(pt.z), 3, 0, Math.PI * 2);
       c.fillStyle = INK;
@@ -504,7 +504,7 @@ export class MapView {
     if (s > 1.6) {
       c.font = `800 ${Math.round(Math.min(13, 6 + s * 1.2))}px ${FONT}`;
       c.textAlign = 'center';
-      for (const pt of [...PORT_POINTS, ...SITE_POINTS.filter((sp) => game.places.includes(sp.site))]) {
+      for (const pt of [...PORT_POINTS.filter((q) => !q.mapHide), ...SITE_POINTS.filter((sp) => game.places.includes(sp.site))]) {
         const txt = `${pt.icon} ${pt.name}`;
         const tw = c.measureText(txt).width;
         const lx = mx(pt.x), ly = my(pt.z) - 10;

@@ -933,7 +933,7 @@ export class KitchenUI {
       const id = b.dataset.buy as PantryId;
       const p = Number(b.dataset.price);
       if (g.money < p) return;
-      g.money -= p;
+      g.spend(p, 'kitchen');
       k.pantry[id] = (k.pantry[id] ?? 0) + 1;
       this.h.audio.click();
       this.h.save();
@@ -942,7 +942,7 @@ export class KitchenUI {
     root.querySelectorAll<HTMLElement>('[data-recipe]').forEach((b) => b.addEventListener('click', () => {
       const r = RECIPE_BY_ID[b.dataset.recipe!];
       if (!r || g.money < (r.price ?? 0) || !k.learn(r.id)) return;
-      g.money -= r.price ?? 0;
+      g.spend(r.price ?? 0, 'kitchen');
       this.h.toast(`📖 ${L('Новий рецепт', 'New recipe')}: ${r.icon} ${T(r.name)}`, 'good', 3000);
       this.h.audio.catchJingle();
       this.h.save();
@@ -956,7 +956,7 @@ export class KitchenUI {
       const p = dishPrice(k.dishes[i], where);
       if (!p) return;
       k.dishes.splice(i, 1);
-      g.money += p;
+      g.earn(p, 'kitchen');
       g.stats.totalEarned += p;
       this.h.toast(`🍽 +${formatMoney(p)}`, 'good', 2200);
       this.h.audio.catchJingle();

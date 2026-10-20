@@ -131,7 +131,7 @@ export class Minimap {
     }
     // точки сервісу
     c.fillStyle = '#2a3a46';
-    for (const p of [...PORT_POINTS, ...SITE_SVC]) {
+    for (const p of [...PORT_POINTS.filter((q) => !q.mapHide), ...SITE_SVC]) {
       const [px, pz] = toMap(p.x, p.z);
       c.beginPath();
       c.arc(px, pz, 1.6, 0, Math.PI * 2);

@@ -112,6 +112,8 @@ export interface SaveData {
   /** рівень страховки човна (0 — без) */
   insurance?: number;
   stats: PlayerStats;
+  /** книга капітана (game/ledger.ts); старі сейви — без поля */
+  ledger?: import('../game/ledger').LedgerSave;
   boatX: number;
   boatZ: number;
   boatHeading: number;

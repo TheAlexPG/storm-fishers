@@ -4,6 +4,7 @@ import { FISH, FISH_BY_ID, fishSellPrice, zoneFromDist } from './fish';
 import { isUk, L, plural } from '../core/i18n';
 import { avgKg, FishMarket, PortMarket, glutUnits, speciesGen, type MarketCtx, type MarketEvent, type MarketSave } from './market';
 import { Kitchen, type KitchenSave } from './cooking';
+import { Ledger, type EarnKind, type LedgerSave, type SpendKind } from './ledger';
 import { BUYER_BY_ID, contractNeed, fitsContract, FishTrade, type BuyerId, type Contract, type TradeSave } from './buyers';
 import { PORT_SITES, PORT_SITE_BY_ID, type PortSite } from '../world/portSites';
 import { defaultUpgrades, eff, UPGRADES, MAX_LEVEL, upgradeCost, upgradeLock } from './upgrades';
@@ -61,6 +62,27 @@ export class GameState {
     rich: false,
   };
   stats: PlayerStats = { totalCaught: 0, totalEarned: 0, stormsSurvived: 0, tripsOut: 0 };
+  /** книга капітана: доходи/витрати по днях, шлях, улов (стенд у хаті) */
+  ledger = new Ledger();
+
+  /** номер ігрового дня (clockH = день × 24 + години) */
+  get today(): number {
+    return Math.max(1, Math.floor(this.clockH / 24));
+  }
+
+  /** заробив: гроші + запис у книгу */
+  earn(v: number, kind: EarnKind) {
+    if (!(v > 0)) return;
+    this.money += v;
+    this.ledger.earn(v, kind, this.today);
+  }
+
+  /** витратив: гроші + запис у книгу (без перевірки балансу — її робить виклик) */
+  spend(v: number, kind: SpendKind) {
+    if (!(v > 0)) return;
+    this.money -= v;
+    this.ledger.spend(v, kind, this.today);
+  }
 
   priceWeek = 1;
   priceMult: Record<string, number> = {};
@@ -205,6 +227,7 @@ export class GameState {
     if (!this.discovered.includes(item.speciesId)) this.discovered.push(item.speciesId);
     if (item.kg > (this.records[item.speciesId] ?? 0)) this.records[item.speciesId] = Math.round(item.kg * 1000) / 1000;
     this.stats.totalCaught++;
+    this.ledger.kg += item.kg;
     this.checkObjectives();
   }
 
@@ -271,7 +294,7 @@ export class GameState {
     this.removeFish(uid);
     this.venueMarket.recordSale(f);
     this.saleHook?.(this.portId, f.speciesId, glutUnits(f));
-    this.money += v;
+    this.earn(v, 'exchange');
     this.stats.totalEarned += v;
     this.objectives.firstSale = true;
     this.checkObjectives();
@@ -300,7 +323,7 @@ export class GameState {
       sum += v;
     }
     if (!sum) return 0;
-    this.money += sum;
+    this.earn(sum, 'buyers');
     this.stats.totalEarned += sum;
     this.trade.addRep(id, Math.min(3, q.prices.size * 0.25));
     this.objectives.firstSale = true;
@@ -331,7 +354,7 @@ export class GameState {
     this.trade.active = this.trade.active.filter((x) => x !== c);
     this.trade.addRep(c.buyer, c.rep);
     this.trade.done++;
-    this.money += c.reward;
+    this.earn(c.reward, 'contracts');
     this.stats.totalEarned += c.reward;
     this.checkObjectives();
     return { delivered, done: true, reward: c.reward };
@@ -340,7 +363,7 @@ export class GameState {
   buyUpgrade(id: UpgradeId): boolean {
     const cost = upgradeCost(id, this.upgrades[id]);
     if (cost == null || this.money < cost || upgradeLock(id, this.upgrades)) return false;
-    this.money -= cost;
+    this.spend(cost, 'upgrades');
     this.upgrades[id]++;
     // корпус: після апгрейду збільшуємо поточну міцність на таку ж кількість
     if (id === 'hull') this.hull = Math.min(this.maxHull, this.hull + 40);
@@ -536,6 +559,7 @@ export class GameState {
       portMarkets: Object.fromEntries(Object.entries(this.portMarkets).map(([id, m]) => [id, { stock: m.serialize().stock, hist: m.hist }])),
       port: this.portId,
       stats: this.stats,
+      ledger: this.ledger.serialize(),
       boatX: 0,
       boatZ: 0,
       boatHeading: 0,
@@ -613,6 +637,8 @@ export class GameState {
     else if (data.objectives?.firstSale) this.tut = 99;
     if (data.objectives) this.objectives = { ...this.objectives, ...data.objectives };
     if (data.stats) this.stats = { ...this.stats, ...data.stats };
+    this.ledger = new Ledger();
+    this.ledger.load(data.ledger as LedgerSave | undefined);
     if (typeof data.priceWeek === 'number') this.priceWeek = data.priceWeek;
     if (data.priceMult) this.priceMult = data.priceMult;
     // біржа: старі сейви — повний попит, без подій; історія стартує з поточної ціни

@@ -94,6 +94,10 @@ explore islands, outrun Beaufort‑scale storms and come home with a hold full o
 - **Shared hold per boat** — the crew loads the catch together; whoever sells it gets the money.
 - Text chat, coloured avatars, friends on the map.
 
+### 🏠 Home
+- **Your own cottage** by the home quay — walk right in through the open door: a bed with a checked quilt, a crackling iron stove, a table by the window, a trophy fish on the wall. Sleep in the bed to skip to morning (the game saves).
+- **Captain's log** — a cork board on the wall with your earnings, distance sailed, catch and a chart of where you've been; press **E** to open the full log: income and spending by day (14-day chart, best day, where the money came from and went), voyages (distance, time at sea, farthest point, places and ports), your fish collection with record weights, trophies, finds and every yacht upgrade.
+
 ### 💾 Progress
 - Autosave in the browser, plus **save export/import** to move your progress to another computer.
 
