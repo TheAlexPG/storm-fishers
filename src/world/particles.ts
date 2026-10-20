@@ -171,6 +171,20 @@ export class ParticlePool {
     }
   }
 
+  /** прибій гвинта за кормою: біла каша низько над водою, летить назад від корми */
+  wash(pos: THREE.Vector3, back: THREE.Vector3, power: number, dt: number) {
+    if (power < 0.1) return;
+    const n = Math.min(12, Math.floor(power * dt * 40 + Math.random()));
+    for (let i = 0; i < n; i++) {
+      const s = rand(1.5, 3.5) * power;
+      this.spawn(
+        pos.x + rand(-0.35, 0.35), pos.y + rand(0, 0.1), pos.z + rand(-0.35, 0.35),
+        back.x * s + rand(-0.6, 0.6), rand(0.6, 2.2) * power, back.z * s + rand(-0.6, 0.6),
+        rand(0.5, 1.0), rand(0.3, 0.6), WHITE, 0.6, -6, 1.8,
+      );
+    }
+  }
+
   /** дим з вихлопу */
   exhaust(pos: THREE.Vector3, power: number, dt: number) {
     if (power < 0.05) return;

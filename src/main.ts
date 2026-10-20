@@ -504,9 +504,12 @@ class Game {
       this.audio.thump(power / 6);
       this.coop.sendEvent('hit', power);
     };
+    // легкий удар хвилі — плеск, тим гучніший, чим сильніший удар
+    this.boat.onWaveHit = (power) => this.audio.splash(Math.min(0.7, 0.12 + power * 0.18));
     this.boat.onSlam = (dmg, kind, power) => {
       this.slamShake = Math.min(1, 0.35 + power * 0.08);
       this.audio.thump(Math.min(1, power / 6));
+      this.audio.splash(Math.min(1, 0.5 + power * 0.1));
       if (dmg >= 1) {
         const tip = this.slamTipT <= 0;
         if (tip) this.slamTipT = 25;

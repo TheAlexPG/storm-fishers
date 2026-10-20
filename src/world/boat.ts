@@ -96,6 +96,8 @@ const ADDED_MASS = 1.8;    // приєднана маса по горизонт�
 const RUDDER_K = 2200;
 const PROP_WASH = 4;       // «еквівалентна швидкість» струменя гвинта на кермі, м/с
 const YAW_DAMP_V = 0.22;   // демпфування рисканням, що росте з ходом
+/** сила сплеску від швидкості удару хвилі: легкий ~0.6 (бризки до метра), слемінг — до 3 (вище щогли рубки) */
+const hitPower = (vImp: number) => Math.min(3, 0.25 + vImp * 0.4);
 
 export class Boat {
   group = new THREE.Group();
@@ -146,9 +148,14 @@ export class Boat {
   onHullHit: ((power: number, pos: THREE.Vector3) => void) | null = null;
   /** удар хвилі: bow — ніс плеснув об хвилю (слемінг), beam — гребінь накрив борт */
   onSlam: ((dmg: number, kind: 'bow' | 'beam', power: number) => void) | null = null;
+  /** легкий удар хвилі (без шкоди): швидкість удару, м/с */
+  onWaveHit: ((power: number) => void) | null = null;
   private bowOut = false;
   private slamCd = 0;
   private beamCd = 0;
+  /** пауза між легкими ударами хвиль (бризки без шкоди) */
+  private splashCd = 0;
+  private _back = new THREE.Vector3();
   private _sv = new THREE.Vector3();
   private _sv2 = new THREE.Vector3();
   onEngineStall: (() => void) | null = null;
@@ -665,6 +672,7 @@ export class Boat {
       this.localToWorld(this.exhaustTip.x, this.exhaustTip.y, this.exhaustTip.z, this._t);
       particles.exhaust(this._t, Math.abs(this.throttle), dt);
     }
+    this.propWash(ocean, t, particles, fwd, dt);
 
     // зіткнення з скелями
     for (const rock of rocks) {
@@ -883,6 +891,7 @@ export class Boat {
       this.localToWorld(this.exhaustTip.x, this.exhaustTip.y, this.exhaustTip.z, this._t);
       particles.exhaust(this._t, Math.abs(this.throttle), dt);
     }
+    this.propWash(ocean, t, particles, fwd, dt);
     this.engineLoad = clamp(speed / 10, 0, 1) * Math.abs(this.throttle);
     this.updateFlag(dt, t, weather);
     this.anchor.update(dt, this, audio);
@@ -900,9 +909,18 @@ export class Boat {
    *    кидає в крен, заливає палубу (найнебезпечніше — стояти лагом до хвилі).
    * Порада гравцю: скинути газ і брати хвилю носом під кутом 20–40°.
    */
+  /** прибій гвинта: на ходу під мотором за кормою б'є біла вода (заднім ходом — у бік носа) */
+  private propWash(ocean: Ocean, t: number, particles: ParticlePool, fwd: THREE.Vector3, dt: number) {
+    if (!this.engineOn || Math.abs(this.throttle) < 0.1) return;
+    this.localToWorld(0, 0, -4.9, this._t);
+    this._t.y = ocean.heightAt(this._t.x, this._t.z, t) + 0.05;
+    particles.wash(this._t, this._back.copy(fwd).multiplyScalar(-Math.sign(this.throttle)), Math.abs(this.throttle), dt);
+  }
+
   private updateSlam(dt: number, t: number, ocean: Ocean, game: GameState, particles: ParticlePool, fwd: THREE.Vector3) {
     this.slamCd -= dt;
     this.beamCd -= dt;
+    this.splashCd -= dt;
     const hullLvl = game.upgrades.hull ?? 0;
     const armor = 1 - 0.1 * hullLvl;
     const u = this.vel.x * fwd.x + this.vel.z * fwd.z;
@@ -934,10 +952,15 @@ export class Boat {
           this.vel.z -= fwd.z * u * k;
         }
         this.angVel.x -= Math.min(0.5, vImp * 0.06);
-        particles.splash(p.x, h + 0.2, p.z, Math.min(2.5, 0.6 + vImp * 0.25));
+        particles.splash(p.x, h + 0.2, p.z, hitPower(vImp));
         particles.splash(p.x + fwd.z * 1.0, h + 0.2, p.z - fwd.x * 1.0, 1.0);
         particles.splash(p.x - fwd.z * 1.0, h + 0.2, p.z + fwd.x * 1.0, 1.0);
         this.onSlam?.(dmg, 'bow', vImp);
+      } else if (vImp > 0.9 && this.splashCd <= 0) {
+        // легкий удар — лише бризки (що сильніше, то вище злітають)
+        this.splashCd = 0.35;
+        particles.splash(p.x, h + 0.15, p.z, hitPower(vImp));
+        this.onWaveHit?.(vImp);
       }
     }
 
@@ -960,8 +983,14 @@ export class Boat {
           this.vel.x -= fwd.z * s * Math.min(1.5, vImp * 0.25);
           this.vel.z += fwd.x * s * Math.min(1.5, vImp * 0.25);
           this.deckWater = clamp(this.deckWater + vImp * 7, 0, 100);
-          particles.splash(q.x, hb + 0.3, q.z, Math.min(2.5, 0.8 + vImp * 0.3));
+          particles.splash(q.x, hb + 0.3, q.z, hitPower(vImp));
           this.onSlam?.(dmg, 'beam', vImp);
+          break;
+        }
+        if (vImp > 1.2 && this.splashCd <= 0) {
+          this.splashCd = 0.35;
+          particles.splash(q.x, hb + 0.2, q.z, hitPower(vImp));
+          this.onWaveHit?.(vImp);
           break;
         }
       }
