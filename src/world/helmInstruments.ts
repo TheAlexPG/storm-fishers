@@ -424,7 +424,7 @@ export class HelmInstruments {
     this.windDial.position.set(0.3, DECK_Y + 1.07, -2.95);
     this.windDial.quaternion.copy(FACE_Q);
     helm.add(this.windDial);
-    this.windDial.add(new THREE.Mesh(new THREE.TorusGeometry(0.105, 0.012, 6, 24), k.mat(0xc9ced3, 0.25, 0.9)));
+    this.windDial.add(new THREE.Mesh(new THREE.TorusGeometry(0.105, 0.012, 8, 32), k.mat(0xc9a227, 0.3, 0.85)));
     const wf = new THREE.Mesh(new THREE.CircleGeometry(0.1, 36), new THREE.MeshBasicMaterial({ map: windFaceTex() }));
     wf.position.z = 0.002;
     this.windDial.add(wf);
@@ -653,7 +653,14 @@ export class HelmInstruments {
       }
     }
     this.postBases.visible = !f.gauges;
-    this.windDial.visible = !f.gauges;
+    // вітромір: 0 — на нозі поручня; 1 — по центру пульта (між паливом і лагом);
+    // з 2 центр займає дисплей, який сам показує вимпельний вітер
+    this.windDial.visible = !f.depth;
+    if (f.gauges) {
+      this.windDial.position.copy(POD).addScaledVector(N, 0.065).addScaledVector(U, -0.02);
+    } else {
+      this.windDial.position.set(0.3, DECK_Y + 1.07, -2.95);
+    }
     show('mfd', f.depth);
     this.baro.visible = f.gauges;
     this.arch.visible = f.gps;

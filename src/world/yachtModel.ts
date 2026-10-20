@@ -1092,10 +1092,49 @@ export class YachtBuilder {
       this.rod(g, new THREE.Vector3(sx * 0.3, DECK_Y, -2.95), new THREE.Vector3(sx * 0.3, DECK_Y + 0.92, -2.95), 0.018, steel);
       this.cyl(g, 0.03, 0.045, 0.03, sx * 0.3, DECK_Y + 0.015, -2.95, steel, 10);
     }
-    // пульт приборів на тумбі (нахилений до стерновика)
-    const pod = this.box(g, 1.36, 0.12, 0.4, 0, DECK_Y + 1.1, -2.98, dark);
-    pod.rotation.x = -0.55; // верхня грань — до стерновика
-    this.refs.panelParts.pod = [pod];
+    // пульт приборів на тумбі (нахилений до стерновика): тонкий корпус із заокругленими
+    // кутами й фаскою (лакований темний композит), зверху — тикова накладка з латунною облямівкою
+    const podShape = (w: number, d: number, r: number) => {
+      const sh = new THREE.Shape();
+      const x0 = -w / 2, x1 = w / 2, y0 = -d / 2, y1 = d / 2;
+      sh.moveTo(x0 + r, y0);
+      sh.lineTo(x1 - r, y0);
+      sh.quadraticCurveTo(x1, y0, x1, y0 + r);
+      sh.lineTo(x1, y1 - r);
+      sh.quadraticCurveTo(x1, y1, x1 - r, y1);
+      sh.lineTo(x0 + r, y1);
+      sh.quadraticCurveTo(x0, y1, x0, y1 - r);
+      sh.lineTo(x0, y0 + r);
+      sh.quadraticCurveTo(x0, y0, x0 + r, y0);
+      return sh;
+    };
+    // плита в площині XY → лягає в XZ (товщина — уздовж Y, центр — у нулі)
+    const slab = (w: number, d: number, r: number, t: number, bevel: number) => {
+      const geo = new THREE.ExtrudeGeometry(podShape(w, d, r), { depth: t, bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 3, curveSegments: 8 });
+      geo.translate(0, 0, -t / 2);
+      geo.rotateX(-Math.PI / 2);
+      return geo;
+    };
+    const podPos = new THREE.Vector3(0, DECK_Y + 1.1, -2.98);
+    const nrm = new THREE.Vector3(0, Math.cos(0.55), -Math.sin(0.55));
+    const podBody = new THREE.Mesh(slab(1.38, 0.4, 0.12, 0.05, 0.014), this.mat(0x232b33, 0.32, 0.35));
+    podBody.position.copy(podPos);
+    podBody.rotation.x = -0.55; // верхня грань — до стерновика
+    podBody.castShadow = true;
+    podBody.receiveShadow = true;
+    g.add(podBody);
+    const podTrim = new THREE.Mesh(slab(1.34, 0.36, 0.1, 0.004, 0.003), this.mat(0xc9a227, 0.3, 0.85));
+    podTrim.position.copy(podPos).addScaledVector(nrm, 0.04);
+    podTrim.rotation.x = -0.55;
+    g.add(podTrim);
+    const podTeak = new THREE.Mesh(slab(1.31, 0.33, 0.09, 0.006, 0.002), this.mat(0x6b4426, 0.4, 0.05));
+    podTeak.position.copy(podPos).addScaledVector(nrm, 0.046);
+    podTeak.rotation.x = -0.55;
+    podTeak.receiveShadow = true;
+    g.add(podTeak);
+    // підставка-«шия» замість суцільного блоку: пульт спирається на тумбу
+    const neck = this.cyl(g, 0.07, 0.09, 0.14, 0, DECK_Y + 0.99, -2.96, this.mat(0x232b33, 0.32, 0.35), 16);
+    this.refs.panelParts.pod = [podBody, podTrim, podTeak, neck];
     // орієнтація приладів: обличчям до стерновика (нормаль угору й до корми),
     // «верх» шкали — від стерновика вперед; правий край — праворуч від нього (−X)
     const faceQ = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(
@@ -1127,7 +1166,7 @@ export class YachtBuilder {
       dial.quaternion.copy(faceQ);
       g.add(dial);
       this.refs.panelParts[kind] = [dial];
-      const bezel = new THREE.Mesh(new THREE.TorusGeometry(0.105, 0.012, 6, 24), steel);
+      const bezel = new THREE.Mesh(new THREE.TorusGeometry(0.105, 0.012, 8, 32), this.mat(0xc9a227, 0.3, 0.85));
       dial.add(bezel);
       if (kind === 'compass') {
         const card = new THREE.Group();
@@ -1156,8 +1195,10 @@ export class YachtBuilder {
     }
     // лампа двигуна (зелена ON)
     this.refs.onLampMat = new THREE.MeshStandardMaterial({ color: 0x1d3326, emissive: 0x27e07a, emissiveIntensity: 0.9, roughness: 0.4 });
-    const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.03, 0.05), this.refs.onLampMat);
-    lamp.position.set(0.435, DECK_Y + 1.1, -2.98).addScaledVector(n, 0.07).addScaledVector(new THREE.Vector3(0, Math.sin(0.55), Math.cos(0.55)), 0.14);
+    // кругла лампа в латунній оправі (лежить на площині пульта)
+    const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.022, 0.016, 16), this.refs.onLampMat);
+    lamp.rotation.x = -0.55;
+    lamp.position.set(0.435, DECK_Y + 1.1, -2.98).addScaledVector(n, 0.058).addScaledVector(new THREE.Vector3(0, Math.sin(0.55), Math.cos(0.55)), 0.14);
     g.add(lamp);
     this.refs.panelParts.pod.push(lamp);
     // ручка газу (праворуч на тумбі)
