@@ -105,6 +105,8 @@ export interface SaveData {
   boatHeading: number;
   totalPlayTime: number;
   waypoint: { x: number; z: number } | null;
+  /** маршрут (новіші сейви; waypoint — перша точка для сумісності) */
+  route?: Array<{ x: number; z: number }>;
   /** поставлені сітки (world/nets.ts) */
   nets?: unknown;
 }

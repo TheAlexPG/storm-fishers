@@ -52,8 +52,13 @@ export class GameState {
   // радіо-звіти дня (обновлюються щодня)
   reports: RadioReport[] = [];
 
-  // навігація: точка, вибрана на карті (M)
-  waypoint: { x: number; z: number } | null = null;
+  // навігація: маршрут із точок (карта M / штурманський стіл); перша — поточна ціль
+  route: Array<{ x: number; z: number }> = [];
+
+  /** поточна точка маршруту (на неї вказує компас) */
+  get waypoint(): { x: number; z: number } | null {
+    return this.route[0] ?? null;
+  }
 
   constructor() {
     this.rollPrices();
@@ -240,12 +245,32 @@ export class GameState {
     if (this.track.length > 800) this.track.splice(0, this.track.length - 800);
   }
 
+  static readonly ROUTE_MAX = 24;
+
   setWaypoint(x: number, z: number) {
-    this.waypoint = { x, z };
+    this.route = [{ x, z }];
   }
 
   clearWaypoint() {
-    this.waypoint = null;
+    this.route = [];
+  }
+
+  /** додати точку в кінець маршруту (або вставити перед index) */
+  addRoutePoint(x: number, z: number, index = this.route.length): boolean {
+    if (this.route.length >= GameState.ROUTE_MAX) return false;
+    this.route.splice(Math.max(0, Math.min(index, this.route.length)), 0, { x, z });
+    return true;
+  }
+
+  removeRoutePoint(i: number) {
+    if (i >= 0 && i < this.route.length) this.route.splice(i, 1);
+  }
+
+  /** яхта дійшла до поточної точки → наступна; повертає пройдену точку */
+  advanceRoute(x: number, z: number, radius = 30): { x: number; z: number } | null {
+    const wp = this.route[0];
+    if (!wp || Math.hypot(wp.x - x, wp.z - z) > radius) return null;
+    return this.route.shift() ?? null;
   }
 
   private checkObjectives() {
@@ -297,6 +322,7 @@ export class GameState {
       boatHeading: 0,
       totalPlayTime: 0,
       waypoint: this.waypoint,
+      route: this.route.map((p) => ({ x: Math.round(p.x), z: Math.round(p.z) })),
     };
   }
 
@@ -354,9 +380,10 @@ export class GameState {
     this.market.load(data.market);
     this.lastMarketEvent = null;
     if (!this.market.hist[FISH[0].id]?.length) this.market.sample(this.priceMult);
-    if (data.waypoint && typeof data.waypoint.x === 'number' && typeof data.waypoint.z === 'number') {
-      this.waypoint = { x: data.waypoint.x, z: data.waypoint.z };
-    }
+    const ok = (p: unknown): p is { x: number; z: number } => !!p && Number.isFinite((p as { x: number }).x) && Number.isFinite((p as { z: number }).z);
+    this.route = [];
+    if (Array.isArray(data.route)) this.route = data.route.filter(ok).slice(0, GameState.ROUTE_MAX).map((p) => ({ x: p.x, z: p.z }));
+    else if (ok(data.waypoint)) this.route = [{ x: data.waypoint.x, z: data.waypoint.z }];
     this.checkObjectives();
   }
 

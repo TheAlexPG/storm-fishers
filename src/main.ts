@@ -291,14 +291,9 @@ class Game {
     this.hud = new Hud();
     this.minimap = new Minimap();
     this.mapView = new MapView();
-    this.mapView.onWaypoint = (x, z) => {
-      this.game.setWaypoint(x, z);
-      this.mapView.show(this.boat.pos.x, this.boat.pos.z, this.boat.heading, this.port.rocks, this.game);
-      this.saveGame();
-    };
-    this.mapView.onClear = () => {
-      this.game.clearWaypoint();
-      this.mapView.show(this.boat.pos.x, this.boat.pos.z, this.boat.heading, this.port.rocks, this.game);
+    this.mapView.onRouteChange = () => {
+      this.audio.click();
+      this.chart.markDirty();
       this.saveGame();
     };
     this.mapView.onClose = () => this.closeMap();
@@ -1098,7 +1093,11 @@ class Game {
     if (input.pressed('KeyH') && this.phase === 'play' && !this.dialogs.isOpen) this.hud.setHidden(!this.hud.hidden);
     if (input.pressed('F1') || input.pressed('Slash')) this.hud.flashHints(12);
     const wheelSteps = input.consumeWheel();
-    if (wheelSteps && this.rig.mode === 'chase') this.rig.zoom(wheelSteps);
+    if (wheelSteps && this.chartMode) {
+      const [cw, ch] = this.chart.size;
+      this.mapView.chartZoom(wheelSteps, this.chart.u, this.chart.v, cw, ch);
+      this.chart.markDirty();
+    } else if (wheelSteps && this.rig.mode === 'chase') this.rig.zoom(wheelSteps);
     if (this.photo) {
       const [mdx, mdy] = input.consumeMouse();
       this.photoYaw -= mdx * 0.0025;
@@ -1209,12 +1208,16 @@ class Game {
     // гравець
     if (this.chartMode && (this.phase !== 'play' || this.player.mode !== 'boat')) this.setChart(false);
     if (locked && this.phase === 'play' && !this.photo && this.chartMode) {
-      // над картою: миша водить олівцем, ЛКМ — точка, ПКМ — стерти
+      // над картою: миша водить олівцем (біля краю карта їде), коліщатко — зум,
+      // ЛКМ — точка маршруту, ПКМ — прибрати точку під олівцем (або останню)
       const [mdx, mdy] = input.consumeMouse();
       this.chart.moveCursor(mdx, mdy);
+      this.chartEdgePan(dt);
       if (input.pressed('Mouse0')) this.chartClick();
-      if (input.pressed('Mouse2') && this.game.waypoint) {
-        this.game.clearWaypoint();
+      if (input.pressed('Mouse2') && this.game.route.length) {
+        const [cw, ch] = this.chart.size;
+        const i = this.mapView.chartHit(this.chart.u, this.chart.v, cw, ch, this.game.route);
+        this.game.removeRoutePoint(i >= 0 ? i : this.game.route.length - 1);
         this.audio.click();
         this.chart.markDirty();
         this.saveGame();
@@ -1364,6 +1367,14 @@ class Game {
 
     // маршрут для лоції (лише капітан/соло — човен його)
     if (!this.coop.crewing) g.addTrack(this.boat.pos.x, this.boat.pos.z);
+    // маршрут: дійшли до точки — компас веде на наступну
+    if (g.advanceRoute(this.boat.pos.x, this.boat.pos.z)) {
+      const nx = g.waypoint;
+      this.hud.toast(nx ? `✓ Точку пройдено · далі ${this.mapView.fmtDist(Math.hypot(nx.x - this.boat.pos.x, nx.z - this.boat.pos.z))}, ще ${g.route.length}` : '🏁 Маршрут пройдено', 'good', 2600);
+      this.audio.click();
+      this.chart.markDirty();
+      if (this.phase === 'map') this.mapView.refresh(this.boat.pos.x, this.boat.pos.z, this.boat.heading, this.port.rocks, g);
+    }
 
     // кранці — лише біля причалу
     this.boat.setFenders(Math.hypot(this.boat.pos.x - this.boat.moor.x, this.boat.pos.z - this.boat.moor.z) < 30);
@@ -2036,10 +2047,15 @@ class Game {
     this.chart.setActive(on);
     this.audio.click();
     if (on) {
-      // олівець — на яхту (або на вже поставлену точку)
+      // олівець — на кінець маршруту (або на яхту)
       const [cw, ch] = this.chart.size;
-      const wp = this.game.waypoint;
-      const uv = this.mapView.worldToUV(wp?.x ?? this.boat.pos.x, wp?.z ?? this.boat.pos.z, cw, ch);
+      const r = this.game.route;
+      const wp = r[r.length - 1];
+      let uv = this.mapView.worldToUV(wp?.x ?? this.boat.pos.x, wp?.z ?? this.boat.pos.z, cw, ch);
+      if (uv[0] < 0.03 || uv[0] > 0.97 || uv[1] < 0.03 || uv[1] > 0.97) {
+        this.mapView.chartView.center(wp?.x ?? this.boat.pos.x, wp?.z ?? this.boat.pos.z);
+        uv = this.mapView.worldToUV(wp?.x ?? this.boat.pos.x, wp?.z ?? this.boat.pos.z, cw, ch);
+      }
       this.chart.setCursorUV(uv[0], uv[1]);
       this.chart.markDirty();
     }
@@ -2052,12 +2068,31 @@ class Game {
       this.hud.toast('Це суша — точку ставлять на воді', 'warn', 1800);
       return;
     }
-    this.game.setWaypoint(w[0], w[1]);
+    if (!this.game.addRoutePoint(w[0], w[1])) {
+      this.hud.toast('Маршрут уже на повну — прибери зайві точки (ПКМ)', 'warn', 1800);
+      return;
+    }
     this.audio.click();
     this.chart.markDirty();
     this.saveGame();
+    const n = this.game.route.length;
     const d = Math.hypot(w[0] - this.boat.pos.x, w[1] - this.boat.pos.z);
-    this.hud.toast(`📍 Точку маршруту поставлено · ${this.mapView.fmtDist(d)}. Курс — на компасі`, 'good', 2500);
+    this.hud.toast(n === 1 ? `📍 Точка 1 · ${this.mapView.fmtDist(d)}. Курс — на компасі` : `📍 Точка ${n} маршруту`, 'good', 1800);
+  }
+
+  /** олівець біля краю паперової карти — карта їде під ним */
+  private chartEdgePan(dt: number) {
+    const E = 0.06;
+    const c = this.chart;
+    const ex = c.u < E ? c.u - E : c.u > 1 - E ? c.u - (1 - E) : 0;
+    const ey = c.v < E ? c.v - E : c.v > 1 - E ? c.v - (1 - E) : 0;
+    if (!ex && !ey) return;
+    const [cw, ch] = c.size;
+    const before = this.mapView.uvToWorld(c.u, c.v, cw, ch);
+    const sp = 900 * dt; // логічні px/с при олівці на самому краю
+    this.mapView.chartPan(-(ex / E) * sp, -(ey / E) * sp, cw, ch);
+    const after = this.mapView.uvToWorld(c.u, c.v, cw, ch);
+    if (before && after && (before[0] !== after[0] || before[1] !== after[1])) c.markDirty();
   }
 
   /** власник яхти: сітки й буї екіпажу (на зміні та 2 Гц під час постановки/вибирання) */
@@ -2080,7 +2115,7 @@ class Game {
       const [cw, ch] = this.chart.size;
       const w = this.mapView.uvToWorld(this.chart.u, this.chart.v, cw, ch);
       const d = w ? ` (${this.mapView.fmtDist(Math.hypot(w[0] - this.boat.pos.x, w[1] - this.boat.pos.z))})` : '';
-      return { text: `Поставити точку маршруту${d} · ПКМ — стерти · E — встати`, bite: false, key: 'ЛКМ' };
+      return { text: `Точка маршруту${d} · ПКМ — прибрати · коліщатко — зум · E — встати`, bite: false, key: 'ЛКМ' };
     }
     const np = this.player.mode === 'boat' ? this.nets.prompt(this.boat) : null;
     if (np && this.fishing.state !== 'fight' && this.fishing.state !== 'bite') return { text: np, bite: false };
