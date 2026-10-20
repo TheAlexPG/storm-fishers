@@ -121,11 +121,13 @@ interface Bobber {
 
 export class Port {
   group = new THREE.Group();
+  /** причал рідної гавані (швартування, сходня, заставка) — окремо, бо порядок у platforms змінюється */
+  readonly quay: Platform = { x0: -24, z0: -40, x1: 24, z1: -18, y: DECK_Y };
   platforms: Platform[] = [
     // підлога хати (вище бруківки) і поріг — першими, щоб перекривали «землю»
     { x0: COTTAGE.x - COTTAGE.w / 2 + COTTAGE.t, z0: COTTAGE.z - COTTAGE.d / 2 + COTTAGE.t, x1: COTTAGE.x + COTTAGE.w / 2 - COTTAGE.t, z1: COTTAGE.z + COTTAGE.d / 2 - 0.02, y: COTTAGE.floorY },
     { x0: COTTAGE.x - 0.85, z0: COTTAGE.z + COTTAGE.d / 2 - 0.02, x1: COTTAGE.x + 0.85, z1: COTTAGE.z + COTTAGE.d / 2 + 0.85, y: G + 0.16 },
-    { x0: -24, z0: -40, x1: 24, z1: -18, y: DECK_Y }, // причал
+    this.quay,
     // дві сходинки з причалу на набережну (раніше гравець «висів» над нижньою)
     { x0: -25, z0: -40.8, x1: 25, z1: -40, y: 1.36 },
     { x0: -25, z0: -41.6, x1: 25, z1: -40.8, y: 1.63 },

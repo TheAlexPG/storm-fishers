@@ -342,7 +342,7 @@ class Game {
     this.stalls = new BuyerStalls(this.scene, this.port);
     this.ordersChip = new OrdersChip();
     this.ports = new Ports(this.scene, this.port.platforms, this.port.solids);
-    this.moorDock = this.port.platforms[0];
+    this.moorDock = this.port.quay;
     this.boat = new Boat(this.scene);
     this.boat.landAt = terrainHeight;
     this.player = new Player(this.game);
@@ -974,7 +974,7 @@ class Game {
     this.weather.restore(data.weatherSeed ?? 10);
     // старі сейви: човен стояв на (0,-26) — під причалом; виносимо на шварт
     let bx = data.boatX ?? this.homeMoorX, bz = data.boatZ ?? MOOR.z, bh = data.boatHeading ?? MOOR_HEADING;
-    const dock = this.port.platforms[0];
+    const dock = this.port.quay;
     if (bx > dock.x0 && bx < dock.x1 && bz > dock.z0 && bz < dock.z1) {
       bx = this.homeMoorX; bz = MOOR.z; bh = MOOR_HEADING;
     }
@@ -2740,7 +2740,7 @@ class Game {
 
   /** заставка: камера з боку моря — від причалу через яхту, трохи в бік носа */
   private introYaw(): number {
-    const d = this.port.platforms[0];
+    const d = this.port.quay;
     const cx = (d.x0 + d.x1) / 2, cz = (d.z0 + d.z1) / 2;
     const bx = this.boat.pos.x, bz = this.boat.pos.z;
     // найближча точка причалу до човна
@@ -2890,7 +2890,7 @@ class Game {
     this.boat.moor.x = best.x;
     this.boat.moor.z = best.z;
     this.boat.moorHeading = best.h;
-    this.moorDock = site === 'home' ? this.port.platforms[0] : SITE_DOCKS[site];
+    this.moorDock = site === 'home' ? this.port.quay : SITE_DOCKS[site];
     this.moorSite = site;
   }
 
