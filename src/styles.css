@@ -681,6 +681,12 @@ body.intro-mode #vignette { opacity: 0.6; }
 .place { font-size: 12.5px; font-weight: 800; padding: 5px 12px; border-radius: 999px; background: var(--track); color: var(--text-soft); letter-spacing: 1px; }
 .place.found { background: #fff; color: var(--text); letter-spacing: 0; box-shadow: 0 1px 0 rgba(34,48,59,0.08); }
 .place.found::before { content: '📍 '; }
+.hats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.hat { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 14px; border: 2px solid transparent; background: #fff; color: var(--text); font: inherit; font-size: 12.5px; font-weight: 800; text-align: left; cursor: pointer; box-shadow: 0 1px 0 rgba(34,48,59,0.08); }
+.hat:hover:not(:disabled) { border-color: rgba(226,103,74,0.45); }
+.hat.on { border-color: #e2674a; background: #fff6ef; }
+.hat.locked { background: var(--track); color: var(--text-soft); cursor: default; font-weight: 600; }
+.hat-ico { font-size: 22px; line-height: 1; }
 
 /* ── налаштування (пауза) ── */
 .settings { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 22px; }

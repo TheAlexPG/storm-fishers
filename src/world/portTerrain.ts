@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Batch, T, fbm, noise2, smoothstep } from './portKit';
 import { groundDetailTex } from './textures';
+import { islandHeight } from './islandShape';
 
 // ─────────────────────────────────────────────────────────────
 // Рельєф узбережжя: рівне плато містечка (x −60..60, z −130..−40, y 1.6),
@@ -46,7 +47,8 @@ export function terrainHeight(x: number, z: number): number {
   // краї мапи тонуть у морі (острів, а не обрізаний край)
   const e = smoothstep(EXT_X, EXT_X - 170, ax) * smoothstep(EXT_Z1, EXT_Z1 + 160, z);
   h = -7 + (h + 7) * e;
-  return h;
+  // острови в морі (islandShape.ts)
+  return h > -6.5 ? h : Math.max(h, islandHeight(x, z));
 }
 
 const C = (hex: number) => new THREE.Color(hex);
