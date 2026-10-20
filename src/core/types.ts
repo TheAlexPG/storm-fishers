@@ -126,6 +126,10 @@ export interface SaveData {
   trade?: unknown;
   /** камбуз: комора, рецепти, страви, бафи (game/cooking.ts) */
   kitchen?: unknown;
+  /** вантажі: замовлення на доставку (game/cargo.ts CargoSave) */
+  cargo?: unknown;
+  /** куплені доми-бази на континентах (id гаваней) */
+  bases?: string[];
   /** маршрут (новіші сейви; waypoint — перша точка для сумісності) */
   route?: Array<{ x: number; z: number }>;
   /** поставлені сітки (world/nets.ts) */

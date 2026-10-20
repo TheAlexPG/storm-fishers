@@ -32,6 +32,7 @@ const EARN_NAMES: Record<EarnKind, string> = {
   kitchen: L('Камбуз', `Galley`),
   finds: L('Знахідки', `Finds`),
   insurance: L('Страхові виплати', `Insurance payouts`),
+  cargo: L('Доставки вантажів', `Cargo deliveries`),
   other: L('Інше', `Other`),
 };
 const SPEND_NAMES: Record<SpendKind, string> = {
@@ -43,6 +44,7 @@ const SPEND_NAMES: Record<SpendKind, string> = {
   kitchen: L('Комора й рецепти', `Pantry & recipes`),
   tow: L('Буксир', `Towing`),
   fees: L('Збори', `Fees`),
+  base: L('Дім на континенті', `Continental home`),
   other: L('Інше', `Other`),
 };
 

@@ -4,6 +4,7 @@ import { makeGullTexture } from './sky';
 import type { RockObstacle } from './boat';
 import type { Ocean } from '../core/ocean';
 import { ISLANDS } from './islandShape';
+import { CONTINENTS } from './continents';
 import { PORT_SITES, siteToWorld } from './portSites';
 import { L } from '../core/i18n';
 import { WS } from '../core/region';
@@ -40,6 +41,8 @@ export const LANDMARKS: Landmark[] = [
   ...HOTSPOTS.map((h) => ({ id: h.id, name: h.name, sub: h.sub, x: h.x, z: h.z, r: h.r * 0.8 })),
   // острови (islandShape.ts) — на них можна зійти
   ...ISLANDS.map((d) => ({ id: d.id, name: d.name, sub: d.sub, x: d.x, z: d.z, r: d.r * Math.sqrt(d.elong) + 45 })),
+  // континенти — «ти приплив в інше місце» (великий напис при підході)
+  ...CONTINENTS.map((c) => ({ id: c.id, name: c.name, sub: c.sub, x: c.m.x, z: c.m.z, r: Math.max(c.m.rx, c.m.rz) + 320 })),
   // інші гавані (portSites.ts) — позначка трохи в морі перед причалом
   ...PORT_SITES.map((p) => {
     const [x, z] = siteToWorld(p, p.pierL * 0.5, 0);

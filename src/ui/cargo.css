@@ -1,0 +1,42 @@
+/* склад: дошка замовлень на доставку (ui/cargoBoard.ts) — накладні на паперовій дошці */
+.overlay.cargo .panel { width: min(980px, 96vw); max-height: 92vh; padding: 22px 26px; display: flex; flex-direction: column; overflow: hidden; }
+.cg-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.cg-head .sub { margin-bottom: 6px; }
+.cg-body { overflow-y: auto; padding-right: 4px; margin-top: 4px; }
+.cg-body h2 { margin-top: 14px; }
+.cg-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.cg-card {
+  position: relative; background: #fffdf7; border-radius: 6px; padding: 14px 16px 12px;
+  box-shadow: 0 1px 0 rgba(34,48,59,0.08), 0 6px 16px rgba(34,48,59,0.08);
+  border-top: 6px solid var(--cg, #c79a62);
+  display: flex; flex-direction: column; gap: 6px; min-width: 0;
+}
+.cg-card.mine { background: #fff; }
+.cg-card .cg-goods { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 15px; }
+.cg-card .cg-icon { font-size: 26px; line-height: 1; }
+.cg-card .cg-stencil { font-family: "Courier New", ui-monospace, monospace; font-weight: 900; letter-spacing: 2px; color: var(--cg, #8a5a32); font-size: 12px; }
+.cg-route { font-size: 13.5px; font-weight: 700; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cg-route .arrow { color: var(--text-soft); }
+.cg-meta { color: var(--text-soft); font-size: 12px; font-weight: 600; line-height: 1.5; }
+.cg-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.cg-tag { font-size: 10.5px; padding: 2px 8px; border-radius: 20px; font-weight: 800; background: rgba(34,48,59,0.07); color: var(--text-soft); }
+.cg-tag.fragile { background: rgba(212,71,58,0.12); color: #b03a2e; }
+.cg-tag.perish { background: rgba(47,111,181,0.13); color: #2f5f9a; }
+.cg-tag.urgent { background: rgba(227,154,45,0.2); color: #a8620f; }
+.cg-tag.far { background: rgba(36,135,140,0.15); color: #1d6f73; }
+.cg-tag.late { background: rgba(212,71,58,0.2); color: #a12d22; }
+.cg-pay { font-family: var(--font-display); font-weight: 700; font-size: 20px; color: #a8620f; }
+.cg-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4px; }
+.cg-foot .btn { padding: 7px 16px; font-size: 13px; }
+.cg-crates { display: flex; gap: 4px; }
+.cg-crate { width: 16px; height: 13px; border-radius: 2px; background: #c79a62; box-shadow: inset 0 0 0 1.5px rgba(80,50,25,0.45); }
+.cg-crate.boat { background: #24878c; }
+.cg-crate.hand { background: #e39a2d; }
+.cg-bar { height: 5px; border-radius: 3px; background: rgba(34,48,59,0.1); overflow: hidden; }
+.cg-bar > i { display: block; height: 100%; background: #24878c; }
+.cg-bar.bad > i { background: #d4473a; }
+.cg-empty { color: var(--text-soft); font-size: 13px; font-weight: 600; padding: 6px 2px; }
+.cg-note { margin-top: 10px; font-weight: 800; color: #1d6f73; }
+.cg-hint { margin-top: 10px; font-size: 12.5px; color: var(--text-soft); font-weight: 600; line-height: 1.5; }
+.cg-base { margin-top: 14px; background: #fff; border-radius: 12px; padding: 12px 14px; display: flex; align-items: center; gap: 12px; justify-content: space-between; flex-wrap: wrap; }
+.cg-base b { font-size: 14px; }

@@ -38,7 +38,7 @@ export interface Platform {
 }
 
 export interface PortPoint {
-  id: 'shop' | 'fuel' | 'repair' | 'house' | 'board' | 'market' | 'office' | 'tavern' | 'smoke' | 'chef' | 'cannery';
+  id: 'shop' | 'fuel' | 'repair' | 'house' | 'board' | 'market' | 'office' | 'tavern' | 'smoke' | 'chef' | 'cannery' | 'cargo';
   x: number;
   z: number;
   label: string;
@@ -59,6 +59,8 @@ export const PORT_POINTS: PortPoint[] = [
   { id: 'repair', x: 14, z: -49.5, label: L('Верф — ремонт корпусу', `Shipyard — hull repairs`), name: L('Верф', `Shipyard`), icon: '🔧' },
   { id: 'market', x: 34, z: -45.2, label: L('Рибна біржа — продати улов', `Fish exchange — sell your catch`), name: L('Біржа', `Exchange`), icon: '🐟' },
   { id: 'office', x: 47, z: -47.6, label: L('Контора порту — страховка', `Harbour office — insurance`), name: L('Контора', `Office`), icon: '🛡' },
+  // склад у сараї для сіток: замовлення на доставку вантажів (game/cargo.ts)
+  { id: 'cargo', x: -46, z: -46.6, label: L('Склад — замовлення на доставку вантажів', `Cargo office — delivery orders`), name: L('Склад', `Cargo`), icon: '📦' },
   // хата: зайти можна пішки (world/homeCottage.ts); E — ліжко або «журнал капітана»
   { id: 'house', x: COTTAGE_SPOTS.bed.x, z: COTTAGE_SPOTS.bed.z, label: L('Ліжко — поспати до ранку (гра збережеться)', `Bed — sleep until morning (the game saves)`), name: L('Дім', `Home`), icon: '🏠', indoor: true },
   { id: 'board', x: COTTAGE_SPOTS.board.x, z: COTTAGE_SPOTS.board.z, label: L('Журнал капітана — заробіток, шлях, улов', `Captain's log — earnings, voyages, catch`), name: L('Журнал', `Log`), icon: '📒', indoor: true, mapHide: true },

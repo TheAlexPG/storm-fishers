@@ -25,8 +25,43 @@ import { L } from './i18n';
 /** масштаб відстаней світу */
 export const WS = 1.8;
 
-/** межі світу (лоція, мінімапа, підкладка): x W0..W1, z H0..H1 */
-export const WORLD = { W0: -1720, W1: 1720, H0: -1010, H1: 1640 };
+/** межі світу (лоція, мінімапа, підкладка): x W0..W1, z H0..H1 — стартовий архіпелаг і два континенти */
+export const WORLD = { W0: -4900, W1: 4900, H0: -1100, H1: 4300 };
+/** стартовий архіпелаг (старий світ): тут мапа дна дрібна (2 м), далі — груба */
+export const HOME_RECT = { W0: -1720, W1: 1720, H0: -1010, H1: 1640 };
+
+/**
+ * Великі суходоли (континенти) — еліпси для «відстані до берега» (зони риби,
+ * відкрите море, шейдер). Справжній берег (з бухтами й мисами) — continents.ts;
+ * тут — гладке наближення, однакове в TS і GLSL.
+ */
+export interface Landmass {
+  id: string;
+  x: number;
+  z: number;
+  rx: number;
+  rz: number;
+  rot: number;
+}
+export const LANDMASSES: Landmass[] = [
+  { id: 'med', x: 3650, z: 2950, rx: 1050, rz: 1180, rot: 0.25 },
+  { id: 'north', x: -3650, z: 2550, rx: 1080, rz: 1250, rot: -0.2 },
+];
+
+/** приблизна відстань до берега континенту, м (0 — на суші) */
+export function landmassDist(m: Landmass, x: number, z: number): number {
+  const dx = x - m.x, dz = z - m.z;
+  const c = Math.cos(m.rot), s = Math.sin(m.rot);
+  const u = (dx * c - dz * s) / m.rx, v = (dx * s + dz * c) / m.rz;
+  return Math.max(0, (Math.hypot(u, v) - 1) * Math.min(m.rx, m.rz));
+}
+
+/** «морська» відстань: до дому (0,0) або до найближчого континенту — що ближче */
+export function seaDist(x: number, z: number): number {
+  let d = Math.hypot(x, z);
+  for (const m of LANDMASSES) d = Math.min(d, landmassDist(m, x, z));
+  return d;
+}
 
 /** від якої відстані починається «відкрите море» і де воно вже повне */
 const OFF0 = 400;
@@ -61,6 +96,8 @@ export interface Haven {
   x: number;
   z: number;
   r: number;
+  /** назва для підказок («найближча гавань — …») */
+  name?: string;
 }
 
 /** бурхливі райони — туди варто ходити за великою рибою, але стежити за небом */
@@ -68,10 +105,19 @@ export const ROUGH: RoughArea[] = [
   { id: 'belt', name: L('Штормовий пояс', `the Storm Belt`), x: 1500, z: 600, r: 520, k: 0.45 },
   { id: 'reefs', name: L('Рифи Мушлевого', `the Shell Reefs`), x: -1380, z: 760, r: 380, k: 0.35 },
   { id: 'ocean', name: L('Відкритий океан', `the Open Ocean`), x: 350, z: 1620, r: 600, k: 0.4 },
+  // між континентами — великий океан: довгий накат і сильні фронти
+  { id: 'deep', name: L('Великий океан', `the Great Ocean`), x: 0, z: 3300, r: 1700, k: 0.35 },
+  // холодна Північ: частіші шторми й туман уздовж усього узбережжя
+  { id: 'northc', name: L('Північні води', `the Northern Waters`), x: -3650, z: 2550, r: 700, k: 0.3, hw: 900, hh: 1150 },
+];
+
+/** тихі райони (від'ємна сила): тепле Середземномор'я */
+export const CALM: RoughArea[] = [
+  { id: 'medc', name: L('Лазурові води', `the Azure Waters`), x: 3650, z: 2950, r: 600, k: -0.18, hw: 850, hh: 1000 },
 ];
 
 /** гавані-затишки: домашня — тут, інші додає portSites.ts при завантаженні */
-const HAVENS: Haven[] = [{ x: 0, z: -20, r: 260 }];
+const HAVENS: Haven[] = [{ x: 0, z: -20, r: 260, name: L('«Шторм»', `Storm Harbour`) }];
 export function addHaven(h: Haven) {
   HAVENS.push(h);
 }
@@ -84,16 +130,21 @@ const smooth = (a: number, b: number, x: number) => {
   return t * t * (3 - 2 * t);
 };
 
-/** наскільки «відкрите» море в точці: 0 біля берега … 1 далеко */
+/** наскільки «відкрите» море в точці: 0 біля берега (дому чи континенту) … 1 далеко */
 export function offshore(x: number, z: number): number {
-  return smooth(OFF0, OFF1, Math.hypot(x, z));
+  return smooth(OFF0, OFF1, seaDist(x, z));
 }
 
-/** бурхливість району 0..~0.5 (сума бурхливих районів) */
+/** бурхливість району 0..~0.5 (сума бурхливих районів; тихі — від'ємні) */
 export function roughness(x: number, z: number): number {
   let s = 0;
   for (const a of ROUGH) s += a.k * areaWeight(a, x, z);
   return s;
+}
+
+/** вплив клімату континенту в точці 0..1 ('north' — холод і туман, 'med' — тепло) */
+export function climate(x: number, z: number): { north: number; med: number } {
+  return { north: areaWeight(ROUGH.find((a) => a.id === 'northc')!, x, z), med: areaWeight(CALM[0], x, z) };
 }
 
 /** затишок гавані: 0 — у гавані … 1 — відкрита вода */
@@ -128,7 +179,9 @@ export function nearestHaven(x: number, z: number): { h: Haven; d: number } {
 
 /** множник сили погоди в точці (0.7 у гавані … ~1.9 у штормовому поясі) */
 export function seaMul(x: number, z: number): number {
-  const m = 0.7 + 0.75 * offshore(x, z) + roughness(x, z);
+  let calm = 0;
+  for (const a of CALM) calm += a.k * areaWeight(a, x, z);
+  const m = 0.7 + 0.75 * offshore(x, z) + roughness(x, z) + calm;
   return 0.7 + (m - 0.7) * exposure(x, z);
 }
 
@@ -162,15 +215,22 @@ export function localIntensity(base: number, mul: number): number {
 /** GLSL-дзеркало seaMul/localIntensity (з даних регіонів на момент компіляції шейдера) */
 export function regionGlsl(): string {
   const f = (v: number) => (Number.isInteger(v) ? v.toFixed(1) : String(v));
-  const rough = ROUGH.map((a) =>
+  const rough = [...ROUGH, ...CALM].map((a) =>
     a.hw != null && a.hh != null
       ? `  { vec2 q = max(abs(p - vec2(${f(a.x)}, ${f(a.z)})) - vec2(${f(a.hw)}, ${f(a.hh!)}), 0.0); s += ${f(a.k)} * (1.0 - smoothstep(0.0, ${f(a.r)}, length(q))); }`
       : `  { float d = length(p - vec2(${f(a.x)}, ${f(a.z)})); s += ${f(a.k)} * (1.0 - smoothstep(${f(a.r * 0.45)}, ${f(a.r)}, d)); }`,
   ).join('\n');
   const hav = HAVENS.map((h) => `  e = min(e, smoothstep(${f(h.r * 0.35)}, ${f(h.r)}, length(p - vec2(${f(h.x)}, ${f(h.z)}))));`).join('\n');
   return `
+float seaDistG(vec2 p) {
+  float d = length(p);
+${LANDMASSES.map((m) => `  { vec2 q = p - vec2(${f(m.x)}, ${f(m.z)}); float c = ${f(Math.cos(m.rot))}, s = ${f(Math.sin(m.rot))};
+    vec2 uv = vec2((q.x * c - q.y * s) / ${f(m.rx)}, (q.x * s + q.y * c) / ${f(m.rz)});
+    d = min(d, max(0.0, (length(uv) - 1.0) * ${f(Math.min(m.rx, m.rz))})); }`).join('\n')}
+  return d;
+}
 float seaMul(vec2 p) {
-  float t = smoothstep(${f(OFF0)}, ${f(OFF1)}, length(p));
+  float t = smoothstep(${f(OFF0)}, ${f(OFF1)}, seaDistG(p));
   float s = 0.0;
 ${rough}
   float e = 1.0;

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Input } from './core/input';
 import { TimeCycle, DAY_SECONDS } from './core/time';
 import { seaMul, Weather } from './core/weather';
-import { WORLD, nearestHaven, roughAt, shoreRes } from './core/region';
+import { WORLD, HOME_RECT, climate, nearestHaven, roughAt, seaDist, shoreRes } from './core/region';
 import { Ocean, UNDERWATER_LAYER } from './core/ocean';
 import { AudioEngine } from './core/audio';
 import { clamp, rand, formatMoney } from './core/math';
@@ -84,6 +84,13 @@ import { ISLANDS, islandNear } from './world/islandShape';
 import { seabedDepth, ANCHOR_MAX_DEPTH, type AnchorResult } from './world/anchor';
 import { HATS, HAT_BY_ID } from './game/hats';
 import { Ports } from './world/ports';
+import { ContinentScenery } from './world/continentMesh';
+import { CargoView, CARGO_SLOTS } from './world/cargoView';
+import { Traders } from './world/traders';
+import { glowTex } from './world/textures';
+import { cargoHtml, bindCargo, baseHtml } from './ui/cargoBoard';
+import { GOODS_BY_ID, DOCK_BY_ID, cargoSlots, dockName, type CargoOrder } from './game/cargo';
+import { continentRegion } from './world/continents';
 import { PORT_SITES, PORT_SITE_BY_ID, PORT_SERVICE_HANDLERS, pierRect, siteBerths, type Berth } from './world/portSites';
 import type { Platform } from './world/port';
 import { Avatar } from './world/avatar';
@@ -246,6 +253,13 @@ class Game {
   private islands: Islands;
   /** інші гавані світу (world/ports.ts) */
   private ports: Ports;
+  /** континенти: рельєф, ліси, містечка, маяки (world/continentMesh.ts) */
+  private continents: ContinentScenery;
+  /** вантажі: ящики на яхті, на причалі й у руках (world/cargoView.ts) */
+  private cargoView!: CargoView;
+  private cargoLate = new Set<string>();
+  /** торгові судна між континентами (world/traders.ts) */
+  private traders: Traders;
   /** місце швартування вдома (x на причалі «Шторму» — за слотом флотилії) */
   private homeMoorX = MOOR.x;
   /** причал поточного місця швартування (сходня, зіткнення корпусу) */
@@ -279,7 +293,7 @@ class Game {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     document.getElementById('app')!.appendChild(this.renderer.domElement);
 
-    this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 4000);
+    this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 9000);
     this.scene.fog = new THREE.FogExp2(0xbcd8e6, 0.0016);
     this.rig = new CameraRig(this.camera);
     try {
@@ -329,8 +343,9 @@ class Game {
     this.shopCounter = new ShopCounter(this.scene, this.port.solids);
     this.exchangeBoard = new ExchangeBoard(this.scene);
     // прибій уздовж берега бухти
-    // мапа дна на весь світ (2 м/піксель, у більшому світі — грубіше: region.ts shoreRes): мілини й прибій біля всіх берегів, островів і гаваней
-    this.ocean.setShore(terrainHeight, WORLD.W0, WORLD.H0, WORLD.W1 - WORLD.W0, WORLD.H1 - WORLD.H0, shoreRes());
+    // мапа дна: дрібна (2 м) на стартовий архіпелаг і груба (6 м) на весь великий світ — мілини й прибій біля всіх берегів, островів, гаваней і континентів
+    this.ocean.setShore(terrainHeight, HOME_RECT.W0, HOME_RECT.H0, HOME_RECT.W1 - HOME_RECT.W0, HOME_RECT.H1 - HOME_RECT.H0, 2);
+    this.ocean.setShore(terrainHeight, WORLD.W0, WORLD.H0, WORLD.W1 - WORLD.W0, WORLD.H1 - WORLD.H0, shoreRes(1700), true);
     this.particles = new ParticlePool(this.scene, 1100);
     this.windLines = new WindLines(this.scene);
     this.foamTrail = new FoamTrail(this.scene);
@@ -345,6 +360,8 @@ class Game {
     this.stalls = new BuyerStalls(this.scene, this.port);
     this.ordersChip = new OrdersChip();
     this.ports = new Ports(this.scene, this.port.platforms, this.port.solids);
+    this.continents = new ContinentScenery(this.scene);
+    this.traders = new Traders(this.scene, glowTex());
     this.moorDock = this.port.quay;
     this.boat = new Boat(this.scene);
     this.boat.landAt = terrainHeight;
@@ -357,6 +374,7 @@ class Game {
     this.galley = new Galley(this.boat.group);
     // кухоль у руках — дитина камери: камера має бути в сцені
     if (!this.camera.parent) this.scene.add(this.camera);
+    this.cargoView = new CargoView(this.scene, this.boat.group, this.camera);
     const self = this;
     this.kitchen = new KitchenUI({
       // гра змінюється (нова / завантажена) — беремо поточну
@@ -539,6 +557,8 @@ class Game {
     // легкий удар хвилі — плеск, тим гучніший, чим сильніший удар
     this.boat.onWaveHit = (power) => this.audio.splash(Math.min(0.7, 0.12 + power * 0.18));
     this.boat.onSlam = (dmg, kind, power) => {
+      // крихкий вантаж на лавах б'ється від ударів хвиль
+      if (!this.coop.crewing) this.game.cargo.slam(power);
       this.slamShake = Math.min(1, 0.35 + power * 0.08);
       this.audio.thump(Math.min(1, power / 6));
       this.audio.splash(Math.min(1, 0.5 + power * 0.1));
@@ -1312,7 +1332,7 @@ class Game {
       hold: { count: g.hold.length, cap: g.holdCap, value: g.hold.reduce((a, f) => a + g.sellPrice(f), 0) },
       stormSoon: w.localStormEta != null || snap.forecast > 0.74 || w.base > 0.74,
       tip: (() => {
-        const zone = zoneFromDist(Math.hypot(this.boat.pos.x, this.boat.pos.z));
+        const zone = zoneFromDist(seaDist(this.boat.pos.x, this.boat.pos.z));
         const night = this.time.isNight;
         const here = FISH.filter((f) => f.zones.includes(zone) && (night ? f.night : f.day)).map((f) => f.name.toLowerCase());
         return here.length ? L(`${night ? L('Ніч', `Night`) : L('День', `Day`)} · ${ZONE_NAMES[zone]}: тут зараз ловиться ${here.join(', ')}`, `${night ? L('Ніч', `Night`) : L('День', `Day`)} · ${ZONE_NAMES[zone]}: biting here now — ${here.join(', ')}`) : '';
@@ -1652,8 +1672,7 @@ class Game {
       if (!this.inRough && ra.v > 0.35 && ra.area) {
         this.inRough = true;
         const nh = nearestHaven(wp.x, wp.z);
-        const site = PORT_SITES.find((p) => Math.hypot(p.x - nh.h.x, p.z - nh.h.z) < 80);
-        const port = site ? site.name : L('«Шторм»', `Storm Harbour`);
+        const port = nh.h.name ?? L('«Шторм»', `Storm Harbour`);
         const fNow = this.weather.frontEta;
         const soon = fNow != null ? L(` · ⛈ фронт ${fNow < 30 ? 'уже йде' : `за ${Math.max(1, Math.round(fNow / 60))} хв`}!`, ` · ⛈ front ${fNow < 30 ? 'is already here' : `in ${Math.max(1, Math.round(fNow / 60))} min`}!`) : '';
         this.hud.toast(L(`⚠ ${ra.area.name}: хвиля вища, шторм тут лютіший — зате риба більша. Найближча гавань — ${port} (${(nh.d / 1000).toFixed(1).replace('.', ',')} км)${soon}`, `⚠ ${ra.area.name[0].toUpperCase() + ra.area.name.slice(1)}: higher seas and fiercer storms — but bigger fish. Nearest harbour: ${port} (${(nh.d / 1000).toFixed(1)} km)${soon}`), 'warn', 6500);
@@ -1784,6 +1803,7 @@ class Game {
       this.player.update(dt, input, this.boat, this.port, this.ocean, t);
       this.pickStation();
       this.pickCounter();
+      this.pickCargo();
       if (this.player.onIsland) {
         const f = this.islands.pick(this.player.wx, this.player.wz, this.game.finds) ?? this.stalls.pickHermit(this.player.wx, this.player.wz);
         if (f) this.player.nearest = f;
@@ -1854,6 +1874,7 @@ class Game {
     if (this.game.market.remote !== this.coop.isClient) this.game.setMarketRemote(this.coop.isClient);
     this.game.saleHook = this.coop.isClient ? (p, sp, u) => this.coop.sendMarketSale(p, sp, u) : null;
     this.bots.update(dt, t, this.ocean, this.weather, this.time.daylight, [this.boat.pos, ...this.coop.fleetObstacles()], this.boat.pos);
+    this.traders.update(dt, this.game.clockH, this.ocean, t, this.boat.pos, 1 - this.time.daylight);
     this.coop.myHat = this.game.hat;
     this.coop.tick(dt, this.boat, this.player, this.stations.active?.id === 'pump', this.fishing, this.ocean, t);
     this.coop.syncRoute(dt, this.game.route);
@@ -2054,7 +2075,7 @@ class Game {
     this.updatePortsNav();
 
     // нова зона моря — великий напис, як назви місць у дорожніх іграх
-    const zone = zoneFromDist(d);
+    const zone = zoneFromDist(seaDist(this.boat.pos.x, this.boat.pos.z));
     if (zone !== this.lastZone) {
       if (this.lastZone && this.phase === 'play') this.hud.titleCard(ZONE_NAMES[zone], ZONE_SUB[zone]);
       this.lastZone = zone;
@@ -2066,7 +2087,7 @@ class Game {
 
     // пам'ятки: дзвоновий буй, відкриття місць
     const ring = this.landmarks.update(dt, t, this.ocean);
-    this.islands.update(dt, t, g.finds);
+    this.islands.update(dt, t, g.finds, this.camera.position);
     this.bellCd -= dt;
     if (ring > 0.9 && this.bellCd <= 0) {
       this.bellCd = 1.6 + Math.random() * 2;
@@ -2185,7 +2206,7 @@ class Game {
       this.hud.titleCard(l.name, L(`відкрито · ${l.sub}`, `discovered · ${l.sub}`));
       this.hud.toast(L(`📍 Місця: ${g.places.length}/${LANDMARKS.length}`, `📍 Places: ${g.places.length}/${LANDMARKS.length}`), 'good', 3500);
       // усі острови відкрито — шапка з помпоном у подарунок
-      if (!g.finds.includes('hat:beanie') && ISLANDS.every((d) => g.places.includes(d.id))) {
+      if (!g.finds.includes('hat:beanie') && ISLANDS.every((d) => d.far || g.places.includes(d.id))) {
         g.finds.push('hat:beanie');
         this.hud.toast(L('🧶 Усі острови на лоції! У гардеробі — шапка з помпоном', `🧶 Every island is on the chart! A bobble hat is in your wardrobe`), 'good', 5000);
       }
@@ -2245,6 +2266,10 @@ class Game {
     }
     if (id.startsWith('find:')) {
       this.takeFind(id.slice(5));
+      return;
+    }
+    if (id.startsWith('crate:') || id === 'cargo:place' || id.startsWith('cargo:slot:')) {
+      this.useCargo(id);
       return;
     }
 
@@ -2375,11 +2400,17 @@ class Game {
       const [, site, kind] = id.split(':');
       this.game.portId = site;
       if (kind === 'sleep') this.doSleep(true);
+      else if (kind === 'cargo') this.openCargo(site);
+      else if (kind === 'base') this.openBase(site);
       else if (kind === 'fuel' || kind === 'yard' || kind === 'shop' || kind === 'office' || kind === 'exchange') this.openDialog(kind);
       else PORT_SERVICE_HANDLERS[kind]?.(site, this.game);
       return;
     }
     if (id.startsWith('port:')) this.game.portId = 'home';
+    if (id === 'port:cargo') {
+      this.openCargo('home');
+      return;
+    }
     // кожне місце в порту — лише свої послуги
     const venue = ({ 'port:shop': 'shop', 'port:fuel': 'fuel', 'port:repair': 'yard', 'port:office': 'office', 'port:market': 'exchange', 'port:tavern': 'tavern', 'port:smoke': 'smoke', 'port:chef': 'chef', 'port:cannery': 'cannery', 'buyer:hermit': 'hermit' } as const)[id as 'port:shop'];
     if (venue) {
@@ -2459,6 +2490,193 @@ class Game {
     this.hud.toast(L(`⛵ Паруси: ${this.boat.sails.label()}`, `⛵ Sails: ${this.boat.sails.label()}`), m === 0 ? 'warn' : 'good', 2200);
   }
 
+  // ───────────────────────── вантажі (game/cargo.ts) ─────────────────────────
+
+  /** вантаж кадру: кооп-код яхти, вигляд, ящик у руках, що впав у воду, прострочки */
+  private syncCargo() {
+    const g = this.game;
+    const crew = this.coop.crewing;
+    if (!crew) this.boat.cargoCode = g.cargo.code();
+    this.cargoView.sync(crew ? null : g.cargo, crew ? this.boat.cargoCode : null);
+    if (crew) return;
+    // упав у воду з ящиком — вантажники виловили й віднесли назад на склад
+    const h = g.cargo.inHand();
+    if (h && this.player.mode === 'water') {
+      h.o.items[h.i].where = 'pier';
+      h.o.items[h.i].cond *= 0.8;
+      this.hud.toast(L(`📦 Ящик упав у воду — його виловили й віднесли на склад «${dockName(h.o.from)}»`, `📦 The crate fell in the water — it was fished out and taken back to the ${dockName(h.o.from)} cargo office`), 'warn', 4000);
+    }
+    for (const o of g.cargo.orders) {
+      if (g.clockH > o.dueH && !this.cargoLate.has(o.id)) {
+        this.cargoLate.add(o.id);
+        this.hud.toast(L(`⏰ Прострочено: ${GOODS_BY_ID[o.goods].name.toLowerCase()} до «${dockName(o.to)}» — заплатять лише половину`, `⏰ Overdue: ${GOODS_BY_ID[o.goods].name.toLowerCase()} to ${dockName(o.to)} — only half pay now`), 'warn', 4500);
+      }
+    }
+  }
+
+  /** ящик поруч (причал) / вільний слот на яхті, коли несеш / ящик у слоті */
+  private pickCargo() {
+    const g = this.game, p = this.player;
+    if (this.coop.crewing) return;
+    const hand = g.cargo.inHand();
+    if (p.mode === 'port' && !hand) {
+      let best: string | null = null, bd = 1.9;
+      for (const c of this.cargoView.pierCrates()) {
+        const d = Math.hypot(p.head.x - c.x, p.head.z - c.z);
+        if (d < bd) { bd = d; best = c.key; }
+      }
+      if (best) {
+        const [oid] = this.splitCrateKey(best);
+        const o = g.cargo.orders.find((x) => x.id === oid);
+        if (o) p.nearest = { id: 'crate:' + best, label: L(`Взяти ящик: ${GOODS_BY_ID[o.goods].name.toLowerCase()} → «${dockName(o.to)}»`, `Pick up a crate: ${GOODS_BY_ID[o.goods].name.toLowerCase()} → ${dockName(o.to)}`) };
+      }
+      return;
+    }
+    if (p.mode !== 'boat' || p.wheeling) return;
+    if (hand) {
+      const free = this.freeSlot();
+      p.nearest = free != null
+        ? { id: 'cargo:place', label: CARGO_SLOTS[free].deck ? L('Поставити ящик на лаву кокпіту (ремені затягнуться самі)', `Set the crate on a cockpit bench (straps tighten themselves)`) : L('Поставити ящик у носовій каюті', `Stow the crate in the forepeak`) }
+        : { id: 'cargo:place', label: p.inCabin ? L('У каюті немає вільного місця — неси на лаву кокпіту', `No room in the cabin — take it to a cockpit bench`) : L('На лавах немає місця (більший трюм — ще й носова каюта)', `No room on the benches (a bigger hold adds the forepeak)`) };
+      return;
+    }
+    // ящик у слоті поруч — можна зняти (передумав / розвантажити)
+    for (const o of g.cargo.orders) {
+      o.items.forEach((it, i) => {
+        if (it.where !== 'boat') return;
+        const s = CARGO_SLOTS[it.slot];
+        if (!s || s.deck === p.inCabin) return;
+        const d = Math.hypot(p.localX - s.x, p.localZ - s.z);
+        if (d < 0.75 && (!p.nearest || d < 0.55)) p.nearest = { id: `cargo:slot:${o.id}:${i}`, label: L(`Зняти ящик (${GOODS_BY_ID[o.goods].name.toLowerCase()})`, `Take the crate (${GOODS_BY_ID[o.goods].name.toLowerCase()})`) };
+      });
+    }
+  }
+
+  /** ключ ящика «<id замовлення>:<індекс>» (id сам містить двокрапки) */
+  private splitCrateKey(k: string): [string, number] {
+    const j = k.lastIndexOf(':');
+    return [k.slice(0, j), Number(k.slice(j + 1))];
+  }
+
+  /** найближчий вільний слот на тому ж рівні (палуба — лави, каюта — носова каюта) */
+  private freeSlot(): number | null {
+    const g = this.game, p = this.player;
+    const n = cargoSlots(g.upgrades.hold ?? 0);
+    const used = g.cargo.usedSlots();
+    let best: number | null = null, bd = Infinity;
+    for (let s = 0; s < n; s++) {
+      if (used.has(s)) continue;
+      const sl = CARGO_SLOTS[s];
+      if (sl.deck === p.inCabin) continue;
+      const d = Math.hypot(p.localX - sl.x, p.localZ - sl.z);
+      if (d < bd) { bd = d; best = s; }
+    }
+    return best;
+  }
+
+  private useCargo(id: string) {
+    const g = this.game;
+    if (id.startsWith('crate:')) {
+      const [oid, i] = this.splitCrateKey(id.slice(6));
+      const o = g.cargo.orders.find((x) => x.id === oid);
+      if (this.fishing.holding) {
+        this.hud.toast(L('Спершу постав вудку — ящик носять двома руками', `Put the rod away first — crates take both hands`), 'warn', 2400);
+        return;
+      }
+      if (!o || g.cargo.inHand()) return;
+      o.items[i].where = 'hand';
+      this.audio.click();
+      return;
+    }
+    if (id === 'cargo:place') {
+      const h = g.cargo.inHand();
+      const s = this.freeSlot();
+      if (!h || s == null) return;
+      h.o.items[h.i].where = 'boat';
+      h.o.items[h.i].slot = s;
+      this.audio.thump(0.25);
+      const left = h.o.items.filter((it) => it.where !== 'boat').length;
+      if (!left) this.hud.toast(L(`📦 Увесь вантаж на борту — курс на «${dockName(h.o.to)}»`, `📦 All cargo aboard — set course for ${dockName(h.o.to)}`), 'good', 3200);
+      this.saveTimer = Math.min(this.saveTimer, 2);
+      return;
+    }
+    if (id.startsWith('cargo:slot:')) {
+      if (g.cargo.inHand() || this.fishing.holding) return;
+      const [oid, i] = this.splitCrateKey(id.slice(11));
+      const o = g.cargo.orders.find((x) => x.id === oid);
+      if (!o) return;
+      o.items[i].where = 'hand';
+      o.items[i].slot = -1;
+      this.audio.click();
+    }
+  }
+
+  /** склад гавані: накладні, здати, відмовитись */
+  private openCargo(site: string, note = '') {
+    const g = this.game;
+    if (this.coop.crewing) {
+      this.hud.toast(L('📦 Вантажі на цю яхту бере її капітан', `📦 Cargo for this yacht is taken by its skipper`), 'warn', 3000);
+      return;
+    }
+    const dock = DOCK_BY_ID[site];
+    // здавати можна, коли яхта пришвартована в цій гавані
+    const boatNear = !!dock && this.moorSite === site && Math.hypot(this.boat.pos.x - this.boat.moor.x, this.boat.pos.z - this.boat.moor.z) < 60;
+    const opts = {
+      game: g, here: site, boatNear, note,
+      onTake: (o: CargoOrder) => {
+        if (g.cargo.accept(o, g.clockH)) {
+          this.audio.click();
+          this.saveGame();
+          this.openCargo(site, L(`📜 Узято: ${GOODS_BY_ID[o.goods].name.toLowerCase()} до «${dockName(o.to)}». Ящики — на причалі біля складу.`, `📜 Taken: ${GOODS_BY_ID[o.goods].name.toLowerCase()} to ${dockName(o.to)}. The crates are on the pier by the office.`));
+        }
+      },
+      onDeliver: (oid: string) => {
+        const r = g.cargo.deliver(oid, site, g.clockH);
+        if (r.ok) {
+          g.earn(r.pay, 'cargo');
+          this.audio.catchJingle();
+          this.saveGame();
+          this.openCargo(site, L(`✅ Доставлено! +${formatMoney(r.pay)}`, `✅ Delivered! +${formatMoney(r.pay)}`));
+        } else if (r.why) this.openCargo(site, r.why);
+      },
+      onCancel: (oid: string) => {
+        const fee = g.cargo.cancel(oid);
+        if (fee > 0) g.spend(Math.min(g.money, fee), 'fees');
+        this.audio.click();
+        this.saveGame();
+        this.openCargo(site, L(`Замовлення скасовано · неустойка ${formatMoney(fee)}`, `Order cancelled · penalty ${formatMoney(fee)}`));
+      },
+    };
+    this.phase = 'dialog';
+    this.expectUnlock = true;
+    document.exitPointerLock();
+    this.dialogs.custom(cargoHtml(opts), 'shop cargo', (panel) => bindCargo(panel, opts));
+  }
+
+  /** дім-база на континенті: купити / поспати */
+  private openBase(site: string) {
+    const g = this.game;
+    const price = 6000;
+    this.phase = 'dialog';
+    this.expectUnlock = true;
+    document.exitPointerLock();
+    this.dialogs.custom(baseHtml(g, site, price), 'shop cargo', (panel) => {
+      panel.querySelector('[data-bbuy]')?.addEventListener('click', () => {
+        if (g.money < price || g.bases.includes(site)) return;
+        g.spend(price, 'base');
+        g.bases.push(site);
+        this.audio.catchJingle();
+        this.saveGame();
+        this.hud.toast(L('🏡 Тепер у тебе дім і на цьому континенті!', `🏡 You now have a home on this continent too!`), 'good', 4000);
+        this.openBase(site);
+      });
+      panel.querySelector('[data-bsleep]')?.addEventListener('click', () => {
+        this.dialogs.close();
+        this.doSleep(true);
+      });
+    });
+  }
+
   private doSleep(inPort: boolean) {
     if (this.coop.isClient) {
       // час світу веде капітан — гість лише відпочиває
@@ -2494,7 +2712,10 @@ class Game {
   private fogDensity(): number {
     const base = 0.0016;
     const storm = this.weather.intensity * 0.0011;
-    return base + storm;
+    // клімат континенту: на Півночі частіше туман, на Лазуровому узбережжі — прозоре повітря
+    const cp = this.camera.position;
+    const cl = climate(cp.x, cp.z);
+    return (base + storm) * (1 + cl.north * (0.55 + 0.45 * Math.sin(this.simTime * 0.011)) - cl.med * 0.18);
   }
 
   private render() {
@@ -2560,6 +2781,9 @@ class Game {
     this.port.update(simDt, t);
     this.ports.setNight(1 - time.daylight);
     this.ports.update(t, this.camera.position);
+    this.continents.setNight(1 - time.daylight);
+    this.continents.update(t, this.camera.position);
+    this.syncCargo();
     // бризки, сплески, дим: рух і згасання (без цього частинки ніколи не малювались і забивали пул)
     this.particles.update(simDt);
 
@@ -2947,7 +3171,8 @@ class Game {
     let id = 'home';
     let bd = Math.hypot(x, z);
     for (const p of PORT_SITES) {
-      if (p.econ.repair == null || !this.game.places.includes(p.id)) continue;
+      // гавані з верф'ю, де вже бував, і власні доми-бази на континентах
+      if (!this.game.bases.includes(p.id) && (p.econ.repair == null || !this.game.places.includes(p.id))) continue;
       const d = Math.hypot(x - p.x, z - p.z);
       if (d < bd) {
         bd = d;
@@ -3233,7 +3458,7 @@ class Game {
     const lvl = g.upgrades.instr ?? 0;
     const has = instrHas(lvl);
     if (this.instruments.level !== lvl) this.instruments.setLevel(lvl);
-    const bots = this.bots.markers();
+    const bots = [...this.bots.markers(), ...this.traders.markers()];
     this.minimap.bots = bots;
     this.minimap.ais = has.radar;
     this.mapView.bots = has.radar ? bots : [];
@@ -3245,7 +3470,7 @@ class Game {
     this.hud.crewWaypoint = this.coop.crewing ? crew.find((r) => r.captain)?.pts[0] ?? null : null;
     // риба під кілем: базово за зоною, біля зграй з радіозвітів — густіше
     const dist = Math.hypot(b.pos.x, b.pos.z);
-    const zone = zoneFromDist(dist);
+    const zone = zoneFromDist(seaDist(b.pos.x, b.pos.z));
     let fish = (zone === 'shore' ? 0.34 : zone === 'mid' ? 0.3 : 0.24) + (this.time.isNight ? 0.05 : 0);
     let school: { x: number; z: number; name: string } | null = null;
     let sd = 900;

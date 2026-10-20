@@ -34,6 +34,14 @@ export function terrainHeight(x: number, z: number): number {
     const h = -4.5 - 2.5 * smoothstep(PLATEAU.z1 + 120, PLATEAU.z1 + 260, z);
     return z < PLATEAU.z1 + 120 ? h : Math.max(h, islandHeight(x, z));
   }
+  // поза домашнім берегом (край мапи тоне в морі) — одразу глибоке море + острови/континенти
+  if (ax >= EXT_X || z <= EXT_Z1) return Math.max(-12, islandHeight(x, z));
+  // далеко в морі перед берегом рельєф суходолу не потрібен (min(H, shore) = shore): без дорогого шуму
+  const sFar = coastZ(x) - z;
+  if (sFar < -40) {
+    const e = smoothstep(EXT_X, EXT_X - 170, ax) * smoothstep(EXT_Z1, EXT_Z1 + 160, z);
+    return Math.max(-12 + (-3.2 + sFar * 0.3 + (fbm(x * 0.05, z * 0.05, 2) - 0.5) + 12) * e, islandHeight(x, z));
+  }
   const dx = Math.max(0, ax - PLATEAU.x1);
   const dz = Math.max(0, PLATEAU.z0 - z, z - PLATEAU.z1);
   const d = Math.hypot(dx, dz);
