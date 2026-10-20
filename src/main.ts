@@ -1341,11 +1341,15 @@ class Game {
     const eta = this.weather.stormEta;
     if (eta != null && eta > 60 && !this.stormWarned) {
       this.stormWarned = true;
-      this.hud.toast(`📻 Штормове попередження: шторм приблизно за ${Math.max(1, Math.round(eta / 60))} хв (≈${Math.max(1, Math.round(eta / 25))} год гри). Рибалки вертаються в порт`, 'warn', 6500);
+      this.hud.toast(`📻 Штормове попередження: шторм приблизно за ${Math.max(1, Math.round(eta / 60))} хв (≈${Math.max(1, Math.round(eta / 25))} год гри). Рибалки вертаються в порт${this.boat.doorOpen || this.boat.hatchOpen ? ' · зачини двері каюти й люк трюму' : ''}`, 'warn', 6500);
     } else if (eta == null && this.weather.state() !== 'storm') this.stormWarned = false;
     if (this.weather.state() !== this.lastWeather) {
       const st = this.weather.state();
-      if (st === 'storm') this.hud.toast('⛈ ШТОРМ! Хвилі ростуть. Дістанься порту або ризикуй!', 'bad', 5000);
+      if (st === 'storm') {
+        // що відчинене — туди й заллє: двері каюти й люк трюму
+        const open = [this.boat.doorOpen ? 'двері каюти' : '', this.boat.hatchOpen ? 'люк трюму' : ''].filter(Boolean);
+        this.hud.toast(`⛈ ШТОРМ! Хвилі ростуть. Дістанься порту або ризикуй!${open.length ? ` Зачини ${open.join(' і ')} — інакше заллє й потопить` : ''}`, 'bad', 6000);
+      }
       else if (st === 'calm' && this.lastWeather === 'storm') {
         g.stats.stormsSurvived++;
         this.hud.toast('Шторм минув. Ти справжній рибал.', 'good', 4500);
@@ -1590,7 +1594,7 @@ class Game {
     }
 
     // вода ллється у відчинені двері каюти
-    if (this.boat.doorOpen && this.boat.deckWater > 15) {
+    if (this.boat.doorOpen && (this.boat.deckWater > 15 || (this.weather.rain > 0.3 && this.player.mode === 'boat'))) {
       this.doorWarnT -= dt;
       if (this.doorWarnT <= 0) {
         this.doorWarnT = 7;

@@ -669,6 +669,8 @@ export class Boat {
     if (this.hatchOpen && weather.rain > 0.4) this.bilge = Math.min(100, this.bilge + weather.rain * 0.25 * dt);
     // відчинені двері каюти: хвиля, що заливає кокпіт, тече по трапу вниз
     if (this.doorOpen && this.deckWater > 15) this.bilge = Math.min(100, this.bilge + this.deckWater * 0.035 * dt);
+    // і злива крізь відчинений трап (менше, ніж крізь люк трюму)
+    if (this.doorOpen && weather.rain > 0.3) this.bilge = Math.min(100, this.bilge + weather.rain * 0.15 * dt);
     if (this.bilge >= 100) game.damage(12 * dt);
 
     // шторм + мокра палуба → просочення корпусу
