@@ -129,6 +129,42 @@ function exhaust(k: PartKit): THREE.Object3D {
   return g;
 }
 
+// ── помпа: ручні (1–2), пульт автоматики (3), виливи в транці й аварійна лампа (4–5) ──
+function handPump(k: PartKit, big: boolean): THREE.Object3D {
+  const g = new THREE.Group();
+  const s = big ? 1.3 : 1;
+  cyl(g, k.mat(DARK, 0.5, 0.3), 0.045 * s, 0.055 * s, 0.24 * s, 0, 0.12 * s, 0);
+  cyl(g, k.mat(BRASS, 0.3, 0.8), 0.06 * s, 0.06 * s, 0.025, 0, 0.24 * s + 0.012, 0);
+  const lever = box(g, k.mat(STEEL, 0.25, 0.9), 0.024, 0.024, big ? 0.6 : 0.4, 0, 0.27 * s, big ? 0.22 : 0.15);
+  lever.rotation.x = -0.35;
+  cyl(g, k.mat(RUBBER, 0.8), 0.022, 0.022, 0.09, 0, 0.27 * s + (big ? 0.2 : 0.13), big ? 0.5 : 0.33);
+  return g;
+}
+
+function pumpPanel(k: PartKit): THREE.Object3D {
+  const g = new THREE.Group();
+  box(g, k.mat(0xe9e6df, 0.5, 0.1), 0.2, 0.14, 0.04, 0, 0.07, 0);
+  box(g, k.mat(DARK, 0.4, 0.3), 0.05, 0.025, 0.02, -0.05, 0.08, 0.03);
+  cyl(g, k.mat(0x2ecc71, 0.3), 0.012, 0.012, 0.012, 0.05, 0.1, 0.025).rotation.x = Math.PI / 2;
+  cyl(g, k.mat(0xd0342c, 0.3), 0.012, 0.012, 0.012, 0.05, 0.06, 0.025).rotation.x = Math.PI / 2;
+  return g;
+}
+
+function bilgeOutlet(k: PartKit): THREE.Object3D {
+  const g = new THREE.Group();
+  const st = k.mat(STEEL, 0.2, 0.95);
+  cylZ(g, st, 0.06, 0.02, 0, 0, -0.01);
+  cylZ(g, k.mat(0x111111, 0.9), 0.035, 0.012, 0, 0, -0.02);
+  return g;
+}
+
+function alarmLamp(k: PartKit): THREE.Object3D {
+  const g = new THREE.Group();
+  cyl(g, k.mat(DARK, 0.5, 0.3), 0.04, 0.045, 0.03, 0, 0.015, 0);
+  cyl(g, k.mat(0xff5a2a, 0.2), 0.03, 0.035, 0.06, 0, 0.06, 0);
+  return g;
+}
+
 function cowlVent(k: PartKit): THREE.Object3D {
   const g = new THREE.Group();
   const w = k.mat(0xf2efe8, 0.4, 0.1);
@@ -920,6 +956,32 @@ export const PART_SPECS: Record<UpgradeId, PartSpec[]> = {
   instr: [1, 2, 3, 4, 5].map((l) => ({ model: (k: PartKit) => instrShelfModel(l, k), view: -0.25, onBoat: () => new THREE.Group() })),
   // тент живе в CanvasTop (полотна, складання, штори) — тут лише згортки для полиці
   tent: [1, 2, 3, 4, 5].map((l) => ({ model: (k: PartKit) => tentShelfModel(l, k), view: -0.25, onBoat: () => new THREE.Group() })),
+  // помпа — біля рукояті штатної помпи в кокпіті (станція pump: x −0.62, z −4.05)
+  pump: [
+    { model: (k) => handPump(k, false), until: 2, mounts: [{ p: [-0.62, DECK_Y, -3.82] }] },
+    { model: (k) => handPump(k, true), mounts: [{ p: [-0.62, DECK_Y, -3.82] }] },
+    { model: pumpPanel, mounts: [{ p: [-0.9, DECK_Y + 0.2, -3.7], r: [0, Math.PI / 2, 0] }] },
+    { model: bilgeOutlet, view: 2.1, mounts: [{ p: [-0.35, WATERLINE_Y + 0.6, AFT + 0.02] }] },
+    {
+      model: (k) => {
+        const g = new THREE.Group();
+        g.add(bilgeOutlet(k));
+        const l = alarmLamp(k);
+        l.position.set(0.15, -0.05, 0);
+        g.add(l);
+        return g;
+      },
+      onBoat: (k) => {
+        const g = new THREE.Group();
+        const o = bilgeOutlet(k);
+        o.position.set(0.35, WATERLINE_Y + 0.6, AFT + 0.02);
+        const l = alarmLamp(k);
+        l.position.set(-0.9, DECK_Y + 0.36, -3.7);
+        g.add(o, l);
+        return g;
+      },
+    },
+  ],
   // паруси: тканина, гік і генакер змінюються в SailRig (setLevel), тут — «залізо»
   sails: [
     // 1: новий дакрон — видно на самих парусах

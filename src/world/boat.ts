@@ -15,7 +15,7 @@ import { ZONE_NAMES, zoneFromDist } from '../game/fish';
 import { DECK_Y, SOLE_Y, RIG, HOUSE, deckLimitX } from './yachtLayout';
 import { HOLDER_MOUNTS } from './upgradeParts';
 import { FISH_BOX } from './deckFish';
-import { holderCount } from '../game/upgrades';
+import { holderCount, pumpAuto, pumpManual } from '../game/upgrades';
 import { Anchor } from './anchor';
 import { CanvasTop } from './canvasTop';
 import { depthAt } from './helmInstruments';
@@ -326,6 +326,10 @@ export class Boat {
   /** тент над кокпітом (апгрейд «Тент»): встановлений рівень, складений, штори опущені */
   canvas!: CanvasTop;
   tentLevel = 0;
+  /** апгрейд помпи: 1–2 — ручна швидша, з 3 — автоматика з поплавцем */
+  pumpLevel = 0;
+  /** автоматика зараз відкачує (для HUD) */
+  autoPumping = false;
   tentFolded = false;
   tentClosed = false;
   /** ступінь опущених штор 0..1 (анімація) */
@@ -352,6 +356,7 @@ export class Boat {
     this.netLevel = levels.nets ?? 0;
     this.instrLevel = levels.instr ?? 0;
     this.tentLevel = levels.tent ?? 0;
+    this.pumpLevel = levels.pump ?? 0;
     this.canvas.setLevel(this.tentLevel);
     for (const m of this.stationMarkers.children) m.visible = this.stationOn(m.userData.station as string);
     for (const [id, arr] of Object.entries(this.upg)) {
@@ -750,6 +755,13 @@ export class Boat {
         this.dockPumpT = 25;
         this.onDockPump?.();
       }
+    }
+    // електропомпа з поплавцем: сама вмикається, щойно в трюмі є вода (на 5 рівні — ще й палуба)
+    const auto = pumpAuto(this.pumpLevel);
+    this.autoPumping = auto > 0 && (this.bilge > 2 || (this.pumpLevel >= 5 && this.deckWater > 5));
+    if (this.autoPumping) {
+      this.bilge = Math.max(0, this.bilge - auto * dt);
+      if (this.pumpLevel >= 5) this.deckWater = Math.max(0, this.deckWater - auto * dt);
     }
     if (this.bilge >= 100) game.damage(12 * dt);
 
@@ -1153,8 +1165,9 @@ export class Boat {
 
   /** осушення палуби помпою */
   dryDeck(dt: number) {
-    this.bilge = Math.max(0, this.bilge - 16 * dt);
-    this.deckWater = Math.max(0, this.deckWater - 34 * dt);
+    const k = pumpManual(this.pumpLevel);
+    this.bilge = Math.max(0, this.bilge - 16 * k * dt);
+    this.deckWater = Math.max(0, this.deckWater - 34 * k * dt);
   }
 
   /** перезапустити двигун */
