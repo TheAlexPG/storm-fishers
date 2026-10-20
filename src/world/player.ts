@@ -134,6 +134,11 @@ export class Player {
   private jumpV = 0;
   private railPush = 0;
   private inWaterT = 0;
+  /** анімований перехід (падіння у воду / виліз на борт чи причал): голова пливе від tFrom до нової пози */
+  private tFrom = new THREE.Vector3();
+  private tK = 1;
+  private tDur = 1;
+  private tFall = false;
   private _v = new THREE.Vector3();
   private _v2 = new THREE.Vector3();
   private _n = new THREE.Vector3();
@@ -177,6 +182,29 @@ export class Player {
     this._bodyUp.lerp(WORLD_UP, this.level === 'deck' ? 0.6 : 0.3).normalize();
     this.head.addScaledVector(this._bodyUp, EYE + this.jumpH);
     this.head.y += this.headBob;
+    this.applyTransition();
+  }
+
+  private startTransition(fall: boolean, dur: number) {
+    this.tFrom.copy(this.head);
+    this.tK = 0;
+    this.tDur = dur;
+    this.tFall = fall;
+  }
+
+  /** поверх щойно обчисленої голови: виліз — спершу вгору, потім через борт; падіння — вниз, пірнути й виринути */
+  private applyTransition() {
+    if (this.tK >= 1) return;
+    const k = this.tK;
+    const f = this.tFrom;
+    const h = this.head;
+    const up = 1 - (1 - k) * (1 - k);
+    const over = k * k;
+    if (this.tFall) {
+      h.set(f.x + (h.x - f.x) * up, f.y + (h.y - f.y) * over - Math.sin(k * Math.PI) * k * 0.9, f.z + (h.z - f.z) * up);
+    } else {
+      h.set(f.x + (h.x - f.x) * over, f.y + (h.y - f.y) * up, f.z + (h.z - f.z) * over);
+    }
   }
   private _bodyUp = new THREE.Vector3();
 
@@ -189,7 +217,8 @@ export class Player {
     this.pitch = clamp(this.pitch - mdy * 0.0021, -1.35, 1.35);
 
     const running = input.down('ShiftLeft') || input.down('ShiftRight');
-    const busy = this.rodBusy && !this.wheeling;
+    if (this.tK < 1) this.tK = Math.min(1, this.tK + dt / this.tDur);
+    const busy = (this.rodBusy && !this.wheeling) || this.tK < 1;
     const inF = busy ? 0 : (input.down('KeyW') ? 1 : 0) - (input.down('KeyS') ? 1 : 0);
     const inL = busy ? 0 : (input.down('KeyD') ? 1 : 0) - (input.down('KeyA') ? 1 : 0);
     const inUp = !busy && input.down('Space') ? 1 : 0;
@@ -390,6 +419,8 @@ export class Player {
       }
     }
 
+    // на борту голову остаточно ставить syncHead (там і перехід)
+    if (this.mode !== 'boat') this.applyTransition();
     this.moving = moving || (this.mode === 'water' && (inF !== 0 || inL !== 0));
     this.nearest = this.findNearest(boat, port);
   }
@@ -520,6 +551,7 @@ export class Player {
     this.wz = z;
     this.wy = 0.2;
     this.inWaterT = 0;
+    this.startTransition(true, 0.7);
   }
 
   /** найближча інтерактивна річ у радіусі */
@@ -673,6 +705,7 @@ export class Player {
       boat.localToWorld(0, 0, 0, w);
       const local = boat.worldToLocal(this.wx, this.wy, this.wz, this._v);
       this.placeOnDeck(local.x, local.z);
+      this.startTransition(false, 0.9);
       this.mode = 'boat';
       this.onIsland = false;
       this.shakeX = 0;
@@ -684,6 +717,7 @@ export class Player {
       this.wx = clamp(this.wx, dock.x0 + 0.5, dock.x1 - 0.5);
       this.wz = clamp(this.wz, dock.z0 + 0.5, dock.z1 - 0.5);
       this.wy = dock.y;
+      this.startTransition(false, 0.8);
       this.mode = 'port';
       this.onIsland = false;
       this.shakeX = 0;

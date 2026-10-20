@@ -1621,8 +1621,8 @@ class Game {
       }
       if (crewHelm) this.coop.myHelm = [this.boat.throttle, this.boat.rudder];
     } else {
-      // навіть без лока тримаємо голову на місці
-      this.boat.localToWorld(this.player.localX, this.player.floorY + 1.62, this.player.localZ, this.player.head);
+      // навіть без лока тримаємо голову на місці (на яхті — разом із нею; на березі й у воді голова вже у світових координатах)
+      if (this.player.mode === 'boat') this.boat.localToWorld(this.player.localX, this.player.floorY + 1.62, this.player.localZ, this.player.head);
     }
     this.player.updateEnergy(dt);
 
