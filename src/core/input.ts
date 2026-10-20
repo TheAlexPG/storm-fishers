@@ -30,7 +30,7 @@ export class Input {
     if (!this.pointerLocked) return;
     // Chrome на захопленні/відпусканні миші шле один «стрибок» на сотні пікселів —
     // камера від нього відлітала; такі події пропускаємо
-    if (Math.abs(e.movementX) > 280 || Math.abs(e.movementY) > 280) return;
+    if (Math.abs(e.movementX) > 450 || Math.abs(e.movementY) > 450) return;
     this.mouseDX += e.movementX;
     this.mouseDY += e.movementY;
   };
