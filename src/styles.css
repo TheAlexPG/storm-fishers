@@ -80,6 +80,19 @@ body.intro-mode #vignette { opacity: 0.6; }
 /* ── верх-право: мінімапа + трюм ── */
 .hud-tr { position: absolute; top: 16px; right: 16px; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
 #minimap { border-radius: 50%; border: 4px solid var(--glass); box-shadow: var(--shadow); background: rgba(6,18,28,0.5); transition: border-color 1.5s ease; }
+/* на рибному місці / стаї — рамка мінімапи світиться кольором місця */
+#minimap.mm-hot { border-color: #e2674a; box-shadow: var(--shadow), 0 0 14px rgba(226,103,74,0.55); }
+#minimap.mm-school { border-color: #2a9d9a; box-shadow: var(--shadow), 0 0 14px rgba(42,157,154,0.5); }
+.mm-badge {
+  margin-top: -2px; max-width: 260px; padding: 4px 11px; border-radius: 999px;
+  background: var(--glass); border: 1px solid var(--glass-brd); box-shadow: var(--shadow);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  font-size: 11.5px; font-weight: 700; color: var(--text-soft); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: background-color 0.6s ease, color 0.6s ease;
+}
+.mm-badge:empty { display: none; }
+.mm-badge.hot { background: #e2674a; color: #fffaf0; border-color: #e2674a; }
+.mm-badge.school { background: #2a9d9a; color: #fffaf0; border-color: #2a9d9a; }
 .hold-chip { font-size: 12.5px; font-weight: 700; display: flex; gap: 6px; align-items: center; }
 .hold-chip b { font-family: var(--font-display); color: var(--accent); font-size: 14px; font-weight: 700; }
 
