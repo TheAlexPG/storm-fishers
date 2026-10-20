@@ -189,6 +189,11 @@ export class Boat {
 
   // візуали апгрейдів
   private upg: Record<string, THREE.Object3D[]> = {};
+
+  /** речі апгрейду на яхті (і ще не куплених рівнів — приховані) */
+  partsOf(id: string): THREE.Object3D[] {
+    return this.upg[id] ?? [];
+  }
   private hullMats: THREE.MeshStandardMaterial[] = [];
   private interiorLight!: THREE.PointLight;
   private cockpitLight!: THREE.PointLight;

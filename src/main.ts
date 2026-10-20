@@ -1061,7 +1061,12 @@ class Game {
       return [id + (rod ? 'r' : ''), [...near('holder' + h + this.game.upgrades.holders, m[0], m[1] + 0.2, m[2], 0.35, 0.8), ...(rod ? [rod] : [])]];
     }
     if (id === 'st:wheel') return [id, near('wheel', 0, Y_DECK + 0.75, -3.38 + HELM_DZ, 0.55, 1.6)];
-    if (id === 'st:engine' || id === 'st:pump') return [id, near(id, id === 'st:engine' ? 0.62 : -0.62, Y_DECK + 0.05, -4.05, 0.3, 0.9)];
+    if (id === 'st:engine') return [id, near(id, 0.62, Y_DECK + 0.05, -4.05, 0.3, 0.9)];
+    // помпа: штатна рукоять + куплені помпи (раніше — «що поруч», а рукоять злилась зі статикою)
+    if (id === 'st:pump') {
+      this._pumpMeshes ??= this.boat.group.getObjectsByProperty('name', 'pump');
+      return [id + this.game.upgrades.pump, [...this._pumpMeshes, ...this.boat.partsOf('pump')]];
+    }
     if (id === 'st:sails') return [id, near('sails', 0, L_HOUSE.top + 0.15, L_RIG.mastZ - 0.3, 0.6, 0.7)];
     if (id === 'st:kitchen') return [id, near('kitchen', -0.82, Y_SOLE + 1.0, 1.25, 0.3, 0.6)];
     if (id === 'st:kettle') return [id, [this.galley.kettle]];
@@ -1074,6 +1079,7 @@ class Game {
   private _pickBox2 = new THREE.Box3();
   private _pickV = new THREE.Vector3();
   private _mast: THREE.Object3D[] | null = null;
+  private _pumpMeshes: THREE.Object3D[] | null = null;
   private mastMesh(): THREE.Object3D[] {
     if (!this._mast) {
       const m = this.boat.group.getObjectByName('mast');
