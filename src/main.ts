@@ -50,6 +50,8 @@ import { RadioSet, type RadioCtl, type RadioData } from './world/radioSet';
 import type { MarketCtx } from './game/market';
 import { forecast3 } from './game/forecast';
 import { CabinDecor } from './world/cabinDecor';
+import { Galley, PAN_POS, TEA_LOOK } from './world/galley';
+import { KitchenUI } from './ui/kitchenUI';
 import { CabinDoor } from './world/cabinDoor';
 import { ChartTable, CHART_CENTER } from './world/chartTable';
 import { Nets, type NetsNet } from './world/nets';
@@ -167,6 +169,9 @@ class Game {
   private deckFish: DeckFish;
   private radio!: RadioSet;
   private cabinDecor!: CabinDecor;
+  /** камбуз: чайник, книга рецептів, пательня (world/galley.ts) і міні-ігри (ui/kitchenUI.ts) */
+  private galley!: Galley;
+  private kitchen!: KitchenUI;
   private shopCounter!: ShopCounter;
   private exchangeBoard!: ExchangeBoard;
   private stalls!: BuyerStalls;
@@ -310,6 +315,36 @@ class Game {
     this.deckFish = new DeckFish(this.scene, this.boat);
     this.radio = new RadioSet(this.boat.group);
     this.cabinDecor = new CabinDecor(this.boat.group);
+    this.galley = new Galley(this.boat.group);
+    // кухоль у руках — дитина камери: камера має бути в сцені
+    if (!this.camera.parent) this.scene.add(this.camera);
+    const self = this;
+    this.kitchen = new KitchenUI({
+      // гра змінюється (нова / завантажена) — беремо поточну
+      get game() {
+        return self.game;
+      },
+      galley: this.galley,
+      audio: this.audio,
+      camera: this.camera,
+      toast: (m, k, ms) => this.hud.toast(m, k ?? 'good', ms),
+      roll: () => this.boat.roll,
+      panelOpened: () => {
+        this.phase = 'dialog';
+        this.expectUnlock = true;
+        document.exitPointerLock();
+      },
+      panelClosed: () => {
+        this.expectUnlock = false;
+        this.escSwallow = true;
+        if (this.phase === 'dialog') {
+          this.phase = 'play';
+          this.requestLock();
+        }
+      },
+      save: () => this.saveGame(),
+      cookFishInHold: (f) => this.game.holdHook?.('cook', f),
+    });
     this.cabinDoor = new CabinDoor(this.boat.group);
     this.chart = new ChartTable(this.boat.group);
     {
@@ -371,6 +406,12 @@ class Game {
             : L('Закрити люк трюму', `Close the hold hatch`)
         : id === 'nets'
         ? this.nets.stationLabel(this.game.upgrades.nets ?? 0, this.boat)
+        : id === 'kettle'
+        ? this.kitchen.kettleLabel()
+        : id === 'kitchen'
+        ? this.kitchen.stoveLabel()
+        : id === 'cookbook'
+        ? this.kitchen.bookLabel()
         : this.fishing.stationLabel(id);
 
     this.coop = new Coop(this.scene, {
@@ -403,6 +444,9 @@ class Game {
     this.mapView.onClose = () => this.closeMap();
     this.dialogs = new Dialogs(this.audio);
     this.dialogs.onTrade = () => this.saveGame();
+    this.dialogs.buyerExtra = (id, panel, refresh) => this.kitchen.buyerSection(id, panel, refresh);
+    // кулінарна лавка Сонячної Марини (portSites: svc 'cookshop')
+    PORT_SERVICE_HANDLERS.cookshop = () => this.kitchen.openMarinaShop();
 
     this.reticle = document.createElement('div');
     this.reticle.id = 'reticle';
@@ -928,7 +972,7 @@ class Game {
         for (let q: THREE.Object3D | null = o; q; q = q.parent) if (q.userData.rod) return true;
         return false;
       });
-    if (this.phase === 'play' && !this.dialogs.isOpen && !p.wheeling && p.mode === 'boat') {
+    if (this.phase === 'play' && !this.dialogs.isOpen && !this.kitchen.active && !p.wheeling && p.mode === 'boat') {
       const fish = !this.deckFish.carried && this.deckFish.nearest(p.localX, p.localZ, 1.2);
       const id = p.nearest?.id ?? '';
       if (fish) {
@@ -978,7 +1022,13 @@ class Game {
         objs = near('sails', 0, L_HOUSE.top + 0.15, L_RIG.mastZ - 0.3, 0.6, 0.7);
       } else if (id === 'st:kitchen') {
         key = id;
-        objs = near('kitchen', -0.82, Y_SOLE + 1.0, 1.15, 0.3, 0.6);
+        objs = near('kitchen', -0.82, Y_SOLE + 1.0, 1.25, 0.3, 0.6);
+      } else if (id === 'st:kettle') {
+        key = id;
+        objs = [this.galley.kettle];
+      } else if (id === 'st:cookbook') {
+        key = id;
+        objs = [this.galley.book];
       } else if (id === 'st:bed') {
         key = id;
         objs = near('bed', 0, Y_SOLE + 0.45, 3.2, 0.8, 2.2);
@@ -1267,13 +1317,15 @@ class Game {
     }
 
     // E — дія
-    if (locked && input.pressed('KeyE') && this.phase === 'play' && !this.dialogs.isOpen) {
+    if (locked && input.pressed('KeyE') && this.phase === 'play' && !this.dialogs.isOpen && !this.kitchen.busy) {
       if (this.chartMode) this.setChart(false);
       else this.doInteract();
     }
     // Esc — меню паузи / продовження / закрити карту (працює і без pointer lock)
     if (input.pressed('Escape')) {
-      if (this.chartMode) {
+      if (this.kitchen.active) {
+        this.kitchen.abort(); // чай / готування — перервати, а не меню паузи
+      } else if (this.chartMode) {
         this.setChart(false);
       } else if (this.phase === 'map') {
         this.closeMap();
@@ -1447,7 +1499,13 @@ class Game {
 
     // гравець
     if (this.chartMode && (this.phase !== 'play' || this.player.mode !== 'boat')) this.setChart(false);
-    if (locked && this.phase === 'play' && !this.photo && this.chartMode) {
+    if (this.kitchen.active && (this.phase !== 'play' || this.player.mode !== 'boat' || !this.player.inCabin)) {
+      if (this.phase === 'play') this.kitchen.abort();
+    }
+    if (locked && this.phase === 'play' && !this.photo && this.kitchen.active) {
+      // біля чайника / плити: руки зайняті — стоїмо, миша не крутить голову
+      input.consumeMouse();
+    } else if (locked && this.phase === 'play' && !this.photo && this.chartMode) {
       // над картою: миша водить олівцем (біля краю карта їде), коліщатко — зум,
       // ЛКМ — точка маршруту, ПКМ — прибрати точку під олівцем (або останню)
       // ПКМ затиснута й тягнеш — карта їде за мишею (олівець на місці); короткий клік ПКМ — прибрати точку
@@ -1566,7 +1624,7 @@ class Game {
     // ловля
     this.fishing.update(dt, t, this.boat, this.ocean, input, g, this.weather, this.time);
     // вудка в руках: ЛКМ — закид / підсічка, R — змотати
-    if (locked && this.phase === 'play' && !this.dialogs.isOpen && !this.photo && !this.chartMode && this.player.mode === 'boat' && !this.player.wheeling) {
+    if (locked && this.phase === 'play' && !this.dialogs.isOpen && !this.photo && !this.chartMode && !this.kitchen.active && this.player.mode === 'boat' && !this.player.wheeling) {
       if (this.radioCtl && (input.pressed('Mouse0') || input.pressed('Mouse2'))) {
         // кнопки й ручки радіо
         this.radio.use(this.radioCtl, input.pressed('Mouse0') ? 1 : -1);
@@ -1620,6 +1678,8 @@ class Game {
     this.radio.spectrum = this.audio.radioSpectrum();
     this.radio.update(dt, inCabin);
     this.cabinDecor.update(dt, this.time.hours, this.weather.base, this.boat.group, 1 - this.time.daylight);
+    // камбуз: міні-гра (клавіші — лише в грі), бафи, пара й полум'я
+    this.kitchen.update(dt, input, t, locked && this.phase === 'play');
     this.exchangeBoard.update(dt, this.game);
     if ((this.chartMode || (this.player.mode === 'boat' && this.player.inCabin)) && this.chart.due(dt, this.chartMode)) {
       this.mapView.drawChart(this.chart.canvas, this.boat.pos.x, this.boat.pos.z, this.boat.heading, this.port.rocks, this.game);
@@ -1821,8 +1881,11 @@ class Game {
       this.hud.toast(L(`🎩 Капелюхи: ${HATS.filter((x) => this.hatOwned(x.id)).length}/${HATS.length}`, `🎩 Hats: ${HATS.filter((x) => this.hatOwned(x.id)).length}/${HATS.length}`), 'good', 3500);
     } else {
       if (f.money) g.money += f.money;
-      if (f.kind === 'bottle') this.hud.titleCard(L('Пляшка із запискою', `A bottle with a note`), f.note ?? '');
-      else this.hud.titleCard(L('Піратська скриня!', `A pirate chest!`), L(`старі монети · +${f.money} ₴`, `old coins · +${f.money} ₴`));
+      if (f.kind === 'bottle') {
+        this.hud.titleCard(L('Пляшка із запискою', `A bottle with a note`), f.note ?? '');
+        // записка на Мушлевому острові — ще й рецепт ухи
+        if (fid === 'bottle:shell') this.kitchen.learnFromNote('ukha');
+      } else this.hud.titleCard(L('Піратська скриня!', `A pirate chest!`), L(`старі монети · +${f.money} ₴`, `old coins · +${f.money} ₴`));
       this.hud.toast(`+${f.money} ₴`, 'good', 3000);
     }
     this.saveGame();
@@ -1925,6 +1988,21 @@ class Game {
         return;
       }
       this.setChart(true);
+      return;
+    }
+
+    if (id === 'st:kettle' || id === 'st:kitchen' || id === 'st:cookbook') {
+      if (id !== 'st:cookbook' && this.fishing.holding) {
+        this.hud.toast(L('Спершу постав вудку — на камбузі потрібні обидві руки', 'Put the rod away first — you need both hands in the galley'), 'warn', 2500);
+        return;
+      }
+      if (id === 'st:cookbook') this.kitchen.openBook();
+      else {
+        // погляд — на чайник / пательню, поки триває міні-гра
+        this.lookAtLocal(id === 'st:kettle' ? TEA_LOOK : this._v2.copy(PAN_POS).setY(PAN_POS.y - 0.15));
+        if (id === 'st:kettle') this.kitchen.startTea();
+        else this.kitchen.openStove();
+      }
       return;
     }
 
@@ -2557,6 +2635,15 @@ class Game {
     }
   }
 
+  /** повернути голову на точку в локалі яхти (камбуз) */
+  private lookAtLocal(p: THREE.Vector3) {
+    const w = this.boat.localToWorld(p.x, p.y, p.z, this._v);
+    const h = this.player.head;
+    const dx = w.x - h.x, dy = w.y - h.y, dz = w.z - h.z;
+    this.player.yaw = Math.atan2(-dx, -dz);
+    this.player.pitch = Math.atan2(dy, Math.hypot(dx, dz));
+  }
+
   private setChart(on: boolean) {
     if (on === this.chartMode) return;
     this.chartMode = on;
@@ -2867,6 +2954,7 @@ class Game {
   }
 
   private currentPrompt(): { text: string | null; bite: boolean; key?: string } {
+    if (this.kitchen.active) return { text: null, bite: false };
     if (this.chartMode) {
       const [cw, ch] = this.chart.size;
       const w = this.mapView.uvToWorld(this.chart.u, this.chart.v, cw, ch);

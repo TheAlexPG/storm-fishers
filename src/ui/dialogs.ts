@@ -997,6 +997,8 @@ export class Dialogs {
     const ord = this.panel.querySelector('.by-orders');
     if (ord) ord.scrollTop = scroll;
     const refresh = () => this.buyer(game, id);
+    // камбуз: продукти, рецепти й продаж страв (таверна, ресторан) — ui/kitchenUI.ts
+    this.buyerExtra?.(id, this.panel, refresh);
     const sell = (uids: number[]) => {
       const v = game.sellToBuyer(id, uids);
       if (v) this.byNote = `+${formatMoney(v)}`;
@@ -1042,6 +1044,8 @@ export class Dialogs {
 
   /** замовлення змінились (зберегти гру) */
   onTrade: (() => void) | null = null;
+  /** додаткова секція у вікні скупника (кухня таверни/шефа) */
+  buyerExtra: ((id: string, panel: HTMLElement, refresh: () => void) => void) | null = null;
 
   // ── СТРАХОВКА ──
   private insuranceTab(game: GameState): string {

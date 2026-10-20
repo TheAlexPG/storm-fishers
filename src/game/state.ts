@@ -2,6 +2,7 @@ import { clamp, mulberry32 } from '../core/math';
 import { FISH, FISH_BY_ID, fishSellPrice, zoneFromDist } from './fish';
 import { isUk, L, plural } from '../core/i18n';
 import { avgKg, FishMarket, PortMarket, glutUnits, speciesGen, type MarketCtx, type MarketEvent, type MarketSave } from './market';
+import { Kitchen, type KitchenSave } from './cooking';
 import { BUYER_BY_ID, contractNeed, fitsContract, FishTrade, type BuyerId, type Contract, type TradeSave } from './buyers';
 import { PORT_SITES, PORT_SITE_BY_ID, type PortSite } from '../world/portSites';
 import { defaultUpgrades, eff, UPGRADES, MAX_LEVEL, upgradeCost, upgradeLock } from './upgrades';
@@ -67,6 +68,8 @@ export class GameState {
   market = new FishMarket();
   /** скупники риби: репутація, попит, замовлення (game/buyers.ts) */
   trade = new FishTrade();
+  /** камбуз: комора, рецепти, страви, бафи від їжі й чаю (game/cooking.ts) */
+  kitchen = new Kitchen();
   /** абсолютний ігровий час (день × 24 + година) — оновлює Game щокадру */
   clockH = 32;
   /** порт, де зараз послуги (біржа, пальне, верф): 'home' — «Шторм» (portSites.ts) */
@@ -178,6 +181,7 @@ export class GameState {
   }
 
   spendEnergy(e: number): boolean {
+    e *= this.kitchen.mul('energyCost'); // чай / юшка — зігрівся, працюєш легше
     if (this.energy < e) return false;
     this.energy = clamp(this.energy - e, 0, 100);
     return true;
@@ -526,6 +530,7 @@ export class GameState {
       priceMult: this.priceMult,
       market: this.market.serialize(),
       trade: this.trade.serialize(),
+      kitchen: this.kitchen.save(),
       portMarkets: Object.fromEntries(Object.entries(this.portMarkets).map(([id, m]) => [id, { stock: m.serialize().stock, hist: m.hist }])),
       port: this.portId,
       stats: this.stats,
@@ -630,6 +635,7 @@ export class GameState {
     if (!this.market.hist[FISH[0].id]?.length) this.market.sample(this.priceMult);
     this.market.backfill(this.priceMult, this.priceWeek);
     this.trade.load(data.trade as Partial<TradeSave> | undefined);
+    this.kitchen.load(data.kitchen as Partial<KitchenSave> | undefined);
     const ok = (p: unknown): p is { x: number; z: number } => !!p && Number.isFinite((p as { x: number }).x) && Number.isFinite((p as { z: number }).z);
     this.route = [];
     if (Array.isArray(data.route)) this.route = data.route.filter(ok).slice(0, GameState.ROUTE_MAX).map((p) => ({ x: p.x, z: p.z }));

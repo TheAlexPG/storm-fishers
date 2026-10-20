@@ -31,10 +31,14 @@ const RUN = 5.6;
 const SWIM = 2.3;
 
 // станції в салоні (доступні лише внизу)
-const CABIN_STATIONS = new Set(['kitchen', 'radio', 'bed', 'chart']);
+const CABIN_STATIONS = new Set(['kitchen', 'radio', 'bed', 'chart', 'kettle', 'cookbook']);
 /** куди дивитись, щоб «вибрати» станцію (локаль яхти) — для приладів на одному місці */
 const LOOK_AT: Record<string, [number, number, number]> = {
   radio: [1.04, SOLE_Y + 1.03, 0.95],
+  // камбуз: плита, чайник праворуч від неї, книга рецептів (world/galley.ts)
+  kitchen: [-0.82, SOLE_Y + 0.97, 1.3],
+  kettle: [-0.84, SOLE_Y + 1.0, 0.84],
+  cookbook: [-1.02, SOLE_Y + 1.04, 0.03],
   chart: [0.83, SOLE_Y + 0.79, 0.95],
   nets: [0.6, 1.0, -4.95],
   anchor: [0, 1.2, 4.12],
@@ -631,7 +635,9 @@ export class Player {
       case 'anchor': return this.stationText?.('anchor') ?? L('Брашпиль — якір', `Windlass — anchor`);
       case 'autopilot': return boat.autopilot ? L('Автопілот — вимкнути (кермо знову твоє)', `Autopilot — off (the wheel is yours again)`) : L('Автопілот — увімкнути (веде маршрутом або тримає курс)', `Autopilot — on (follows the route or holds course)`);
       case 'chart': return L('Штурманський стіл — прокласти маршрут на карті', `Chart table — plot a route on the chart`);
-      case 'kitchen': return L('Кухня — сварити рибу', `Galley — cook fish`);
+      case 'kitchen': return this.stationText?.('kitchen') ?? L('Плита — готувати', `Stove — cook`);
+      case 'kettle': return this.stationText?.('kettle') ?? L('Чайник', `Kettle`);
+      case 'cookbook': return this.stationText?.('cookbook') ?? L('Книга рецептів', `Cookbook`);
       case 'radio': return this.stationText?.('radio') ?? L('Радіо', `Radio`);
       case 'bed': return L('Койка — спати', `Bunk — sleep`);
       default: return id;

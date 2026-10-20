@@ -119,6 +119,7 @@ export const PORT_SITES: PortSite[] = [
       { kind: 'shop', a: -5, b: 9, name: L('Яхтова крамниця', `Yacht chandlery`), icon: '🛠', label: L('Яхтова крамниця — каталог речей', `Yacht chandlery — item catalogue`) },
       { kind: 'yard', a: -5, b: 25, name: L('Сервіс яхт', `Yacht service`), icon: '🔧', label: L('Сервіс яхт — ремонт корпусу (курортні ціни)', `Yacht service — hull repairs (resort prices)`) },
       { kind: 'office', a: -19, b: -17, name: L('Контора марини', `Marina office`), icon: '🛡', label: L('Контора марини — страховка', `Marina office — insurance`) },
+      { kind: 'cookshop', a: -19, b: 0, name: L('Кулінарна лавка', `Cook's shop`), icon: '🍳', label: L('Кулінарна лавка — рис, лимони, трави й рецепт паельї', `Cook's shop — rice, lemons, herbs and the paella recipe`) },
       { kind: 'sleep', a: -19, b: 17, name: L('Готель «Хвиля»', `Hotel “Wave”`), icon: '🛏', label: L('Готель «Хвиля» (сон)', `Hotel “Wave” (sleep)`) },
     ],
   },
