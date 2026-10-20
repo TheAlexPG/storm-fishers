@@ -1216,6 +1216,7 @@ export class YachtBuilder {
     // щогла (еліптичний профіль)
     const mast = this.cyl(g, 0.065, 0.085, top - base, 0, (base + top) / 2, MZ, alu, 10);
     mast.scale.set(1, 1, 1.4);
+    mast.name = 'mast'; // ціль променя для станції «паруси»
     // п'ятка щогли: нержавіючий комір на даху рубки
     const collar = this.cyl(g, 0.11, 0.13, 0.06, 0, base + 0.08, MZ, this.mat(STEEL, 0.25, 0.9), 16);
     collar.scale.set(1, 1, 1.3);

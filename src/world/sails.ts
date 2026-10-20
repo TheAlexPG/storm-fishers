@@ -190,6 +190,11 @@ export class SailRig {
   private _b = new THREE.Vector3();
   private _c = new THREE.Vector3();
 
+  /** у що цілиться промінь погляду для станції «паруси»: гік із гротом, стаксель, генакер */
+  pickables(): THREE.Object3D[] {
+    return [this.boomPivot, this.jib, this.genn];
+  }
+
   constructor(parent: THREE.Group, furledJib: THREE.Object3D[]) {
     const cloth = new THREE.MeshStandardMaterial({ color: 0xffffff, map: clothTexture(), roughness: 0.92, side: THREE.DoubleSide });
     this.cloth = cloth;
