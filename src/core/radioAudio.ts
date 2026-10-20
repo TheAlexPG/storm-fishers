@@ -21,6 +21,8 @@ export interface RadioAudioState {
   style: number;
   /** гучність ручки 0..1 */
   volume: number;
+  /** 1 — слухач у каюті (тепло, «лампово»), 0 — на палубі/березі (глухо, крізь двері) */
+  room: number;
 }
 
 const hz = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
@@ -59,6 +61,19 @@ const STYLES: Style[] = [
     melody: [4, -1, 3, 2, -1, -1, 4, 5, 7, -1, 6, 4, -1, -1, -1, -1],
     scale: [60, 62, 64, 67, 69, 72, 74, 76],
   },
+  // 2 — «Тиха вода»: повільне фортепіано на довгих акордах, багато повітря між фразами
+  {
+    bpm: 56,
+    steps: 4,
+    chords: [[41, [0, 7, 12, 16]], [45, [0, 7, 10, 15]], [38, [0, 7, 10, 15]], [43, [0, 7, 14, 16]], [41, [0, 7, 11, 16]], [48, [0, 7, 11, 14]], [45, [0, 7, 10, 14]], [43, [0, 7, 10, 17]]],
+    melody: [
+      4, -1, 3, -1, 2, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+      -1, -1, 5, 4, 2, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+      2, -1, 4, -1, 5, -1, 6, -1, 5, -1, -1, -1, -1, -1, -1, -1,
+      -1, -1, -1, -1, 3, -1, 2, -1, 0, -1, -1, -1, -1, -1, -1, -1,
+    ],
+    scale: [65, 67, 69, 72, 74, 76, 77, 79, 81],
+  },
 ];
 
 export class RadioAudio {
@@ -73,26 +88,55 @@ export class RadioAudio {
   private sylT = 0;
   private chatT = 0;
   private chatOn = false;
+  private hp: BiquadFilterNode;
+  private lp: BiquadFilterNode;
+  private warm: BiquadFilterNode;
+  private roomWet: GainNode;
 
   constructor(private ctx: AudioContext, dest: AudioNode, noise: AudioBuffer) {
     this.out = ctx.createGain();
     this.out.gain.value = 0;
     this.out.connect(dest);
     // AM-тракт: срізаємо низ і верх — звучить як маленький динамік
-    const hp = ctx.createBiquadFilter();
+    const hp = (this.hp = ctx.createBiquadFilter());
     hp.type = 'highpass';
     hp.frequency.value = 280;
-    const lp = ctx.createBiquadFilter();
+    const lp = (this.lp = ctx.createBiquadFilter());
     lp.type = 'lowpass';
     lp.frequency.value = 3200;
     lp.Q.value = 0.9;
+    // «лампа»: тепла підкачка низу й м'яке насичення
+    const warm = (this.warm = ctx.createBiquadFilter());
+    warm.type = 'lowshelf';
+    warm.frequency.value = 260;
+    warm.gain.value = 0;
+    const tube = ctx.createWaveShaper();
+    const curve = new Float32Array(1024);
+    for (let i = 0; i < curve.length; i++) {
+      const x = (i / (curve.length - 1)) * 2 - 1;
+      curve[i] = Math.tanh(x * 1.6) / Math.tanh(1.6);
+    }
+    tube.curve = curve;
+    tube.oversample = '2x';
+    // маленька дерев'яна каюта: коротке відлуння
+    const room = ctx.createConvolver();
+    const rl = Math.floor(ctx.sampleRate * 0.7);
+    const ir = ctx.createBuffer(2, rl, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = ir.getChannelData(ch);
+      for (let i = 0; i < rl; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / rl, 4);
+    }
+    room.buffer = ir;
+    this.roomWet = ctx.createGain();
+    this.roomWet.gain.value = 0;
     this.content = ctx.createGain();
     this.content.gain.value = 0;
     this.analyser = ctx.createAnalyser();
     this.analyser.fftSize = 256;
     this.analyser.smoothingTimeConstant = 0.7;
     this.bins = new Uint8Array(this.analyser.frequencyBinCount);
-    this.content.connect(hp).connect(lp).connect(this.analyser).connect(this.out);
+    this.content.connect(hp).connect(lp).connect(warm).connect(tube).connect(this.analyser).connect(this.out);
+    tube.connect(room).connect(this.roomWet).connect(this.out);
     // шипіння ефіру
     const src = ctx.createBufferSource();
     src.buffer = noise;
@@ -118,7 +162,13 @@ export class RadioAudio {
     const ctx = this.ctx;
     const now = ctx.currentTime;
     const live = st.on && st.audible > 0.01;
-    this.out.gain.setTargetAtTime(live ? st.volume * st.audible * 0.9 : 0, now, 0.06);
+    this.out.gain.setTargetAtTime(live ? st.volume * st.audible * 0.9 : 0, now, 0.25);
+    // у каюті — повна тепла смуга й відлуння дерева; зовні — глухо, як крізь двері
+    const r = st.room;
+    this.hp.frequency.setTargetAtTime(330 - r * 230, now, 0.3);
+    this.lp.frequency.setTargetAtTime(1300 + r * 3400, now, 0.3);
+    this.warm.gain.setTargetAtTime(r * 5, now, 0.3);
+    this.roomWet.gain.setTargetAtTime(r * 0.22, now, 0.3);
     const sig = live ? st.signal : 0;
     this.content.gain.setTargetAtTime(sig * sig, now, 0.05);
     this.staticGain.gain.setTargetAtTime(live ? 0.02 + (1 - sig) * 0.12 + st.sweep * 0.1 : 0, now, 0.05);
@@ -148,7 +198,14 @@ export class RadioAudio {
       const inBar = k % s.steps;
       const [root, iv] = s.chords[barN % s.chords.length];
       const m = s.melody[k % s.melody.length];
-      if (styleIdx === 0) {
+      if (styleIdx === 2) {
+        // фортепіано: бас і розкладений акорд на першу долю, мелодія — рідко
+        if (inBar === 0 && barN % 2 === 0) {
+          this.tone(hz(root - 12), t, stepDur * 7.5, 0.16, 'sine', 400);
+          iv.forEach((i, j) => this.piano(hz(root + 12 + i), t + j * 0.11, stepDur * 6, 0.04));
+        }
+        if (m >= 0) this.piano(hz(s.scale[m] ?? 72), t + 0.03, stepDur * 4, 0.075);
+      } else if (styleIdx === 0) {
         // ум — бас; па-па — акорд акордеону
         if (inBar === 0 || inBar === 3) this.tone(hz(root - 12 + (inBar === 3 ? 7 : 0)), t, stepDur * 1.6, 0.22, 'triangle', 900);
         if (inBar === 1 || inBar === 2 || inBar === 4 || inBar === 5) for (const i of iv) this.reed(hz(root + 12 + i), t, stepDur * 0.7, 0.045);
@@ -220,6 +277,29 @@ export class RadioAudio {
       o.frequency.value = f * m;
       const og = ctx.createGain();
       og.gain.value = a;
+      o.connect(og).connect(g);
+      o.start(t);
+      o.stop(t + dur + 0.05);
+    }
+  }
+
+  /** «фортепіано»: швидка атака, довге згасання, обертон гасне раніше */
+  private piano(f: number, t: number, dur: number, vol: number) {
+    const ctx = this.ctx;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(vol * 0.35, t + 0.4);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    g.connect(this.content);
+    for (const [m, a, d] of [[1, 1, 1], [2, 0.35, 0.35], [3, 0.12, 0.2]] as const) {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = f * m;
+      o.detune.value = (Math.random() - 0.5) * 4;
+      const og = ctx.createGain();
+      og.gain.setValueAtTime(a, t);
+      og.gain.exponentialRampToValueAtTime(a * 0.05 + 0.0001, t + dur * d);
       o.connect(og).connect(g);
       o.start(t);
       o.stop(t + dur + 0.05);

@@ -30,6 +30,7 @@ export class SeaSounds {
   private creakCd = 2;
   private lapT = 1;
   private gullT = 4;
+  private gustT = 0;
 
   constructor(private ctx: AudioContext, private out: AudioNode) {
     const len = ctx.sampleRate * 2;
@@ -60,8 +61,9 @@ export class SeaSounds {
     const wSrc = this.loop(1.3);
     this.whistleF = ctx.createBiquadFilter();
     this.whistleF.type = 'bandpass';
-    this.whistleF.frequency.value = 900;
-    this.whistleF.Q.value = 14;
+    this.whistleF.frequency.value = 600;
+    // широка смуга — м'яке «шшу» замість писклявого тону
+    this.whistleF.Q.value = 4;
     this.whistleGain = ctx.createGain();
     this.whistleGain.gain.value = 0;
     wSrc.connect(this.whistleF).connect(this.whistleGain).connect(out);
@@ -82,9 +84,12 @@ export class SeaSounds {
     const flap = st.luffing ? st.hoist * Math.min(1, st.aws / 8) * 0.22 : 0;
     this.flapGain.gain.setTargetAtTime(flap * shelter, t, 0.25);
     this.flapLfo.frequency.setTargetAtTime(4 + Math.min(6, st.aws * 0.4), t, 0.5);
-    const wh = Math.max(0, (st.aws - 6) / 14);
-    this.whistleGain.gain.setTargetAtTime(Math.min(0.05, wh * 0.05) * shelter, t, 0.6);
-    this.whistleF.frequency.setTargetAtTime(700 + st.aws * 45, t, 0.8);
+    // свист лише в сильний вітер, тихо й поривами (не безперервний писк)
+    this.gustT += dt * (0.25 + Math.min(1, st.aws / 20) * 0.35);
+    const gust = 0.35 + 0.65 * Math.max(0, Math.sin(this.gustT) * Math.sin(this.gustT * 0.37 + 1.3));
+    const wh = Math.max(0, (st.aws - 10) / 14);
+    this.whistleGain.gain.setTargetAtTime(Math.min(0.016, wh * 0.016) * gust * shelter, t, 0.9);
+    this.whistleF.frequency.setTargetAtTime(480 + st.aws * 18, t, 1.2);
 
     // рипіння: корпус різко хитнувся
     this.creakCd -= dt;

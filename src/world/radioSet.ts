@@ -30,11 +30,12 @@ export const RADIO_STATIONS: RadioStation[] = [
   { id: 'weather', name: L('МЕТЕО 161.5', `MET 161.5`), freq: 0.1, mode: 'weather', content: 'voice' },
   { id: 'fish', name: L('РИБАЛЬСЬКИЙ ЗВІТ', `FISHING REPORT`), freq: 0.28, mode: 'fish', content: 'voice' },
   { id: 'market', name: L('БІРЖА РИБИ', `FISH EXCHANGE`), freq: 0.46, mode: 'market', content: 'voice' },
-  { id: 'wave', name: L('ХВИЛЯ FM', `WAVE FM`), freq: 0.64, mode: 'music', content: 'music', style: 0, songs: [L('«Ой, у морі хвилі»', `“Oh, the Waves at Sea”`), L('«Гей, підтягуй шкот»', `“Heave, Trim the Sheet”`), L('«Чайка над молом»', `“A Gull over the Mole”`), L('«Додому з уловом»', `“Home with the Catch”`)] },
+  { id: 'calm', name: L('ТИХА ВОДА', `STILL WATER`), freq: 0.64, mode: 'music', content: 'music', style: 2, songs: [L('«Штиль на світанку»', `“Dawn Calm”`), L('«Поплавок»', `“The Float”`), L('«Туман над затокою»', `“Fog over the Bay”`), L('«Чай у каюті»', `“Tea in the Cabin”`), L('«Далекий маяк»', `“Distant Lighthouse”`)] },
+  { id: 'wave', name: L('ХВИЛЯ FM', `WAVE FM`), freq: 0.55, mode: 'music', content: 'music', style: 0, songs: [L('«Ой, у морі хвилі»', `“Oh, the Waves at Sea”`), L('«Гей, підтягуй шкот»', `“Heave, Trim the Sheet”`), L('«Чайка над молом»', `“A Gull over the Mole”`), L('«Додому з уловом»', `“Home with the Catch”`)] },
   { id: 'ch16', name: L('КАНАЛ 16', `CHANNEL 16`), freq: 0.8, mode: 'chat', content: 'chat' },
   { id: 'breeze', name: L('НІЧНИЙ БРИЗ', `NIGHT BREEZE`), freq: 0.94, mode: 'music', content: 'music', style: 1, songs: [L('«Ліхтарі на пірсі»', `“Lanterns on the Pier”`), L('«Тиха гавань»', `“Quiet Harbour”`), L('«Солоний джаз»', `“Salty Jazz”`)] },
 ];
-const PRESETS = ['weather', 'fish', 'market', 'wave', 'ch16'];
+const PRESETS = ['weather', 'fish', 'market', 'calm', 'ch16'];
 const PRESET_LABEL = [L('ПОГОДА', `WEATHER`), L('РИБА', `FISH`), L('БІРЖА', `MARKET`), L('МУЗИКА', `MUSIC`), L('ЕФІР', `AIR`)];
 const BAND = [156.0, 163.0];
 /** ширина «ловлі» станції на шкалі */
@@ -70,11 +71,12 @@ const SANS = 'Manrope, -apple-system, "Segoe UI", sans-serif';
 
 export class RadioSet {
   readonly group = new THREE.Group();
-  on = false;
+  /** за замовчуванням грає тихо — спокійна «Тиха вода» */
+  on = true;
   /** поточне положення стрілки 0..1 і куди її ведуть */
   freq = 0.64;
   private freqTarget = 0.64;
-  volume = 0.6;
+  volume = 0.35;
   data: RadioData | null = null;
   spectrum: Uint8Array | null = null;
   /** шум під час настройки (0..1) — для звуку */

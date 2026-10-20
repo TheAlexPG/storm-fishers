@@ -180,7 +180,7 @@ export class AudioEngine {
   setAmbience(wind: number, rain: number, wave: number, nearWater: number) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    this.windGain?.gain.setTargetAtTime(wind * 0.5 * (0.4 + 0.6 * nearWater), t, 0.3);
+    this.windGain?.gain.setTargetAtTime(wind * 0.38 * (0.4 + 0.6 * nearWater), t, 0.3);
     this.rainGain?.gain.setTargetAtTime(rain * 0.35, t, 0.3);
     this.waveGain?.gain.setTargetAtTime(wave * 0.55 * (0.3 + 0.7 * nearWater), t, 0.5);
   }
@@ -402,6 +402,9 @@ export class AudioEngine {
       this.radioOut = new RadioAudio(ctx, this.master, buf);
     }
     this.radioOut.update(st, dt);
+    // радіо з музикою чути — фонова музика відступає, щоб не грали дві пісні разом
+    const radioMusic = st.on && st.content === 'music' ? Math.min(1, st.signal * st.audible * (0.4 + st.volume * 1.6)) : 0;
+    if (this.music) this.music.duck = radioMusic * 0.85;
   }
 
   /** спектр радіо для екрана (null — радіо ще не звучало) */

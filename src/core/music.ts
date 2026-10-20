@@ -31,6 +31,35 @@ const NIGHT: Chord[] = [
   { pad: [55, 60, 64, 67, 71], root: 36, scale: [67, 69, 72, 74, 76, 79] }, // Cmaj7/G
   { pad: [52, 55, 59, 62, 66], root: 28, scale: [66, 69, 71, 74, 76, 78] }, // Em9
 ];
+// ще кілька спокійних ходів — музика не ходить по одному колу
+const DAY_ALT: Chord[][] = [
+  [
+    { pad: [53, 57, 60, 64, 67], root: 29, scale: [72, 74, 76, 77, 79, 81, 84] }, // Fmaj9
+    { pad: [52, 55, 60, 64, 67], root: 28, scale: [72, 74, 76, 79, 81, 84] }, // C/E
+    { pad: [50, 57, 60, 64, 65], root: 26, scale: [69, 72, 74, 76, 77, 81] }, // Dm9
+    { pad: [46, 53, 57, 60, 64], root: 34, scale: [70, 72, 74, 77, 79, 81] }, // Bbmaj9#11
+  ],
+  [
+    { pad: [55, 59, 62, 64, 69], root: 31, scale: [71, 74, 76, 79, 81, 83] }, // Gadd9/6
+    { pad: [52, 55, 59, 62, 66], root: 28, scale: [71, 74, 76, 78, 79, 83] }, // Em9
+    { pad: [48, 55, 59, 62, 64], root: 36, scale: [72, 74, 76, 79, 81, 83] }, // Cmaj9
+    { pad: [50, 54, 57, 62, 64], root: 38, scale: [69, 71, 74, 76, 78, 81] }, // Dadd9
+  ],
+];
+const NIGHT_ALT: Chord[][] = [
+  [
+    { pad: [50, 53, 57, 60, 64], root: 26, scale: [65, 69, 72, 74, 76, 77] }, // Dm9
+    { pad: [46, 53, 57, 60, 62], root: 34, scale: [65, 69, 70, 72, 74, 77] }, // Bbmaj7
+    { pad: [48, 55, 57, 60, 64], root: 36, scale: [67, 69, 72, 74, 76, 79] }, // C6/9
+    { pad: [45, 52, 55, 60, 64], root: 33, scale: [64, 67, 69, 72, 74, 76] }, // Am7
+  ],
+  [
+    { pad: [52, 55, 59, 62, 66], root: 28, scale: [64, 66, 67, 71, 74, 76] }, // Em9
+    { pad: [48, 52, 55, 59, 62], root: 36, scale: [64, 67, 71, 72, 74, 76] }, // Cmaj9
+    { pad: [43, 50, 55, 59, 62], root: 31, scale: [62, 66, 67, 71, 74, 79] }, // G
+    { pad: [50, 54, 57, 60, 64], root: 38, scale: [62, 64, 66, 69, 72, 74] }, // D9
+  ],
+];
 
 export interface MusicMood {
   /** 0 день … 1 ніч */
@@ -49,7 +78,14 @@ export class Music {
   private delay: DelayNode;
   private reverb: ConvolverNode;
   private on = true;
-  /** гучність музики з налаштувань 0..1 */
+  /** 0..1 — радіо грає своє, фонову музику прибрати */
+  duck = 0;
+  private dayProg: Chord[] = DAY;
+  private nightProg: Chord[] = NIGHT;
+  private chords = 0;
+  /** фортепіанна фраза: скільки нот лишилось і пауза до наступної (такти) */
+  private phraseLeft = 0;
+  private phraseRest = 2;  /** гучність музики з налаштувань 0..1 */
   level = 0.7;
   private nextBar = 0;
   private bar = 0;
@@ -115,7 +151,7 @@ export class Music {
     const t = this.ctx.currentTime;
     if (this.ctx.state !== 'running') return;
     // гучність: заставка голосніше, шторм майже глушить
-    const vol = !this.on ? 0 : this.level * 1.4 * (mood.intro ? 0.34 : 0.22) * (1 - mood.storm * 0.75) * (1 - mood.night * 0.25);
+    const vol = !this.on ? 0 : this.level * 1.4 * (mood.intro ? 0.34 : 0.22) * (1 - mood.storm * 0.75) * (1 - mood.night * 0.25) * (1 - this.duck);
     this.out.gain.setTargetAtTime(vol, t, 1.5);
     this.padFilter.frequency.setTargetAtTime(1500 - mood.night * 700 - mood.storm * 600, t, 2);
     if (this.nextBar < t) this.nextBar = t + 0.1;
@@ -129,10 +165,16 @@ export class Music {
 
   private scheduleBar(t0: number) {
     const m = this.mood;
-    const prog = m.night > 0.5 ? NIGHT : DAY;
+    const prog = m.night > 0.5 ? this.nightProg : this.dayProg;
     const barLen = this.beat * 4 * (1 + m.night * 0.15);
     // акорд — кожні 2 такти
     if (this.bar % 2 === 0) {
+      // кожні ~16 тактів — інший спокійний хід
+      if (++this.chords % 8 === 0) {
+        const pick = (base: Chord[], alt: Chord[][]) => { const all = [base, ...alt]; return all[Math.floor(Math.random() * all.length)]; };
+        this.dayProg = pick(DAY, DAY_ALT);
+        this.nightProg = pick(NIGHT, NIGHT_ALT);
+      }
       this.chordIdx = (this.chordIdx + 1) % prog.length;
       const ch = prog[this.chordIdx];
       const dur = barLen * 2;
@@ -141,8 +183,27 @@ export class Music {
     }
     const ch = prog[this.chordIdx];
     if (m.storm > 0.85) return;
+    // фортепіано: короткі повільні фрази (чверті й половинки), між ними — кілька тактів повітря
+    if (this.phraseLeft <= 0) {
+      if (--this.phraseRest <= 0) {
+        this.phraseLeft = 3 + Math.floor(Math.random() * 4);
+        this.phraseRest = 2 + Math.floor(Math.random() * 3);
+      }
+    }
+    if (this.phraseLeft > 0 && m.storm < 0.6) {
+      const q = barLen / 4;
+      for (let i = 0; i < 4 && this.phraseLeft > 0; i++) {
+        if (Math.random() < (i === 0 ? 0.25 : 0.45)) continue;
+        this.melody = Math.max(0, Math.min(ch.scale.length - 1, this.melody + Math.round((Math.random() - 0.5) * 2.6)));
+        const at = t0 + i * q + (Math.random() - 0.5) * 0.03;
+        this.piano(hz(ch.scale[this.melody] - 12), Math.max(this.ctx.currentTime, at), 0.085 * (1 - m.night * 0.3));
+        this.phraseLeft--;
+        if (Math.random() < 0.35) i++;
+      }
+      return;
+    }
     // мелодія: вісімки з імовірністю, випадкове блукання по ладу
-    const p = (m.intro ? 0.3 : 0.2) * (1 - m.night * 0.45) * (1 - m.storm);
+    const p = (m.intro ? 0.22 : 0.12) * (1 - m.night * 0.45) * (1 - m.storm);
     const step = barLen / 8;
     for (let i = 0; i < 8; i++) {
       // сильні долі частіше
@@ -185,6 +246,32 @@ export class Music {
     o.connect(g).connect(this.out);
     o.start(t0);
     o.stop(t0 + dur + 1);
+  }
+
+  /** м'яке фортепіано: швидка атака, довгий хвіст, обертони гаснуть раніше */
+  private piano(f: number, t0: number, vol: number) {
+    const ctx = this.ctx;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(vol, t0 + 0.005);
+    g.gain.exponentialRampToValueAtTime(vol * 0.3, t0 + 0.5);
+    g.gain.exponentialRampToValueAtTime(0.0005, t0 + 4);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = Math.min(4000, f * 5);
+    g.connect(lp).connect(this.pluckBus);
+    for (const [mul, v, d] of [[1, 1, 4], [2, 0.3, 1.2], [3, 0.1, 0.6]] as const) {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = f * mul;
+      o.detune.value = (Math.random() - 0.5) * 5;
+      const og = ctx.createGain();
+      og.gain.setValueAtTime(v, t0);
+      og.gain.exponentialRampToValueAtTime(v * 0.02 + 0.0001, t0 + d);
+      o.connect(og).connect(g);
+      o.start(t0);
+      o.stop(t0 + 4.1);
+    }
   }
 
   private pluck(f: number, t0: number, vol: number) {

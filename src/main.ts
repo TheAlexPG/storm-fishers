@@ -207,6 +207,7 @@ class Game {
   private anchorAuto = false;
   private anchorWarnT = 0;
   private anchorPrev = 0;
+  private radioRoom = 0;
   private radioTextT = 0;
   /** орган радіо, на який дивиться гравець (кнопка/ручка) */
   private radioCtl: RadioCtl | null = null;
@@ -1693,8 +1694,18 @@ class Game {
     }
     {
       const tn = this.radio.tuned;
-      const audible = inCabin ? 1 : this.player.mode === 'boat' ? (this.boat.doorOpen ? 0.3 : 0.1) : 0;
-      this.audio.radio({ audible, on: this.radio.on, signal: tn.signal, sweep: this.radio.sweep, content: tn.st?.content ?? 'none', style: tn.st?.style ?? 0, volume: this.radio.volume }, dt);
+      // чути по всьому човну: у каюті — тепло й повно, на палубі — глухіше (крізь двері),
+      // на березі — стихає з відстанню; шторм заглушує зовні
+      const storm = clamp((this.weather.intensity - 0.45) / 0.5, 0, 1);
+      let audible = 0;
+      if (inCabin) audible = 1;
+      else if (this.player.mode === 'boat') audible = (this.boat.doorOpen ? 0.6 : 0.4) * (1 - storm * 0.6);
+      else {
+        const d = Math.hypot(this.player.head.x - this.boat.pos.x, this.player.head.z - this.boat.pos.z);
+        audible = clamp(1 - d / 22, 0, 1) * 0.3 * (1 - storm * 0.7);
+      }
+      this.radioRoom += ((inCabin ? 1 : 0) - this.radioRoom) * Math.min(1, dt * 2.5);
+      this.audio.radio({ audible, on: this.radio.on, signal: tn.signal, sweep: this.radio.sweep, content: tn.st?.content ?? 'none', style: tn.st?.style ?? 0, volume: this.radio.volume, room: this.radioRoom }, dt);
     }
 
     // вода тече у відкритий люк — гучне попередження
