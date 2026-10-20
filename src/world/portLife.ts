@@ -1,5 +1,6 @@
 import { insideCottage } from './cottageLayout';
 import * as THREE from 'three';
+import { addCloudUniforms } from './clouds';
 import { mulberry32 } from '../core/math';
 import { GROUND_Y, terrainHeight } from './portTerrain';
 import { buildCharacter, HAIRS, SKINS, type CharacterLook } from './character';
@@ -74,6 +75,7 @@ function tuftGeometry(rng: () => number): THREE.BufferGeometry {
 /** вітер для трави/квітів: зсув верхівок за часом і позицією інстансу */
 function windMaterial(mat: THREE.Material, uTime: { value: number }) {
   mat.onBeforeCompile = (sh) => {
+    addCloudUniforms(sh.uniforms);
     sh.uniforms.uTime = uTime;
     sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace(
       '#include <begin_vertex>',

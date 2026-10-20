@@ -89,6 +89,7 @@ import type { Platform } from './world/port';
 import { Avatar } from './world/avatar';
 import './styles.css';
 import { L } from './core/i18n';
+import { Clouds } from './world/clouds';
 
 // ─────────────────────────────────────────────────────────────
 // Головний цикл: світ, ігри, UI.
@@ -115,6 +116,7 @@ class Game {
   // світ
   private ocean: Ocean;
   private sky: Sky;
+  private clouds: Clouds;
   private port: Port;
   private boat: Boat;
   private player: Player;
@@ -317,6 +319,7 @@ class Game {
 
     // модулі
     this.ocean = new Ocean(this.scene);
+    this.clouds = new Clouds();
     this.sky = new Sky(this.scene);
     this.port = new Port(this.scene);
     // хата рибалки: заходиш пішки — ліжко й «журнал капітана» на стіні
@@ -2496,6 +2499,20 @@ class Game {
     // у паузі/діалозі світ застигає
     const simDt = this.phase === 'play' || this.phase === 'intro' ? this.clockDelta : 0;
 
+    // хмари: покрив (погода × регіон × фронт), дрейф, кольори й тінь
+    this.clouds.update(simDt, {
+      camPos: this.camera.position,
+      base: this.weather.base,
+      cloudiness: this.weather.cloudiness,
+      windDir: this.weather.windDir,
+      wind: this.weather.wind,
+      frontEta: this.weather.frontEta,
+      sunDir: time.sunDir,
+      sunStrength: time.sunStrength,
+      daylight: time.daylight,
+      zenith: time.skyZenith,
+      horizon: time.skyHorizon,
+    });
     // небо і світло
     this.sky.update(
       simDt,

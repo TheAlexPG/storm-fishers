@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { UpgradeId } from '../core/types';
+import { withoutCloudShadow } from '../world/clouds';
 import { buildPartModel, partViewYaw, type PartKit } from '../world/upgradeParts';
 
 // ─────────────────────────────────────────────────────────────
@@ -80,7 +81,7 @@ export class PartPreview {
     r.setSize(THUMB, THUMB, false);
     this.camera.aspect = 1;
     this.frame(buildPartModel(id, lvl, this.kit), partViewYaw(id, lvl));
-    r.render(this.scene, this.camera);
+    withoutCloudShadow(() => r.render(this.scene, this.camera));
     const url = r.domElement.toDataURL('image/png');
     this.thumbs.set(key, url);
     return url;
@@ -110,7 +111,7 @@ export class PartPreview {
       const t = (performance.now() - live.t0) / 1000;
       wrap.rotation.y = yaw0 + t * 0.5;
       wrap.position.y = Math.sin(t * 1.4) * 0.004 * this.camera.position.length();
-      r.render(this.scene, this.camera);
+      withoutCloudShadow(() => r.render(this.scene, this.camera));
       live.raf = requestAnimationFrame(tick);
     };
     this.live = live;
