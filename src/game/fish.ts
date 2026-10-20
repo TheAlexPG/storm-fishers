@@ -1,5 +1,6 @@
 import type { FishItem, FishSpecies, ZoneId } from '../core/types';
 import { L } from '../core/i18n';
+import { paceMul } from './pace';
 import { WS, seaMul } from '../core/region';
 
 // ─────────────────────────────────────────────────────────────
@@ -171,6 +172,8 @@ export function fishPrice(item: FishItem, priceMult: Record<string, number>): nu
   let v = item.kg * perKg * mult;
   v *= item.cooked ? 1.5 : 1.0;
   if (item.storm) v *= 1.25;
+  // темп гри: динамічний — риба дешевша, спокійний — дорожча
+  v *= paceMul();
   return v;
 }
 

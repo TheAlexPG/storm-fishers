@@ -1,6 +1,7 @@
 import { clamp, mulberry32 } from '../core/math';
 import { isUk, L } from '../core/i18n';
 import { FISH, FISH_BY_ID } from './fish';
+import { paceMul } from './pace';
 import type { FishItem, ZoneId } from '../core/types';
 
 // ─────────────────────────────────────────────────────────────
@@ -210,7 +211,7 @@ export class FishMarket {
   perKg(speciesId: string, priceMult: Record<string, number>): number {
     const sp = FISH_BY_ID[speciesId];
     if (!sp) return 0;
-    return (sp.basePrice / avgKg(speciesId)) * (priceMult[speciesId] ?? 1) * this.factor(speciesId);
+    return (sp.basePrice / avgKg(speciesId)) * (priceMult[speciesId] ?? 1) * this.factor(speciesId) * paceMul();
   }
 
   /** записати продаж у ринок */

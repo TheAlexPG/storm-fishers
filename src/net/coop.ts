@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { NetSession, type GameMsg, type PeerInfo } from './session';
 import { P2PSession } from './p2p';
+import { getPace, setPace } from '../game/pace';
 
 /** є власне реле (dev-сервер / node server/relay.mjs) — інакше пряме з'єднання WebRTC */
 async function relayAvailable(): Promise<boolean> {
@@ -353,6 +354,8 @@ export class Coop {
         else this.clockOffset += (off - this.clockOffset) * (off > this.clockOffset ? 0.3 : 0.02);
         this.lastWorld = d;
         this.worldFresh = true;
+        // темп гри — як у господаря кімнати
+        if (typeof d.pc === 'number') setPace(d.pc);
         if (d.bt) this.onBots?.(d.bt);
         break;
       }
@@ -496,6 +499,7 @@ export class Coop {
           w: [r(weather.base, 1e4), r(weather.snapshot().forecast, 1e3), r(weather.windDir, 1e4), r(weather.flash, 100), Math.round(weather.stormEta ?? -1), Math.round(weather.frontEta ?? -1)],
           bt: this.botState?.(),
           tm: [r(time.hours, 1e4), time.dayCount],
+          pc: r(getPace(), 100),
         });
       }
       // жива біржа: запаси рідко змінюються — знімок раз на 2 с
