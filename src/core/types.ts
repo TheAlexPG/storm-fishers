@@ -113,6 +113,8 @@ export interface SaveData {
   route?: Array<{ x: number; z: number }>;
   /** поставлені сітки (world/nets.ts) */
   nets?: unknown;
+  /** яхта стоїть на якорі (точка на дні й витравлений ланцюг) */
+  anchor?: { x: number; z: number; chain: number };
 }
 
 export interface PlayerStats {

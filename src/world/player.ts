@@ -31,9 +31,10 @@ const LOOK_AT: Record<string, [number, number, number]> = {
   radio: [1.04, SOLE_Y + 1.03, 0.95],
   chart: [0.83, SOLE_Y + 0.79, 0.95],
   nets: [0.6, 1.0, -4.95],
+  anchor: [0, 1.2, 4.12],
 };
 /** ближча досяжність: до щогли треба реально підійти бічною палубою */
-const STATION_REACH: Record<string, number> = { sails: 1.7, door: 2.4, nets: 2.4 };
+const STATION_REACH: Record<string, number> = { sails: 1.7, door: 2.4, nets: 2.4, anchor: 2.2 };
 /** станції, доступні і з палуби, і з каюти */
 /** колайдери палуби з зачиненими дверима каюти (проріз трапа закрито) */
 const DECK_COLLIDERS_SHUT: Box2[] = [...DECK_COLLIDERS, { x0: -STAIR.x, x1: STAIR.x, z0: STAIR.zTop - 0.07, z1: STAIR.zTop + 0.3 }];
@@ -553,6 +554,7 @@ export class Player {
       case 'pump': return boat.bilge > 1 ? `Помпа — відкачати трюм (${Math.round(boat.bilge)}%)` : boat.deckWater > 5 ? 'Осушити палубу' : 'Помпа (сухо)';
       case 'door': return boat.doorOpen ? 'Двері каюти — зачинити (у шторм вода ллється в салон)' : 'Двері каюти — відчинити';
       case 'nets': return this.stationText?.('nets') ?? 'Сітки';
+      case 'anchor': return this.stationText?.('anchor') ?? 'Брашпиль — якір';
       case 'chart': return 'Штурманський стіл — прокласти маршрут на карті';
       case 'kitchen': return 'Кухня — сварити рибу';
       case 'radio': return this.stationText?.('radio') ?? 'Радіо';

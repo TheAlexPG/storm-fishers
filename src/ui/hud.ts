@@ -67,6 +67,8 @@ export class Hud {
   private compassCtx: CanvasRenderingContext2D | null = null;
   private chipPort!: HTMLElement;
   private chipWp!: HTMLElement;
+  private chipAnchor!: HTMLElement;
+  private lastAnchorChip = '';
   private lastPortChip = '';
   private lastWpChip = '';
   private toasts: HTMLElement;
@@ -104,6 +106,7 @@ export class Hud {
         <div class="nav-chips">
           <span class="nav-chip hud-card" id="chip-port"></span>
           <span class="nav-chip hud-card" id="chip-wp"></span>
+          <span class="nav-chip hud-card hidden" id="chip-anchor"></span>
         </div>
       </div>
       <div class="hud-tr">
@@ -213,6 +216,7 @@ export class Hud {
     this.elCatch = root.querySelector('.catch-slot')!;
     this.chipPort = root.querySelector('#chip-port')!;
     this.chipWp = root.querySelector('#chip-wp')!;
+    this.chipAnchor = root.querySelector('#chip-anchor')!;
     this._day = elDay;
   }
 
@@ -554,6 +558,16 @@ export class Hud {
     } else {
       this.chipWp.classList.add('hidden');
     }
+  }
+
+  /** чіп якоря: «⚓ на якорі · 18 м ланцюга» (null — сховати); warn — якір повзе */
+  setAnchorChip(text: string | null, warn = false) {
+    const key = (text ?? '') + (warn ? '!' : '');
+    if (key === this.lastAnchorChip) return;
+    this.lastAnchorChip = key;
+    this.chipAnchor.textContent = text ?? '';
+    this.chipAnchor.classList.toggle('hidden', !text);
+    this.chipAnchor.classList.toggle('warn', warn);
   }
 
   toast(text: string, kind: 'good' | 'bad' | 'warn' = 'good', ms = 3200) {
