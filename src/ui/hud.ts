@@ -543,7 +543,7 @@ export class Hud {
         c.fill();
       }
     };
-    drawMark(Hud.bearing(boat.x, boat.z, MOOR.x, MOOR.z), '#e39a2d', false);
+    drawMark(Hud.bearing(boat.x, boat.z, this.navPort.x, this.navPort.z), '#e39a2d', false);
     if (wp) drawMark(Hud.bearing(boat.x, boat.z, wp.x, wp.z), this.night ? '#7fd6cc' : '#24878c', true);
     // вітер: звідки дме (стрілка вниз, «у тебе»), довжина — сила
     {
@@ -587,12 +587,17 @@ export class Hud {
     c.fill();
   }
 
-  /** чіпи: 🏠 до шварту (дому), ⚑ до точки */
+  /** найближча відома гавань (задає main): компас і чіп ведуть до неї */
+  navPort: { x: number; z: number; name: string; home: boolean } = { x: MOOR.x, z: MOOR.z, name: 'Шторм', home: true };
+
+  /** чіпи: 🏠/⚓ до найближчої гавані, ⚑ до точки */
   private updateNavChips(boat: { x: number; z: number }, wp: { x: number; z: number } | null) {
-    const bPort = Hud.bearing(boat.x, boat.z, MOOR.x, MOOR.z);
-    const dPort = Math.hypot(boat.x - MOOR.x, boat.z - MOOR.z);
+    const np = this.navPort;
+    const bPort = Hud.bearing(boat.x, boat.z, np.x, np.z);
+    const dPort = Math.hypot(boat.x - np.x, boat.z - np.z);
+    const ic = np.home ? '🏠' : '⚓';
     // у шварту курс сенсу не має — показуємо лише факт
-    const tPort = dPort < 5 ? '🏠 у шварту' : `🏠 ${String(Math.round(bPort) % 360).padStart(3, '0')}° · ${Hud.fmtDist(dPort)}`;
+    const tPort = dPort < 5 ? `${ic} у шварту${np.home ? '' : ` · ${np.name}`}` : `${ic} ${np.home ? '' : `${np.name} · `}${String(Math.round(bPort) % 360).padStart(3, '0')}° · ${Hud.fmtDist(dPort)}`;
     if (tPort !== this.lastPortChip) {
       this.lastPortChip = tPort;
       this.chipPort.textContent = tPort;

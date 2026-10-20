@@ -56,7 +56,7 @@ export class ExchangeBoard {
     this.t = 4;
     const rows = FISH.map((sp) => {
       const known = game.discovered.includes(sp.id);
-      const s = priceSeries(game, sp.id);
+      const s = priceSeries(game, sp.id, game.market);
       const now = s[s.length - 1];
       const back = s[Math.max(0, s.length - 9)];
       const tr = back > 0 ? now / back - 1 : 0;

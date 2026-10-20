@@ -1,4 +1,5 @@
 import { fbm, smoothstep } from './portKit';
+import { portLandHeight } from './portSites';
 
 // ─────────────────────────────────────────────────────────────
 // Форма островів у морі (чиста математика — без three.js): висота
@@ -66,7 +67,8 @@ export function islandHeightOf(d: IslandDef, x: number, z: number): number {
 
 /** найвища точка серед островів (або −99, якщо поруч немає жодного) */
 export function islandHeight(x: number, z: number): number {
-  let h = -99;
+  // суходоли інших портів (portSites.ts) — та сама ходьба, мілина й карта
+  let h = portLandHeight(x, z);
   for (const d of ISLANDS) {
     const R = reach(d);
     if (Math.abs(x - d.x) > R || Math.abs(z - d.z) > R) continue;

@@ -87,6 +87,10 @@ export interface SaveData {
   places?: string[];
   /** знахідки на островах */
   finds?: string[];
+  /** насичення бірж інших портів (portSites.ts) */
+  portGlut?: Record<string, Record<string, number>>;
+  /** порт, біля якого стояли (для послуг і повернення) */
+  port?: string;
   /** вибраний капелюх */
   hat?: string;
   /** крок навчання (6 — пройдено) */

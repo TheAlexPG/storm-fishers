@@ -23,9 +23,8 @@ function esc(v: string): string {
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 
 /** ціна типової рибини виду зараз і історія (₴/шт) */
-export function priceSeries(game: GameState, id: string): number[] {
+export function priceSeries(game: GameState, id: string, m = game.venueMarket): number[] {
   const a = avgKg(id);
-  const m = game.market;
   const now = m.perKg(id, game.priceMult) * a;
   return [...(m.hist[id] ?? []).map((v) => v * a), now];
 }
@@ -63,7 +62,7 @@ function holdGroups(game: GameState): Map<string, FishItem[]> {
 
 /** найкраща пропозиція дня: події з плюсом або найбільший ріст серед відомих видів */
 function bestHint(game: GameState): string {
-  const m = game.market;
+  const m = game.venueMarket;
   const boosts = m.events.filter((e) => e.mult > 1);
   if (boosts.length) {
     const e = boosts[0];
@@ -84,7 +83,7 @@ function bestHint(game: GameState): string {
 }
 
 export function exchangeHtml(game: GameState, sel: string): string {
-  const m = game.market;
+  const m = game.venueMarket;
   const groups = holdGroups(game);
   const holdCount = (id: string) => groups.get(id)?.length ?? 0;
 

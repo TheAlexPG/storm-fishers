@@ -437,7 +437,9 @@ export class Dialogs {
     this.escAllowed = true;
     // паливо: рейс у прибережну зону на моторі ≈ 40–50 ₴ — дешевше за трюм риби,
     // але вітрила все одно вигідніші (20 ₴/л робили моторні рейси збитковими)
-    const fuelPrice = 6;
+    const fuelPrice = game.venueFuel;
+    const rk = game.venueRepair;
+    const patchCost = Math.round(35 * rk), fullCost = Math.round(100 * rk);
     // типова вибрана річ — наступна, яку можна купити
     if (!this.shopSel) {
       const next = UPGRADES.find((u) => game.upgrades[u.id] < MAX_LEVEL && (upgradeCost(u.id, game.upgrades[u.id]) ?? 1e9) <= game.money)
@@ -524,8 +526,8 @@ export class Dialogs {
           <div class="svc-gauge"><span>Корпус</span><span class="dbar big${game.hull < game.maxHull * 0.4 ? ' low' : ''}"><i style="width:${Math.round((game.hull / game.maxHull) * 100)}%"></i></span><b>${Math.round(game.hull)}/${game.maxHull}</b></div>
           <div class="svc-price">${miss < 1 ? 'Корпус цілий — майстер лише кивнув' : 'Майстер оглянув днище й борти'}</div>
           <div class="btn-row">
-            <button class="btn" data-patch ${miss < 1 || game.money < 35 ? 'disabled' : ''}>Латка +${Math.round(patch)} — 35 ₴</button>
-            <button class="btn primary" data-repair ${miss < 1 || game.money < 100 ? 'disabled' : ''}>Повний ремонт — 100 ₴</button>
+            <button class="btn" data-patch ${miss < 1 || game.money < patchCost ? 'disabled' : ''}>Латка +${Math.round(patch)} — ${patchCost} ₴</button>
+            <button class="btn primary" data-repair ${miss < 1 || game.money < fullCost ? 'disabled' : ''}>Повний ремонт — ${fullCost} ₴</button>
           </div>
         </div>`;
     }
@@ -533,13 +535,13 @@ export class Dialogs {
 
     this.show(`
       <div class="shop-head">
-        <div><h1>${V.title}</h1><p class="sub">${V.sub}</p></div>
+        <div><h1>${V.title}</h1><p class="sub">${game.portId === 'home' ? V.sub : `⚓ ${esc(game.venueName)} · ${V.sub}`}</p></div>
         <div class="shop-head-right">
           <div class="money-chip">${formatMoney(game.money)}</div>
         </div>
       </div>
       ${body}
-      <p class="wayfind">${WAYFIND}</p>
+      <p class="wayfind">${game.portId === 'home' ? WAYFIND : `⚓ <b>${esc(game.venueName)}</b> · пальне ${game.venueFuel} ₴/л${game.venueRepair !== 1 ? ` · ремонт ×${String(game.venueRepair).replace('.', ',')}` : ''} · вдома, у «Шторму», — повний набір послуг`}</p>
       <div class="btn-row"><button class="btn" data-close>Закрити (Esc)</button></div>
     `, true, 'shop venue-' + venue);
 
@@ -612,8 +614,8 @@ export class Dialogs {
       });
     });
     this.panel.querySelector('[data-patch]')?.addEventListener('click', () => {
-      if (game.money >= 35 && game.hull < game.maxHull) {
-        game.money -= 35;
+      if (game.money >= patchCost && game.hull < game.maxHull) {
+        game.money -= patchCost;
         game.hull = Math.min(game.maxHull, game.hull + 25);
         this.onBoatPurchase?.({ patch: 25 });
         this.audio.click();
@@ -622,8 +624,8 @@ export class Dialogs {
     });
     const rep = this.panel.querySelector('[data-repair]');
     rep?.addEventListener('click', () => {
-      if (game.money >= 100) {
-        game.money -= 100;
+      if (game.money >= fullCost) {
+        game.money -= fullCost;
         game.hull = game.maxHull;
         this.onBoatPurchase?.({ repair: true });
         this.audio.click();
@@ -646,7 +648,7 @@ export class Dialogs {
     const scroll = this.panel.querySelector('.ex-board')?.scrollTop ?? 0;
     this.show(`
       <div class="shop-head ex-head">
-        <div><h1>РИБНА БІРЖА <span class="ex-badge">«ШТОРМ»</span></h1><p class="sub">День цін ${game.priceWeek} · ${esc(game.priceTrendText)}</p></div>
+        <div><h1>${game.portId === 'home' ? 'РИБНА БІРЖА' : esc(game.venueName.toUpperCase())} <span class="ex-badge">${game.portId === 'home' ? '«ШТОРМ»' : 'МІСЦЕВІ ЦІНИ'}</span></h1><p class="sub">День цін ${game.priceWeek} · ${esc(game.priceTrendText)}</p></div>
         <div class="shop-head-right"><div class="money-chip">${formatMoney(game.money)}</div></div>
       </div>
       ${exchangeHtml(game, this.exSel)}
