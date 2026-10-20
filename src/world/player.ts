@@ -26,7 +26,7 @@ const SWIM = 2.3;
 const CABIN_STATIONS = new Set(['kitchen', 'radio', 'bed', 'chart']);
 /** куди дивитись, щоб «вибрати» станцію (локаль яхти) — для приладів на одному місці */
 const LOOK_AT: Record<string, [number, number, number]> = {
-  radio: [1.04, SOLE_Y + 1.02, 1.2],
+  radio: [1.04, SOLE_Y + 1.03, 0.95],
   chart: [0.83, SOLE_Y + 0.79, 0.95],
   nets: [0.6, 1.0, -4.95],
 };
@@ -447,8 +447,9 @@ export class Player {
         const hl = Math.hypot(hx, hy, hz);
         const cp = la ? Math.cos(this.pitch) : 1;
         const look = hl > 0.05 ? (-Math.sin(this.yaw) * cp * hx + (la ? Math.sin(this.pitch) : 0) * hy - Math.cos(this.yaw) * cp * hz) / hl : 1;
-        // прилад, на який дивишся прямо (є точка LOOK_AT), — ще пріоритетніший
-        const score = d * (1.4 - 0.4 * look) * (la && look > 0.9 ? 0.6 : 1);
+        // прилад, на який дивишся прямо (є точка LOOK_AT), — ще пріоритетніший;
+        // що точніше погляд, то більше (радіо над штурманським столом — поруч)
+        const score = d * (1.4 - 0.4 * look) * (la && look > 0.9 ? 0.6 - (look - 0.9) * 4 : 1);
         if (score < bestD) {
           bestD = score;
           best = { id: 'st:' + id, label: this.stationLabel(id, boat) };

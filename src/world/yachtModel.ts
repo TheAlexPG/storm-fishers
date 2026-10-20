@@ -1354,12 +1354,7 @@ export class YachtBuilder {
     this.rbox(g, 0.025, 0.035, 1.06, 0.525, S + 0.795, 0.95, this.mat(TEAK_DARK, 0.6), 0.012, 0.006, false);
     // панель приладів/радіо на борту над столом (нижча — над нею ілюмінатор)
     this.rbox(g, 0.06, 0.36, 0.95, 1.12, S + 1.03, 0.95, this.mat(0x2b2f35, 0.5, 0.3), 0.03, 0.01);
-    {
-      const scr = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.18, 0.32), new THREE.MeshStandardMaterial({ color: 0x0a1a14, emissive: 0x2fae7a, emissiveIntensity: 0.8, roughness: 0.4 }));
-      scr.position.set(1.085, S + 1.03, 0.72);
-      g.add(scr);
-      // радіо — окремий фізичний прилад (world/radioSet.ts)
-    }
+    // радіо «Шторм-М1» з екраном — окремий фізичний прилад (world/radioSet.ts)
     // паперова лоція на столі — world/chartTable.ts
 
     // ── салон: дивани з подушками, стіл, полиці ──
