@@ -13,6 +13,7 @@ explore islands, outrun Beaufort‑scale storms and come home with a hold full o
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6?logo=typescript&logoColor=white)
 ![Vite](https://img.shields.io/badge/Vite-5-646cff?logo=vite&logoColor=white)
 ![Co-op](https://img.shields.io/badge/co--op-WebRTC%20P2P-2e8b57)
+![License: MIT](https://img.shields.io/badge/license-MIT-yellow)
 ![No install](https://img.shields.io/badge/install-none%20%E2%80%94%20just%20a%20browser-e2674a)
 
 <br>
@@ -150,6 +151,12 @@ src/
   net/     co-op session (relay / P2P) and fleet sync
   ui/      HUD, chart (map), minimap, dialogs, exchange
 ```
+
+---
+
+## 📜 License
+
+Storm Fishers is free and open source under the [MIT License](LICENSE) — play it, fork it, mod it, learn from it, ship your own version. Contributions and ideas are welcome!
 
 ---
 

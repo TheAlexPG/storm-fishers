@@ -2,6 +2,7 @@
   "name": "storm-fishers",
   "private": true,
   "version": "1.0.0",
+  "license": "MIT",
   "description": "3D browser fishing/adventure game in the spirit of Stormworks — but smoother and prettier.",
   "type": "module",
   "scripts": {
