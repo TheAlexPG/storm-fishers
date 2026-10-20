@@ -1004,3 +1004,41 @@ body.intro-mode #vignette { opacity: 0.6; }
 #orders-chip .oc-t { flex-shrink: 0; font-size: 11.5px; font-weight: 800; color: #1d6f73; background: rgba(36, 135, 140, 0.12); border-radius: 8px; padding: 2px 6px; }
 #orders-chip .oc-t.hot { color: #b04a35; background: rgba(208, 87, 63, 0.14); }
 #orders-chip .oc-more { flex-shrink: 0; font-size: 11px; font-weight: 800; color: #fff; background: #22303b; border-radius: 8px; padding: 1px 6px; }
+/* ── риболовля: зрозуміліше й м'якше ── */
+.prompt .pbar { display: none; position: absolute; left: 18px; right: 18px; bottom: 3px; height: 4px; border-radius: 3px; background: rgba(255,255,255,0.3); overflow: hidden; }
+.prompt .pbar > i { display: block; height: 100%; width: 100%; background: #fff; border-radius: 3px; }
+.prompt.timed .pbar { display: block; }
+.prompt.bite { font-size: 17px; padding: 10px 24px 13px 11px; }
+.fish-spot {
+  position: absolute; bottom: 112px; left: 50%; transform: translateX(-50%);
+  padding: 5px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 700; white-space: nowrap;
+  color: #fff; background: rgba(12, 24, 34, 0.42); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  opacity: 0; transition: opacity 0.4s; pointer-events: none;
+}
+.fish-spot.show { opacity: 0.95; }
+.fight-ui .strain-bar { height: 4px; margin-top: 3px; border-radius: 3px; background: transparent; overflow: hidden; }
+.fight-ui .strain-bar > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #f2b544, #e2674a); border-radius: 3px; }
+.fight-ui.straining .strain-bar { background: rgba(226, 103, 74, 0.25); }
+.fight-ui.straining .fight-arena { box-shadow: 0 0 0 2px rgba(226, 103, 74, 0.85), 0 8px 26px rgba(0,0,0,0.25); animation: strainShake 0.12s infinite alternate; }
+@keyframes strainShake { from { transform: translateX(-1.5px); } to { transform: translateX(1.5px); } }
+.lean-row { display: flex; align-items: center; gap: 6px; margin: 7px 0 6px; }
+.lean-row .rod-lean { flex: 1; margin: 0 2px; }
+.lean-row .lk { font-family: var(--font); font-size: 11px; font-weight: 800; min-width: 22px; text-align: center; padding: 2px 6px; border-radius: 7px; color: rgba(255,255,255,0.55); background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); transition: all 0.15s; }
+.lean-row .lk.need { color: #fff; background: var(--sea); border-color: transparent; box-shadow: 0 0 12px rgba(36, 135, 140, 0.8); animation: keyNeed 0.45s infinite alternate; }
+.lean-row .lk.need.held { animation: none; background: #2e8b57; box-shadow: 0 0 12px rgba(46, 139, 87, 0.8); }
+@keyframes keyNeed { to { transform: scale(1.18); } }
+.pull-arrow.warn { color: #ffd36b; background: rgba(255, 211, 107, 0.18); box-shadow: 0 0 0 2px rgba(255, 211, 107, 0.75); animation: blink 0.22s infinite alternate; }
+@keyframes blink { to { opacity: 0.45; } }
+.fight-ui.jumpwarn .fight-status { color: #ffd36b; animation: blink 0.2s infinite alternate; }
+.fight-coach { display: none; margin: 6px auto 0; max-width: 420px; text-align: center; font-size: 12px; line-height: 1.45; font-weight: 600; color: rgba(255,255,255,0.92); text-shadow: 0 1px 5px rgba(0,0,0,0.6); }
+.fight-coach b { font-weight: 800; color: #fff; }
+.fight-coach b.g { color: #7fe0c8; }
+.fight-coach kbd { font-size: 10px; padding: 0 5px; }
+.fight-ui.coach .fight-coach { display: block; }
+.fight-ui.trophy .fish-name { color: #ffd36b; }
+.fight-ui.trophy .fish-name::before { content: '🏆 '; }
+.catch-card.trophy { background: linear-gradient(135deg, #fff6d9, #ffe39a); box-shadow: 0 0 0 2px #e3b23c, 0 10px 30px rgba(227, 178, 60, 0.45); animation: catchIn 0.55s cubic-bezier(.2,.9,.3,1.25), trophyGlow 1.2s 0.6s ease-in-out 3 alternate; }
+.catch-card.trophy .cc-badge { color: #b07d10; }
+.catch-card.record .cc-badge { color: var(--sea); }
+@keyframes trophyGlow { to { box-shadow: 0 0 0 3px #f2c94c, 0 0 34px rgba(242, 201, 76, 0.8); } }
+.fight-ui kbd, .cast-ui kbd { font-family: var(--font); font-weight: 800; font-size: 10.5px; color: #22303b; background: rgba(255,255,255,0.92); border: none; border-radius: 5px; padding: 0 5px; text-shadow: none; }

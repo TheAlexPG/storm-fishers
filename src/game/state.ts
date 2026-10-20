@@ -33,6 +33,8 @@ export class GameState {
   finds: string[] = [];
   /** вибраний капелюх (game/hats.ts) */
   hat = 'captain';
+  /** рекорд ваги за видом, кг */
+  records: Record<string, number> = {};
   /** крок навчання «що далі» (TUTORIAL.length — пройдено) */
   tut = 0;
   /** пройдений маршрут: плоский масив [x0,z0,x1,z1,…] */
@@ -125,6 +127,7 @@ export class GameState {
   /** риба піймана (відкриття виду, статистика) — ще не в трюмі */
   recordCatch(item: FishItem) {
     if (!this.discovered.includes(item.speciesId)) this.discovered.push(item.speciesId);
+    if (item.kg > (this.records[item.speciesId] ?? 0)) this.records[item.speciesId] = Math.round(item.kg * 1000) / 1000;
     this.stats.totalCaught++;
     this.checkObjectives();
   }
@@ -383,6 +386,7 @@ export class GameState {
       places: this.places,
       finds: this.finds,
       hat: this.hat,
+      records: this.records,
       tut: this.tut,
       track: this.track,
       objectives: this.objectives,
@@ -447,6 +451,8 @@ export class GameState {
     if (Array.isArray(data.places)) this.places = data.places;
     this.finds = Array.isArray(data.finds) ? data.finds.filter((v) => typeof v === 'string') : [];
     this.hat = typeof data.hat === 'string' ? data.hat : 'captain';
+    this.records = {};
+    if (data.records && typeof data.records === 'object') for (const [k, v] of Object.entries(data.records)) if (Number.isFinite(v)) this.records[k] = Number(v);
     // старі сейви без кроку: досвідчений гравець — навчання пропускаємо
     if (Array.isArray(data.track)) this.track = data.track.filter((v) => typeof v === 'number').slice(-800);
     if (typeof data.tut === 'number') this.tut = data.tut;

@@ -14,11 +14,13 @@ export interface Settings {
   fov: number;
   /** чіткість рендера: частка від devicePixelRatio (0.5..1) */
   scale: number;
+  /** «легка риболовля»: ширші вікна підсічки й зелена зона, більше часу на помилку */
+  easyFish: boolean;
 }
 
 const KEY = 'storm-settings';
 
-export const DEFAULT_SETTINGS: Settings = { volume: 0.8, music: 0.7, sens: 1, invertY: false, fov: 70, scale: 1 };
+export const DEFAULT_SETTINGS: Settings = { volume: 0.8, music: 0.7, sens: 1, invertY: false, fov: 70, scale: 1, easyFish: true };
 
 export function loadSettings(): Settings {
   const s = { ...DEFAULT_SETTINGS };

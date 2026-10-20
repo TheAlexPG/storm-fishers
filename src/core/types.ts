@@ -115,6 +115,8 @@ export interface SaveData {
   route?: Array<{ x: number; z: number }>;
   /** поставлені сітки (world/nets.ts) */
   nets?: unknown;
+  /** рекорд ваги за видом, кг */
+  records?: Record<string, number>;
 }
 
 export interface PlayerStats {

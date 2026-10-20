@@ -3,7 +3,7 @@ import { terrainHeight } from '../world/portTerrain';
 import { LANDMARKS } from '../world/landmarks';
 import type { RockObstacle } from '../world/boat';
 import type { GameState } from '../game/state';
-import type { ZoneId } from '../core/types';
+import { SCHOOL_ANCHORS, SCHOOL_R } from '../game/fish';
 
 // ─────────────────────────────────────────────────────────────
 // Карта (M): повноекранна штурвальна схема акваторії.
@@ -26,12 +26,6 @@ const FONT_D = 'Unbounded, Manrope, -apple-system, sans-serif';
 const WW = W1 - W0;
 const HH = H1 - H0;
 
-// якорі стай для радіо-звітів (за зонами)
-const SCHOOL_ANCHORS: Record<ZoneId, [number, number]> = {
-  shore: [80, 40],
-  mid: [-150, 300],
-  open: [300, 650],
-};
 
 const ZOOM_MAX = 10;
 const ROUTE = '#24878c';
@@ -562,7 +556,9 @@ export class MapView {
       const px = mx(ax);
       const pz = my(az);
       c.beginPath();
-      c.arc(px, pz, 22, 0, Math.PI * 2);
+      // зона стаї: тут клює помітно частіше
+      const rr = Math.max(22, SCHOOL_R * 0.8 * s);
+      c.arc(px, pz, rr, 0, Math.PI * 2);
       c.fillStyle = 'rgba(36,135,140,0.12)';
       c.fill();
       c.setLineDash([3, 4]);
@@ -575,7 +571,7 @@ export class MapView {
       c.fillText('🐟', px, pz + 6);
       c.font = `800 11.5px ${FONT}`;
       c.fillStyle = '#1d6f73';
-      c.fillText(`${game.speciesName(r.speciesId)} ×${r.boost.toFixed(1).replace(".", ",")}`, px, pz + 38);
+      c.fillText(`${game.speciesName(r.speciesId)} ×${r.boost.toFixed(1).replace(".", ",")}`, px, pz + Math.max(38, rr + 16));
     }
 
     // ── маршрут: яхта → 1 → 2 …, перша точка — поточна ціль (прапор) ──

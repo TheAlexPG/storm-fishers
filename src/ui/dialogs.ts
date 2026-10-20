@@ -326,6 +326,7 @@ export class Dialogs {
         <label>Поле зору<input type="range" min="55" max="95" data-k="fov"><output></output></label>
         <label>Чіткість<input type="range" min="50" max="100" step="5" data-k="scale"><output></output></label>
         <label class="chk"><input type="checkbox" data-k="invertY"><span>Інвертувати мишу по вертикалі</span></label>
+        <label class="chk"><input type="checkbox" data-k="easyFish"><span>Легка риболовля — більше часу на підсічку й помилки</span></label>
       </div>
       <h2>Керування</h2>
       <div class="intro-keys">

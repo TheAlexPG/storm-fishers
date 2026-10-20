@@ -28,6 +28,15 @@ export interface FightHud {
   jump: boolean;
   lo: number;
   hi: number;
+  /** риба готує ривок: −1 ліворуч, +1 праворуч, 0 — ні */
+  windup: number;
+  /** риба зараз вистрибне */
+  jumpWarn: boolean;
+  /** скільки «терпіння» волосіні витрачено 0..1 */
+  strain: number;
+  trophy: boolean;
+  /** новачок: показати розгорнуту підказку */
+  coach: boolean;
 }
 
 export class Hud {
@@ -60,8 +69,15 @@ export class Hud {
   private elPullL!: HTMLElement;
   private elPullR!: HTMLElement;
   private elFightStatus!: HTMLElement;
+  private elStrain!: HTMLElement;
+  private elKeyA!: HTMLElement;
+  private elKeyD!: HTMLElement;
+  private elPromptBar!: HTMLElement;
+  private elSpot!: HTMLElement;
+  private lastSpot = '';
   private elCast!: HTMLElement;
   private elCastFill!: HTMLElement;
+  private elCastSweet!: HTMLElement;
   private elFishStatus!: HTMLElement;
   private compass: HTMLCanvasElement | null = null;
   private compassCtx: CanvasRenderingContext2D | null = null;
@@ -118,12 +134,13 @@ export class Hud {
       <div class="toasts"></div>
       <div class="title-card"></div>
       <div class="catch-slot"></div>
-      <div class="prompt"><kbd>E</kbd><span class="ptext"></span></div>
+      <div class="prompt"><kbd>E</kbd><span class="ptext"></span><b class="pbar"><i></i></b></div>
+      <div class="fish-spot"></div>
       <div class="action-progress"><div class="ap-label"></div><div class="bar"><i></i></div></div>
       <div class="cast-ui">
         <div class="cast-label">Сила закиду</div>
         <div class="cast-bar"><div class="cast-sweet"></div><i></i></div>
-        <div class="cast-hint">відпусти <kbd>ЛКМ</kbd> у зеленій зоні</div>
+        <div class="cast-hint">відпусти <kbd>ЛКМ</kbd>, коли риска в зеленій зоні — клюватиме швидше</div>
       </div>
       <div class="fish-status"></div>
       <div class="fight-ui">
@@ -133,12 +150,14 @@ export class Hud {
           <div class="fight-core">
             <div class="tension-label"><span>Натяг</span><span class="tval">0 %</span></div>
             <div class="tension-bar"><div class="sweet"></div><i></i><div class="limit"></div></div>
-            <div class="rod-lean"><div class="lean-dot"></div></div>
+            <div class="strain-bar"><i></i></div>
+            <div class="lean-row"><kbd class="lk lk-a">A</kbd><div class="rod-lean"><div class="lean-dot"></div></div><kbd class="lk lk-d">D</kbd></div>
             <div class="stamina-row"><span>Сили риби</span><div class="stamina-bar"><i></i></div></div>
           </div>
           <div class="pull-arrow right">▶</div>
         </div>
         <div class="fight-status"></div>
+        <div class="fight-coach"><b><kbd>Space</kbd> тримай</b> — натяг росте · <b>відпусти</b> — падає. Тримай білу риску в <b class="g">зеленій</b> зоні, і риба втомиться. Стрілка показує, куди рветься риба — нахиляй вудку <b>в інший бік</b>.</div>
         <div class="dist-row"><span><kbd>Space</kbd> тягти · <kbd>A</kbd>/<kbd>D</kbd> нахил вудки</span><span class="distn">0 м</span></div>
       </div>
       <div class="controls-hint">
@@ -183,8 +202,14 @@ export class Hud {
     this.elPullL = this.elFight.querySelector<HTMLElement>('.pull-arrow.left')!;
     this.elPullR = this.elFight.querySelector<HTMLElement>('.pull-arrow.right')!;
     this.elFightStatus = this.elFight.querySelector<HTMLElement>('.fight-status')!;
+    this.elStrain = this.elFight.querySelector<HTMLElement>('.strain-bar > i')!;
+    this.elKeyA = this.elFight.querySelector<HTMLElement>('.lk-a')!;
+    this.elKeyD = this.elFight.querySelector<HTMLElement>('.lk-d')!;
+    this.elPromptBar = root.querySelector<HTMLElement>('.prompt .pbar > i')!;
+    this.elSpot = root.querySelector<HTMLElement>('.fish-spot')!;
     this.elCast = root.querySelector<HTMLElement>('.cast-ui')!;
     this.elCastFill = this.elCast.querySelector<HTMLElement>('.cast-bar > i')!;
+    this.elCastSweet = this.elCast.querySelector<HTMLElement>('.cast-sweet')!;
     this.elFishStatus = root.querySelector<HTMLElement>('.fish-status')!;
     this.toasts = root.querySelector('.toasts')!;
     this.hintEl = root.querySelector('.controls-hint')!;
@@ -286,21 +311,34 @@ export class Hud {
   private lockHintShown = false;
 
   /** шкала закиду (null — сховати) і коротке повідомлення риболовлі поза боротьбою */
-  setCast(power: number | null, status: string) {
+  setCast(power: number | null, status: string, sweet = { lo: 0.78, hi: 0.95 }) {
     this.elCast.classList.toggle('show', power != null);
     if (power != null) {
       this.elCastFill.style.left = power * 100 + '%';
-      this.elCast.classList.toggle('good', power >= 0.78 && power <= 0.95);
+      this.elCastSweet.style.left = sweet.lo * 100 + '%';
+      this.elCastSweet.style.width = (sweet.hi - sweet.lo) * 100 + '%';
+      this.elCast.classList.toggle('good', power >= sweet.lo && power <= sweet.hi);
     }
     const show = !!status && !this.elFight.classList.contains('show');
     this.elFishStatus.textContent = show ? status : '';
     this.elFishStatus.classList.toggle('show', show);
   }
 
+  /** підказка про місце лову, поки вудка у воді (null — сховати) */
+  setFishSpot(text: string | null) {
+    const t = text ?? '';
+    if (t === this.lastSpot) return;
+    this.lastSpot = t;
+    if (t) this.elSpot.textContent = t;
+    this.elSpot.classList.toggle('show', !!t);
+  }
+
   update(game: GameState, time: TimeCycle, weather: Weather, boatPos: { x: number; z: number }, extra: {
     prompt?: string | null;
     promptKey?: string;
     promptBite?: boolean;
+    /** скільки лишилось часу на підсічку 0..1 */
+    promptBiteLeft?: number | null;
     actionLabel?: string | null;
     actionProgress?: number;
     fight?: FightHud | null;
@@ -369,11 +407,14 @@ export class Hud {
     if (extra.prompt) {
       this.elPrompt.classList.add('show');
       this.elPrompt.classList.toggle('bite', !!extra.promptBite);
+      const left = extra.promptBiteLeft;
+      this.elPrompt.classList.toggle('timed', left != null);
+      if (left != null) this.elPromptBar.style.width = (left * 100).toFixed(1) + '%';
       this.elPromptText.textContent = extra.prompt;
       const k = extra.promptKey ?? 'E';
       if (this.elPromptKey.textContent !== k) this.elPromptKey.textContent = k;
     } else {
-      this.elPrompt.classList.remove('show', 'bite');
+      this.elPrompt.classList.remove('show', 'bite', 'timed');
     }
 
     // прогрес станції
@@ -406,6 +447,20 @@ export class Hud {
       this.elPullL.classList.toggle('on', f.pull < 0);
       this.elPullR.classList.toggle('on', f.pull > 0);
       this.elFight.classList.toggle('countered', f.pull !== 0 && f.lean * f.pull < -0.5);
+      // ривок, що готується, — блимає заздалегідь
+      this.elPullL.classList.toggle('warn', f.windup < 0);
+      this.elPullR.classList.toggle('warn', f.windup > 0);
+      // яку клавішу тримати: навпроти ривка
+      const need = f.pull !== 0 ? f.pull : f.windup;
+      this.elKeyA.classList.toggle('need', need > 0);
+      this.elKeyD.classList.toggle('need', need < 0);
+      this.elKeyA.classList.toggle('held', f.lean < -0.5);
+      this.elKeyD.classList.toggle('held', f.lean > 0.5);
+      this.elFight.classList.toggle('jumpwarn', f.jumpWarn);
+      this.elFight.classList.toggle('straining', f.strain > 0);
+      this.elStrain.style.width = (f.strain * 100).toFixed(1) + '%';
+      this.elFight.classList.toggle('coach', f.coach);
+      this.elFight.classList.toggle('trophy', f.trophy);
       this.elFightStatus.textContent = f.status;
     } else {
       this.elFight.classList.remove('show');
@@ -605,9 +660,9 @@ export class Hud {
   }
 
   /** листівка улову: силует риби, вага, «новий вид» */
-  catchCard(name: string, kg: number, speciesId: string, isNew: boolean, note = '') {
+  catchCard(name: string, kg: number, speciesId: string, isNew: boolean, note = '', trophy = false, record = false) {
     const el = document.createElement('div');
-    el.className = 'catch-card' + (isNew ? ' new' : '');
+    el.className = 'catch-card' + (isNew ? ' new' : '') + (trophy ? ' trophy' : record ? ' record' : '');
     const cv = document.createElement('canvas');
     cv.width = 168;
     cv.height = 84;
@@ -616,7 +671,7 @@ export class Hud {
     info.className = 'cc-info';
     const badge = document.createElement('div');
     badge.className = 'cc-badge';
-    badge.textContent = isNew ? 'Новий вид!' : 'Улов';
+    badge.textContent = trophy ? (record ? '🏆 Трофей · рекорд!' : '🏆 Трофей!') : isNew ? 'Новий вид!' : record ? 'Рекорд виду!' : 'Улов';
     const nm = document.createElement('div');
     nm.className = 'cc-name';
     nm.textContent = name;
@@ -629,7 +684,7 @@ export class Hud {
     setTimeout(() => {
       el.classList.add('out');
       setTimeout(() => el.remove(), 500);
-    }, isNew ? 5200 : 3600);
+    }, trophy ? 6500 : isNew ? 5200 : 3600);
   }
 
   // ── кооп: екіпаж і чат ──
