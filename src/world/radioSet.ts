@@ -568,7 +568,7 @@ export class RadioSet {
     x.fillStyle = DIM;
     x.textAlign = 'left';
     x.fillText('ВИД', 18, 72);
-    x.fillText('₴/КГ', 228, 72);
+    x.fillText('₴/КГ СВІЖ.', 228, 72);
     x.fillText('ІСТОРІЯ', 330, 72);
     x.textAlign = 'right';
     x.fillText(`стор. ${pg + 1}/${pages}`, SW - 18, 72);

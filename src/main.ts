@@ -1024,9 +1024,10 @@ class Game {
       forecast: forecast3(w.base, snap.forecast, w.windDir, this.time.dayCount),
       market: FISH.map((sp) => ({
         name: sp.name,
-        price: g.market.perKg(sp.id, g.priceMult),
+        // та сама біржа, де продаватимеш (порт, у якому стоїш), — ціна свіжої рибини за кг
+        price: g.venueMarket.perKg(sp.id, g.priceMult),
         hist: g.market.hist[sp.id] ?? [],
-        demand: g.market.demand(sp.id),
+        demand: g.venueMarket.demand(sp.id),
         event: g.market.eventFor(sp.id)?.text,
       })),
       events: [...g.market.events.map((e) => `${e.mult > 1 ? '▲' : '▼'} ${e.text}`), ...g.trade.tickerTexts(g.clockH)],
