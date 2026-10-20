@@ -113,6 +113,9 @@ class Game {
   private mapView: MapView;
   private dialogs: Dialogs;
   private underwater: HTMLElement;
+  /** приціл-точка в центрі екрана: росте в кільце, коли є з чим взаємодіяти */
+  private reticle: HTMLElement;
+  private reticleCls = '';
 
   // стан
   private inPort = true;
@@ -321,6 +324,10 @@ class Game {
     };
     this.mapView.onClose = () => this.closeMap();
     this.dialogs = new Dialogs(this.audio);
+
+    this.reticle = document.createElement('div');
+    this.reticle.id = 'reticle';
+    document.body.appendChild(this.reticle);
 
     this.underwater = document.createElement('div');
     this.underwater.id = 'underwater';
@@ -867,6 +874,17 @@ class Game {
     }
     this.hl.set(key, objs && objs.length ? objs : null);
     this.hl.update(t);
+    // радіо ввімкнене, але погляд не на кнопці/ручці — проста точка (наводься точніше)
+    this.updateReticle((!!key || !!p.nearest) && !(p.nearest?.id === 'st:radio' && this.radio.on && !this.radioCtl));
+  }
+
+  /** приціл: лише від першої особи в грі; кільце — є ціль, менше кільце — дрібний орган (кнопка радіо) */
+  private updateReticle(target: boolean) {
+    const show = this.phase === 'play' && Input.instance.pointerLocked && this.rig.mode === 'fp' && !this.photo && !this.chartMode && !this.hud.hidden && !this.dialogs.isOpen && !this.player.wheeling;
+    const cls = !show ? '' : this.radioCtl ? 'on fine' : target ? 'on target' : 'on';
+    if (cls === this.reticleCls) return;
+    this.reticleCls = cls;
+    this.reticle.className = cls;
   }
 
   /** крамниця-прилавок: на що дивиться гравець у порту */
