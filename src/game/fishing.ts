@@ -10,6 +10,7 @@ import type { TimeCycle } from '../core/time';
 import type { Ocean } from '../core/ocean';
 import type { AudioEngine } from '../core/audio';
 import type { Input } from '../core/input';
+import { L } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // Ловля як мінігра — вудки фізичні:
@@ -32,12 +33,12 @@ export type RodKind = 'main' | 'spin' | 'donka' | 'troll';
 type RodState = 'idle' | 'waiting' | 'bite';
 
 const ROD_INFO: Record<RodKind, { name: string; cast: number; bite: number; trophy: number; color: number }> = {
-  main: { name: 'Твоя вудка', cast: 1, bite: 1, trophy: 0, color: 0xe8432f },
-  spin: { name: 'Спінінг', cast: 1.2, bite: 1.1, trophy: 0.1, color: 0xf2c12e },
-  donka: { name: 'Донка', cast: 0.85, bite: 1.3, trophy: 0.25, color: 0x3fae5a },
-  troll: { name: 'Троллінгова вудка', cast: 1.35, bite: 1, trophy: 0.6, color: 0x2f7fd0 },
+  main: { name: L('Твоя вудка', `Your rod`), cast: 1, bite: 1, trophy: 0, color: 0xe8432f },
+  spin: { name: L('Спінінг', `Spinning rod`), cast: 1.2, bite: 1.1, trophy: 0.1, color: 0xf2c12e },
+  donka: { name: L('Донка', `Bottom rod`), cast: 0.85, bite: 1.3, trophy: 0.25, color: 0x3fae5a },
+  troll: { name: L('Троллінгова вудка', `Trolling rod`), cast: 1.35, bite: 1, trophy: 0.6, color: 0x2f7fd0 },
 };
-const HOLDER_NAMES = ['лівий борт', 'правий борт', 'корма'];
+const HOLDER_NAMES = [L('лівий борт', `port side`), L('правий борт', `starboard side`), L('корма', `stern`)];
 
 /** зелена зона натягу (в межах 0..100): звичайна / «легка риболовля» */
 const SWEET = { lo: 42, hi: 74 };
@@ -294,7 +295,7 @@ export class Fishing {
   rackAction(): string | null {
     if (this.fightRod || this.charging) return null;
     if (this.hand) {
-      if (this.hand.state !== 'idle') return 'Спершу змотай вудку (R) або постав її в стійку на борту.';
+      if (this.hand.state !== 'idle') return L('Спершу змотай вудку (R) або постав її в стійку на борту.', `Reel in first (R) or put the rod in a holder on the rail.`);
       const r = this.hand;
       this.hand = null;
       this.toRack(r, this.rods.indexOf(r));
@@ -302,10 +303,10 @@ export class Fishing {
       return null;
     }
     const r = this.rods.find((x) => x.where === 'rack');
-    if (!r) return 'Усі вудки вже в роботі.';
+    if (!r) return L('Усі вудки вже в роботі.', `All rods are already in use.`);
     this.toHand(r);
     this.audio.click();
-    this.say(`${r.name} в руках — тримай ЛКМ, щоб закинути`, 2.2);
+    this.say(L(`${r.name} в руках — тримай ЛКМ, щоб закинути`, `${r.name} in hand — hold LMB to cast`), 2.2);
     return null;
   }
 
@@ -314,19 +315,19 @@ export class Fishing {
     if (this.fightRod || this.charging) return null;
     const there = this.holders[h];
     if (there) {
-      if (this.hand) return 'Руки зайняті — спершу постав свою вудку (в іншу стійку чи на ніс).';
+      if (this.hand) return L('Руки зайняті — спершу постав свою вудку (в іншу стійку чи на ніс).', `Your hands are full — put your rod down first (in another holder or the bow rack).`);
       const biting = there.state === 'bite';
       this.toHand(there);
       this.audio.click();
       if (biting) this.hook(game, weather, time);
       return null;
     }
-    if (!this.hand) return 'Стійка порожня — візьми вудку з носової стійки.';
+    if (!this.hand) return L('Стійка порожня — візьми вудку з носової стійки.', `The holder is empty — take a rod from the bow rack.`);
     const r = this.hand;
     this.hand = null;
     this.toHolder(r, h);
     this.audio.click();
-    if (r.state !== 'idle') this.say(`${r.name} чекає в стійці — бери наступну`, 2);
+    if (r.state !== 'idle') this.say(L(`${r.name} чекає в стійці — бери наступну`, `${r.name} is waiting in the holder — grab the next one`), 2);
     return null;
   }
 
@@ -336,11 +337,11 @@ export class Fishing {
     if (!r || this.fightRod || this.charging) return;
     if (r.state === 'idle') {
       if (Math.hypot(boat.pos.x, boat.pos.z) < 60) {
-        this.onEvent?.('Занадто близько до причалу — відійди в море.', 'warn');
+        this.onEvent?.(L('Занадто близько до причалу — відійди в море.', `Too close to the pier — head out to sea.`), 'warn');
         return;
       }
       if (game.energy < 2) {
-        this.onEvent?.('Не вистачає енергії.', 'warn');
+        this.onEvent?.(L('Не вистачає енергії.', `Not enough energy.`), 'warn');
         return;
       }
       this.charging = true;
@@ -351,7 +352,7 @@ export class Fishing {
     } else if (r.nibble > 0.05) {
       this.strikeEarly(r);
     } else if (r.state === 'waiting' && r.fly >= 1) {
-      this.say('Ще не клює — чекай, поки поплавок пірне під воду', 1.6);
+      this.say(L('Ще не клює — чекай, поки поплавок пірне під воду', `No bite yet — wait for the float to dip under`), 1.6);
     }
   }
 
@@ -383,7 +384,7 @@ export class Fishing {
     r.nibbleT = rand(1.5, 3);
     r.nibble = 0;
     this.audio.splash(0.2);
-    this.say('Зарано! Це була поклювка — підсікай, коли поплавок ПІРНЕ', 2.4);
+    this.say(L('Зарано! Це була поклювка — підсікай, коли поплавок ПІРНЕ', `Too early! That was just a nibble — strike when the float GOES UNDER`), 2.4);
   }
 
   private cast(r: Rod, boat: Boat, game: GameState, weather: Weather, power: number) {
@@ -422,7 +423,7 @@ export class Fishing {
     r.bobber.visible = true;
     r.line.visible = true;
     this.audio.splash(0.2);
-    this.say(r.perfect ? 'Ідеальний закид! Клюватиме швидше' : power > cs.hi ? 'Перетягнув — недоліт' : power < cs.lo ? 'Слабкий закид — у зеленій зоні клює швидше' : '', 2);
+    this.say(r.perfect ? L('Ідеальний закид! Клюватиме швидше', `Perfect cast! Bites will come sooner`) : power > cs.hi ? L('Перетягнув — недоліт', `Overcast — fell short`) : power < cs.lo ? L('Слабкий закид — у зеленій зоні клює швидше', `Weak cast — casts in the green zone get bites sooner`) : '', 2);
   }
 
   /** зачепити рибу на вудці в руках (вона клює) */
@@ -488,7 +489,7 @@ export class Fishing {
     this.nextJump = rand(6, 10);
     this.slackT = 0;
     this.pullT = rand(1.5, 2.5);
-    this.say(this.fishTrophy ? 'Ого, щось велике! Не поспішай' : perfect ? 'Ідеальна підсічка!' : 'Є! Риба на гачку', 2);
+    this.say(this.fishTrophy ? L('Ого, щось велике! Не поспішай', `Whoa, something big! Take your time`) : perfect ? L('Ідеальна підсічка!', `Perfect strike!`) : L('Є! Риба на гачку', `Got it! Fish on`), 2);
     this.fightRod = r;
     r.state = 'idle';
     r.bobber.visible = true;
@@ -545,7 +546,7 @@ export class Fishing {
     // надто швидко — волосіні не втримати
     if (speed > MAX_TROLL_SPEED && !this.fightRod && this.rods.some((r) => r.state !== 'idle')) {
       for (const r of this.rods) this.reel(r);
-      this.onEvent?.('Човен іде надто швидко — вудки змотано. Троллінг — лише на малому ходу.', 'warn');
+      this.onEvent?.(L('Човен іде надто швидко — вудки змотано. Троллінг — лише на малому ходу.', `The boat is going too fast — rods reeled in. Trolling works only at low speed.`), 'warn');
     }
     const trolling = speed > 1 && speed <= MAX_TROLL_SPEED;
     for (const r of this.rods) {
@@ -589,7 +590,7 @@ export class Fishing {
         this.onSplash?.(this._d, 0.35);
         if (inHolder) {
           this.audio.tinkle(holderLvl >= 3 ? 1.4 : 0.7);
-          this.onEvent?.(`🔔 Клює: ${r.name.toLowerCase()} (${HOLDER_NAMES[r.slot]}) — біжи й хапай (E)!`, 'good');
+          this.onEvent?.(L(`🔔 Клює: ${r.name.toLowerCase()} (${HOLDER_NAMES[r.slot]}) — біжи й хапай (E)!`, `🔔 Bite: ${r.name.toLowerCase()} (${HOLDER_NAMES[r.slot]}) — run and grab it (E)!`), 'good');
         } else this.audio.bite();
       }
     } else if (r.state === 'bite') {
@@ -599,14 +600,14 @@ export class Fishing {
       if (r.biteWindow <= 0) {
         if (inHolder) {
           this.reel(r);
-          this.onEvent?.(`${r.name}: риба з'їла наживку й пішла. Закинь знову.`, 'warn');
+          this.onEvent?.(L(`${r.name}: риба з'їла наживку й пішла. Закинь знову.`, `${r.name}: the fish ate the bait and left. Cast again.`), 'warn');
         } else {
           // запізно — але наживка ціла: риба ще повернеться
           r.state = 'waiting';
           r.biteAt = rand(3, 7) * (this.spot?.wait ?? 1);
           r.nibbleT = rand(1, 2.5);
           r.nibble = 0;
-          this.say('Запізно — риба зійшла. Наживка ціла, чекай наступного клювання', 2.6);
+          this.say(L('Запізно — риба зійшла. Наживка ціла, чекай наступного клювання', `Too late — the fish got away. The bait is fine, wait for the next bite`), 2.6);
         }
       }
     }
@@ -760,7 +761,7 @@ export class Fishing {
       if (this.overTension > grace) {
         this.endFight();
         this.audio.snap();
-        this.onEvent?.('💥 Волосінь обірвалась — надто довго в червоній зоні. Коли натяг червоний, відпускай Space.', 'bad');
+        this.onEvent?.(L('💥 Волосінь обірвалась — надто довго в червоній зоні. Коли натяг червоний, відпускай Space.', `💥 The line snapped — too long in the red. When the tension is red, let go of Space.`), 'bad');
         return;
       }
     } else this.overTension = Math.max(0, this.overTension - dt * 1.2);
@@ -775,7 +776,7 @@ export class Fishing {
       if (this.slackT > slackMax) {
         this.endFight();
         this.audio.snap();
-        this.onEvent?.('Риба зірвалась — волосінь довго провисала. Тримай Space, щоб натяг був у зеленій зоні.', 'warn');
+        this.onEvent?.(L('Риба зірвалась — волосінь довго провисала. Тримай Space, щоб натяг був у зеленій зоні.', `The fish got off — the line was slack too long. Hold Space to keep the tension in the green.`), 'warn');
         return;
       }
     } else this.slackT = Math.max(0, this.slackT - dt);
@@ -807,17 +808,17 @@ export class Fishing {
 
   /** що зараз робити — одна коротка порада */
   private fightAdvice(tired: boolean, jumping: boolean): string {
-    if (this.jumpWarn > 0) return 'Зараз вистрибне — відпусти Space!';
-    if (jumping) return 'СТРИБОК! Не тягни, чекай';
-    if (this.overTension > 0) return 'Занадто туго! Відпусти Space';
-    if (this.fightTension > this.lineBreakAt - 6) return 'Натяг майже червоний — відпусти';
-    if (this.dragSlip > 0) return 'Фрикціон травить волосінь — відпусти Space';
-    if (this.slackT > 1) return 'Слабина! Тягни Space';
-    if (this.windup > 0) return this.nextPull < 0 ? 'Риба збирається рвонути ліворуч — тримай D' : 'Риба збирається рвонути праворуч — тримай A';
-    if (this.pull < 0) return 'Рветься ліворуч → тримай D';
-    if (this.pull > 0) return 'Рветься праворуч → тримай A';
-    if (tired) return 'Риба втомилась — тягни!';
-    return 'Тягни Space помалу — натяг у зеленій зоні';
+    if (this.jumpWarn > 0) return L('Зараз вистрибне — відпусти Space!', `It's about to jump — let go of Space!`);
+    if (jumping) return L('СТРИБОК! Не тягни, чекай', `JUMP! Don't pull, wait`);
+    if (this.overTension > 0) return L('Занадто туго! Відпусти Space', `Too tight! Let go of Space`);
+    if (this.fightTension > this.lineBreakAt - 6) return L('Натяг майже червоний — відпусти', `Tension almost red — let go`);
+    if (this.dragSlip > 0) return L('Фрикціон травить волосінь — відпусти Space', `The drag is paying out line — let go of Space`);
+    if (this.slackT > 1) return L('Слабина! Тягни Space', `Slack! Hold Space`);
+    if (this.windup > 0) return this.nextPull < 0 ? L('Риба збирається рвонути ліворуч — тримай D', `The fish is about to bolt left — hold D`) : L('Риба збирається рвонути праворуч — тримай A', `The fish is about to bolt right — hold A`);
+    if (this.pull < 0) return L('Рветься ліворуч → тримай D', `Pulling left → hold D`);
+    if (this.pull > 0) return L('Рветься праворуч → тримай A', `Pulling right → hold A`);
+    if (tired) return L('Риба втомилась — тягни!', `The fish is tired — reel it in!`);
+    return L('Тягни Space помалу — натяг у зеленій зоні', `Reel gently with Space — keep the tension in the green`);
   }
 
   private endFight() {
@@ -893,14 +894,14 @@ export class Fishing {
   /** підпис станції вудок (залежить від того, що в руках) */
   stationLabel(id: string): string {
     if (id === 'rod') {
-      if (this.hand) return this.hand.state === 'idle' ? `Поставити: ${this.hand.name.toLowerCase()} — на ніс` : 'Носова стійка (спершу змотай — R)';
+      if (this.hand) return this.hand.state === 'idle' ? L(`Поставити: ${this.hand.name.toLowerCase()} — на ніс`, `Put back: ${this.hand.name.toLowerCase()} — on the bow`) : L('Носова стійка (спершу змотай — R)', `Bow rack (reel in first — R)`);
       const r = this.rods.find((x) => x.where === 'rack');
-      return r ? `Взяти: ${r.name.toLowerCase()}` : 'Носова стійка (порожня)';
+      return r ? L(`Взяти: ${r.name.toLowerCase()}`, `Take: ${r.name.toLowerCase()}`) : L('Носова стійка (порожня)', `Bow rack (empty)`);
     }
     const h = Number(id.slice(6));
     const there = this.holders[h];
-    if (there) return there.state === 'bite' ? `ХАПАЙ: ${there.name.toLowerCase()} — клює!` : `Взяти зі стійки: ${there.name.toLowerCase()}`;
-    return this.hand ? `Поставити в стійку: ${this.hand.name.toLowerCase()}` : `Стійка для вудки (${HOLDER_NAMES[h]})`;
+    if (there) return there.state === 'bite' ? L(`ХАПАЙ: ${there.name.toLowerCase()} — клює!`, `GRAB IT: ${there.name.toLowerCase()} — a bite!`) : L(`Взяти зі стійки: ${there.name.toLowerCase()}`, `Take from the holder: ${there.name.toLowerCase()}`);
+    return this.hand ? L(`Поставити в стійку: ${this.hand.name.toLowerCase()}`, `Put in the holder: ${this.hand.name.toLowerCase()}`) : L(`Стійка для вудки (${HOLDER_NAMES[h]})`, `Rod holder (${HOLDER_NAMES[h]})`);
   }
 
   /** для підсвітки: вудки в носовій стійці / вудка в бортовій стійці h */
@@ -917,9 +918,9 @@ export class Fishing {
     const r = this.hand;
     if (!r) return null;
     switch (r.state) {
-      case 'idle': return `${r.name}: тримай ЛКМ — закид`;
-      case 'waiting': return r.nibble > 0.05 ? 'Поклювка… ще рано — чекай, поки поплавок пірне' : 'Чекай клювання — поплавок пірне під воду · R — змотати';
-      case 'bite': return 'КЛЮЄ! Підсікай — ЛКМ!';
+      case 'idle': return L(`${r.name}: тримай ЛКМ — закид`, `${r.name}: hold LMB — cast`);
+      case 'waiting': return r.nibble > 0.05 ? L('Поклювка… ще рано — чекай, поки поплавок пірне', `A nibble… too early — wait for the float to go under`) : L('Чекай клювання — поплавок пірне під воду · R — змотати', `Wait for a bite — the float will dip under · R — reel in`);
+      case 'bite': return L('КЛЮЄ! Підсікай — ЛКМ!', `BITE! Strike — LMB!`);
     }
   }
 }

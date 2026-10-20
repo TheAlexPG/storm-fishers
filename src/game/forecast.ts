@@ -1,5 +1,6 @@
 import { beaufort, stateFromIntensity } from '../core/weather';
 import type { WeatherState } from '../core/types';
+import { L } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // Прогноз на 3 дні для екрана радіо. Погода в грі не планує днів наперед,
@@ -47,20 +48,20 @@ function day(label: string, power: number, dir: number): ForecastDay {
   };
 }
 
-const DAYS = ['Неділя', 'Понеділок', 'Вівторок', 'Середа', 'Четвер', "П'ятниця", 'Субота'];
+const DAYS = [L('Неділя', `Sunday`), L('Понеділок', `Monday`), L('Вівторок', `Tuesday`), L('Середа', `Wednesday`), L('Четвер', `Thursday`), L("П'ятниця", `Friday`), L('Субота', `Saturday`)];
 
 /** base/target — Weather.base і snapshot().forecast; dayCount — GameState.dayCount */
 export function forecast3(base: number, target: number, windDir: number, dayCount: number): ForecastDay[] {
   const out: ForecastDay[] = [];
   const today = Math.max(base, target) * 0.6 + (base + target) * 0.2;
-  out.push(day('Сьогодні', today, windDir));
+  out.push(day(L('Сьогодні', `Today`), today, windDir));
   let p = today;
   for (let i = 1; i <= 2; i++) {
     const r = hash(dayCount * 7919 + i * 104729);
     const r2 = hash(dayCount * 31337 + i * 7);
     // повільний дрейф: середнє ~0.4, рідкісні штормові дні
     p = p * 0.45 + 0.4 * 0.35 + (r - 0.5) * 0.55 + (r2 > 0.86 ? 0.35 : 0);
-    out.push(day(i === 1 ? 'Завтра' : DAYS[(dayCount + i) % 7], p, windDir + (r2 - 0.5) * 2));
+    out.push(day(i === 1 ? L('Завтра', `Tomorrow`) : DAYS[(dayCount + i) % 7], p, windDir + (r2 - 0.5) * 2));
   }
   return out;
 }

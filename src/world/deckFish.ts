@@ -4,6 +4,7 @@ import type { Boat } from './boat';
 import { fishMesh } from './fishJump';
 import { deckLimitX, DECK_Y } from './yachtLayout';
 import { FISH_BY_ID } from '../game/fish';
+import { L } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // Риба фізична: після улову лежить на палубі й б'ється; E — взяти в руки,
@@ -93,7 +94,7 @@ export class DeckFish {
       x.font = 'bold 28px sans-serif';
       x.textAlign = 'center';
       x.textBaseline = 'middle';
-      x.fillText('ТРЮМ', 64, 26);
+      x.fillText(L('ТРЮМ', `HOLD`), 64, 26);
       const tex = new THREE.CanvasTexture(c);
       tex.colorSpace = THREE.SRGBColorSpace;
       const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.075), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6 }));

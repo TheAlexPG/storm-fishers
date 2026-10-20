@@ -6,6 +6,7 @@ import { buildPartModel, partViewYaw, type PartKit } from './upgradeParts';
 import { GROUND_Y } from './portTerrain';
 import { formatMoney } from '../core/math';
 import type { Solid } from './port';
+import { L } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // Фізична крамниця: прилавок під тентом магазину й стелаж біля вітрини.
@@ -133,7 +134,7 @@ export class ShopCounter {
       x.font = 'bold 40px sans-serif';
       x.textAlign = 'center';
       x.textBaseline = 'middle';
-      x.fillText('ОБЛАДНАННЯ ДЛЯ ЯХТИ', 256, 38);
+      x.fillText(L('ОБЛАДНАННЯ ДЛЯ ЯХТИ', `YACHT EQUIPMENT`), 256, 38);
       const tex = new THREE.CanvasTexture(c);
       tex.colorSpace = THREE.SRGBColorSpace;
       const m = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.36), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6 }));
@@ -178,7 +179,7 @@ export class ShopCounter {
       x.fillStyle = '#2f6b3a';
       x.font = 'bold 18px sans-serif';
       x.textAlign = 'center';
-      x.fillText('КАТАЛОГ', 64, 30);
+      x.fillText(L('КАТАЛОГ', `CATALOGUE`), 64, 30);
       x.fillStyle = '#7a6a50';
       for (let i = 0; i < 7; i++) x.fillRect(16, 50 + i * 15, 96 - (i % 3) * 18, 4);
       x.strokeStyle = '#c0392b';
@@ -254,7 +255,7 @@ export class ShopCounter {
     x.textBaseline = 'middle';
     x.fillStyle = '#3a2a1c';
     x.font = 'bold 24px sans-serif';
-    x.fillText(next ? `${u.name} · рів. ${next}` : u.name, 128, 30, 236);
+    x.fillText(next ? L(`${u.name} · рів. ${next}`, `${u.name} · lvl ${next}`) : u.name, 128, 30, 236);
     if (next && lock) {
       x.fillStyle = '#7a6a50';
       x.font = 'bold 22px sans-serif';
@@ -306,12 +307,12 @@ export class ShopCounter {
 
   /** підказка для цілі */
   label(t: CounterTarget, up: UpgradeLevels, money: number): string {
-    if (t === 'register') return 'Каса — каталог крамниці (усі речі з описами)';
-    if (t === 'insurance') return 'Страхова агенція — поліс для човна';
+    if (t === 'register') return L('Каса — каталог крамниці (усі речі з описами)', `Till — shop catalogue (all items with descriptions)`);
+    if (t === 'insurance') return L('Страхова агенція — поліс для човна', `Insurance agency — a policy for your boat`);
     const id = t.slice(3) as UpgradeId;
     const u = UPGRADE_BY_ID[id];
     const lvl = up[id] ?? 0;
-    if (lvl >= MAX_LEVEL) return `${u.name}: усе вже на човні (макс.)`;
+    if (lvl >= MAX_LEVEL) return L(`${u.name}: усе вже на човні (макс.)`, `${u.name}: everything is already on the boat (max)`);
     const part = u.parts[lvl];
     const cost = upgradeCost(id, lvl) ?? 0;
     // перша характеристика, що справді змінюється на цьому рівні
@@ -319,7 +320,7 @@ export class ShopCounter {
     const stat = st ? ` · ${st.label.toLowerCase()} ${st.fmt(st.value(lvl))} → ${st.fmt(st.value(lvl + 1))}` : '';
     const lock = upgradeLock(id, up);
     if (lock) return `«${part.name}» — ${formatMoney(cost)} · 🔒 ${lock}`;
-    const lack = money < cost ? ` (бракує ${formatMoney(cost - money)})` : '';
-    return `Купити «${part.name}» — ${formatMoney(cost)}${lack}${stat}`;
+    const lack = money < cost ? L(` (бракує ${formatMoney(cost - money)})`, ` (short by ${formatMoney(cost - money)})`) : '';
+    return L(`Купити «${part.name}» — ${formatMoney(cost)}${lack}${stat}`, `Buy “${part.name}” — ${formatMoney(cost)}${lack}${stat}`);
   }
 }

@@ -4,16 +4,17 @@ import type { GameState } from '../game/state';
 import type { TimeCycle } from '../core/time';
 import type { Weather } from '../core/weather';
 import { ZONE_NAMES, zoneFromDist } from '../game/fish';
+import { L } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // HUD: DOM-елементи, оновлюються кожен кадр (без пересоздування).
 // ─────────────────────────────────────────────────────────────
 
 const W_NAMES: Record<string, string> = {
-  calm: '🌤 Тиша',
-  breeze: '🍃 Повіє',
-  wind: '💨 Вітер',
-  storm: '⛈ Шторм',
+  calm: L('🌤 Тиша', `🌤 Calm`),
+  breeze: L('🍃 Повіє', `🍃 Breeze`),
+  wind: L('💨 Вітер', `💨 Windy`),
+  storm: L('⛈ Шторм', `⛈ Storm`),
 };
 
 export interface FightHud {
@@ -114,7 +115,7 @@ export class Hud {
   constructor() {
     const root = document.createElement('div');
     root.id = 'hud';
-    root.innerHTML = `
+    root.innerHTML = L(`
       <div class="hud-tl hud-card">
         <div class="money"><span class="m">0</span> <small>₴</small></div>
         <div class="bar-row"><span class="bar-label">Паливо</span><div class="bar fuel"><i></i></div><span class="bar-num">0</span></div>
@@ -180,7 +181,73 @@ export class Hud {
         <kbd>M</kbd> карта · <kbd>Esc</kbd> меню · штурвал: <kbd>W/S</kbd> газ, <kbd>A/D</kbd> кермо, <kbd>X</kbd> двигун, <kbd>V</kbd> вигляд · <kbd>H</kbd> сховати інтерфейс · <kbd>F1</kbd> підказки
       </div>
       <div class="lock-hint">🖱️ Клікни по екрану, щоб захопити мишу</div>
-    `;
+    `, `
+      <div class="hud-tl hud-card">
+        <div class="money"><span class="m">0</span> <small>₴</small></div>
+        <div class="bar-row"><span class="bar-label">Fuel</span><div class="bar fuel"><i></i></div><span class="bar-num">0</span></div>
+        <div class="bar-row"><span class="bar-label">Hull</span><div class="bar hull"><i></i></div><span class="bar-num">0</span></div>
+        <div class="bar-row"><span class="bar-label">Energy</span><div class="bar energy"><i></i></div><span class="bar-num">0</span></div>
+      </div>
+      <div class="goal hud-card"><span class="g-step"></span><span class="g-text"></span></div>
+      <div class="hud-tc">
+        <div class="hud-card">
+          <div class="clock"><span class="t">00:00</span><small class="d">Day 1</small></div>
+          <div class="wrow"><span class="w"></span>·<span class="zone"></span></div>
+          <div class="sailrow"></div>
+        </div>
+        <canvas class="compass-strip" width="300" height="36"></canvas>
+        <div class="nav-chips">
+          <span class="nav-chip hud-card" id="chip-port"></span>
+          <span class="nav-chip hud-card" id="chip-wp"></span>
+          <span class="nav-chip hud-card hidden" id="chip-anchor"></span>
+          <span class="nav-chip hud-card hidden" id="chip-instr"></span>
+        </div>
+      </div>
+      <div class="hud-tr">
+        <div class="hold-chip hud-card">🐟 Hold <b class="h">0/8</b></div>
+        <div class="ins-chip">⚠ No insurance</div>
+        <div class="roster hud-card"></div>
+      </div>
+      <div class="chat">
+        <div class="chat-log"></div>
+        <input class="chat-input" maxlength="160" autocomplete="off" spellcheck="false" placeholder="Message the crew… (Enter — send, Esc — close)">
+      </div>
+      <div class="toasts"></div>
+      <div class="title-card"></div>
+      <div class="catch-slot"></div>
+      <div class="prompt"><kbd>E</kbd><span class="ptext"></span><b class="pbar"><i></i></b></div>
+      <div class="fish-spot"></div>
+      <div class="action-progress"><div class="ap-label"></div><div class="bar"><i></i></div></div>
+      <div class="cast-ui">
+        <div class="cast-label">Cast power</div>
+        <div class="cast-bar"><div class="cast-sweet"></div><i></i></div>
+        <div class="cast-hint">release <kbd>LMB</kbd> when the marker is in the green zone — bites come sooner</div>
+      </div>
+      <div class="fish-status"></div>
+      <div class="fight-ui">
+        <div class="fish-name"></div>
+        <div class="fight-arena">
+          <div class="pull-arrow left">◀</div>
+          <div class="fight-core">
+            <div class="tension-label"><span>Tension</span><span class="tval">0 %</span></div>
+            <div class="tension-bar"><div class="sweet"></div><i></i><div class="limit"></div></div>
+            <div class="strain-bar"><i></i></div>
+            <div class="lean-row"><kbd class="lk lk-a">A</kbd><div class="rod-lean"><div class="lean-dot"></div></div><kbd class="lk lk-d">D</kbd></div>
+            <div class="stamina-row"><span>Fish strength</span><div class="stamina-bar"><i></i></div></div>
+          </div>
+          <div class="pull-arrow right">▶</div>
+        </div>
+        <div class="fight-status"></div>
+        <div class="fight-coach"><b><kbd>Space</kbd> hold</b> — tension rises · <b>release</b> — it drops. Keep the white marker in the <b class="g">green</b> zone and the fish will tire. The arrow shows where the fish pulls — lean the rod <b>the other way</b>.</div>
+        <div class="dist-row"><span><kbd>Space</kbd> reel · <kbd>A</kbd>/<kbd>D</kbd> lean the rod</span><span class="distn">0 m</span></div>
+      </div>
+      <div class="controls-hint">
+        <kbd>WASD</kbd> move · <kbd>Mouse</kbd> look · <kbd>Shift</kbd> run · <kbd>Space</kbd> jump · <kbd>E</kbd> use what glows<br>
+        rod in hand: <kbd>LMB</kbd> cast/strike · <kbd>R</kbd> reel in · fight: <kbd>Space</kbd> reel, <kbd>A/D</kbd> lean<br>
+        <kbd>M</kbd> chart · <kbd>Esc</kbd> menu · at the wheel: <kbd>W/S</kbd> throttle, <kbd>A/D</kbd> rudder, <kbd>X</kbd> engine, <kbd>V</kbd> view · <kbd>H</kbd> hide UI · <kbd>F1</kbd> hints
+      </div>
+      <div class="lock-hint">🖱️ Click the screen to capture the mouse</div>
+    `);
     document.body.appendChild(root);
     this.root = root;
 
@@ -296,7 +363,7 @@ export class Hud {
     if (!this.photoEl) {
       this.photoEl = document.createElement('div');
       this.photoEl.className = 'photo-hint';
-      this.photoEl.innerHTML = '<b>Фото</b> · миша — обертати · коліщатко — відстань · <kbd>P</kbd> — вийти';
+      this.photoEl.innerHTML = L('<b>Фото</b> · миша — обертати · коліщатко — відстань · <kbd>P</kbd> — вийти', `<b>Photo</b> · mouse — orbit · wheel — distance · <kbd>P</kbd> — exit`);
       document.body.appendChild(this.photoEl);
     }
     this.photoEl.classList.toggle('show', on);
@@ -367,19 +434,19 @@ export class Hud {
       this.hintEl2?.classList.add('faded');
     }
     if (game.money !== this.lastMoney) {
-      this.elMoney.textContent = Math.round(game.money).toLocaleString('uk-UA');
+      this.elMoney.textContent = Math.round(game.money).toLocaleString(L('uk-UA', 'en-GB'));
       this.lastMoney = game.money;
     }
     const clock = formatTime(time.hours);
     if (clock !== this.lastClock) {
       this.elClock.textContent = clock;
-      this._day.textContent = `День ${time.dayCount}`;
+      this._day.textContent = L(`День ${time.dayCount}`, `Day ${time.dayCount}`);
       this.lastClock = clock;
     }
     const ws = weather.state();
     const bf = weather.beaufort;
-    const wName = `${W_NAMES[ws]} · ${bf.b} б.`;
-    this.elWeather.title = `${bf.b} балів за Бофортом — ${bf.name}, ${weather.windMs.toFixed(0)} м/с`;
+    const wName = L(`${W_NAMES[ws]} · ${bf.b} б.`, `${W_NAMES[ws]} · Bf ${bf.b}`);
+    this.elWeather.title = L(`${bf.b} балів за Бофортом — ${bf.name}, ${weather.windMs.toFixed(0)} м/с`, `Beaufort ${bf.b} — ${bf.name}, ${weather.windMs.toFixed(0)} m/s`);
     if (this.elWeather.textContent !== wName) this.elWeather.textContent = wName;
     this.elWeather.className = 'w' + (ws === 'storm' ? ' weather-storm' : '');
     this.elZone.textContent = ZONE_NAMES[zoneFromDist(Math.hypot(boatPos.x, boatPos.z))];
@@ -410,7 +477,7 @@ export class Hud {
 
     const fuelPct = (game.fuel / game.maxFuel) * 100;
     this.elFuel.style.width = fuelPct + '%';
-    this.elFuelN.textContent = `${Math.round(game.fuel)} л`;
+    this.elFuelN.textContent = L(`${Math.round(game.fuel)} л`, `${Math.round(game.fuel)} l`);
     const hullPct = (game.hull / game.maxHull) * 100;
     this.elHull.style.width = hullPct + '%';
     this.elHullBar.className = 'bar hull' + (hullPct < 30 ? ' low' : '');
@@ -450,7 +517,7 @@ export class Hud {
       this.elTension.style.left = extra.fight.tension + '%';
       this.elTensionLimit.style.left = extra.fight.limit + '%';
       this.elDist.textContent = Math.round(extra.fight.tension) + ' %';
-      this.elDistN.textContent = Math.round(extra.fight.dist) + ' м';
+      this.elDistN.textContent = Math.round(extra.fight.dist) + L(' м', ` m`);
       const f = extra.fight;
       this.elSweet.style.left = f.lo + '%';
       this.elSweet.style.width = f.hi - f.lo + '%';
@@ -496,7 +563,7 @@ export class Hud {
   }
 
   private static fmtDist(d: number): string {
-    return d >= 1000 ? (d / 1000).toFixed(1).replace('.', ',') + ' км' : Math.round(d) + ' м';
+    return d >= 1000 ? (d / 1000).toFixed(1).replace('.', L(',', '.')) + L(' км', ` km`) : Math.round(d) + L(' м', ` m`);
   }
 
   /** компасна стрічка: шкала курсу, рубка-лінія, маркери порту й точки */
@@ -511,7 +578,7 @@ export class Hud {
     const pxPerDeg = w / 180; // ±90° по боках
     const cx = w / 2;
     const base = h - 12;
-    const P8 = ['П', 'ПСх', 'Сх', 'СхПд', 'Пд', 'ПдЗх', 'Зх', 'ЗхП'];
+    const P8 = [L('П', `N`), L('ПСх', `NE`), L('Сх', `E`), L('СхПд', `SE`), L('Пд', `S`), L('ПдЗх', `SW`), L('Зх', `W`), L('ЗхП', `NW`)];
     const wrap = (a: number) => {
       // різниця кутів у діапазоні −180..180 (раніше без −180 — стрічка показувала зворотний курс)
       return ((a - d0 + 540) % 360) - 180;
@@ -622,7 +689,7 @@ export class Hud {
   }
 
   /** найближча відома гавань (задає main): компас і чіп ведуть до неї */
-  navPort: { x: number; z: number; name: string; home: boolean } = { x: MOOR.x, z: MOOR.z, name: 'Шторм', home: true };
+  navPort: { x: number; z: number; name: string; home: boolean } = { x: MOOR.x, z: MOOR.z, name: L('Шторм', `Storm Harbour`), home: true };
 
   /** чіпи: 🏠/⚓ до найближчої гавані, ⚑ до точки */
   private updateNavChips(boat: { x: number; z: number }, wp: { x: number; z: number } | null) {
@@ -631,7 +698,7 @@ export class Hud {
     const dPort = Math.hypot(boat.x - np.x, boat.z - np.z);
     const ic = np.home ? '🏠' : '⚓';
     // у шварту курс сенсу не має — показуємо лише факт
-    const tPort = dPort < 5 ? `${ic} у шварту${np.home ? '' : ` · ${np.name}`}` : `${ic} ${np.home ? '' : `${np.name} · `}${this.navText(bPort, dPort)}`;
+    const tPort = dPort < 5 ? L(`${ic} у шварту${np.home ? '' : ` · ${np.name}`}`, `${ic} moored${np.home ? '' : ` · ${np.name}`}`) : `${ic} ${np.home ? '' : `${np.name} · `}${this.navText(bPort, dPort)}`;
     if (tPort !== this.lastPortChip) {
       this.lastPortChip = tPort;
       this.chipPort.textContent = tPort;
@@ -651,11 +718,11 @@ export class Hud {
     // прилади: швидкість (лаг), глибина й вітер (ехолот/вітромір), риба (сонар), автопілот
     const ins = this.instr;
     const parts: string[] = [];
-    if (ins.lvl >= 1) parts.push(`⛵ ${(ins.speed * 1.944).toFixed(1).replace('.', ',')} вуз`);
-    if (ins.lvl >= 2) parts.push(`⇣ ${ins.depth > 240 ? '>250' : ins.depth.toFixed(ins.depth < 10 ? 1 : 0).replace('.', ',')} м`, `🌬 ${Math.round(ins.wind)} м/с`);
-    else if (ins.lvl >= 1 && ins.falling) parts.push('🌡 тиск падає');
-    if (ins.lvl >= 4) parts.push(ins.fish > 0.62 ? '🐟 густо' : ins.fish > 0.32 ? '🐟 помірно' : '🐟 рідко');
-    if (ins.autopilot) parts.push('🤖 АВТО');
+    if (ins.lvl >= 1) parts.push(L(`⛵ ${(ins.speed * 1.944).toFixed(1).replace('.', L(',', '.'))} вуз`, `⛵ ${(ins.speed * 1.944).toFixed(1).replace('.', L(',', '.'))} kn`));
+    if (ins.lvl >= 2) parts.push(L(`⇣ ${ins.depth > 240 ? '>250' : ins.depth.toFixed(ins.depth < 10 ? 1 : 0).replace('.', L(',', '.'))} м`, `⇣ ${ins.depth > 240 ? '>250' : ins.depth.toFixed(ins.depth < 10 ? 1 : 0).replace('.', L(',', '.'))} m`), L(`🌬 ${Math.round(ins.wind)} м/с`, `🌬 ${Math.round(ins.wind)} m/s`));
+    else if (ins.lvl >= 1 && ins.falling) parts.push(L('🌡 тиск падає', `🌡 pressure falling`));
+    if (ins.lvl >= 4) parts.push(ins.fish > 0.62 ? L('🐟 густо', `🐟 dense`) : ins.fish > 0.32 ? L('🐟 помірно', `🐟 moderate`) : L('🐟 рідко', `🐟 sparse`));
+    if (ins.autopilot) parts.push(L('🤖 АВТО', `🤖 AUTO`));
     const tI = parts.join(' · ');
     if (tI !== this.lastInstrChip) {
       this.lastInstrChip = tI;
@@ -670,10 +737,10 @@ export class Hud {
     const ins = this.instr;
     if (ins.lvl >= 3) {
       const eta = ins.speed > 0.5 ? d / ins.speed / 60 : null;
-      return `${String(Math.round(brg) % 360).padStart(3, '0')}° · ${Hud.fmtDist(d)}${eta != null && eta < 600 ? ` · ${eta < 1 ? '<1' : Math.round(eta)} хв` : ''}`;
+      return `${String(Math.round(brg) % 360).padStart(3, '0')}° · ${Hud.fmtDist(d)}${eta != null && eta < 600 ? L(` · ${eta < 1 ? '<1' : Math.round(eta)} хв`, ` · ${eta < 1 ? '<1' : Math.round(eta)} min`) : ''}`;
     }
-    const P = ['П', 'ПнСх', 'Сх', 'ПдСх', 'Пд', 'ПдЗх', 'Зх', 'ПнЗх'];
-    const rough = d < 1000 ? `≈${Math.max(100, Math.round(d / 100) * 100)} м` : `≈${(Math.round(d / 500) / 2).toFixed(1).replace('.', ',')} км`;
+    const P = [L('П', `N`), L('ПнСх', `NE`), L('Сх', `E`), L('ПдСх', `SE`), L('Пд', `S`), L('ПдЗх', `SW`), L('Зх', `W`), L('ПнЗх', `NW`)];
+    const rough = d < 1000 ? L(`≈${Math.max(100, Math.round(d / 100) * 100)} м`, `≈${Math.max(100, Math.round(d / 100) * 100)} m`) : L(`≈${(Math.round(d / 500) / 2).toFixed(1).replace('.', L(',', '.'))} км`, `≈${(Math.round(d / 500) / 2).toFixed(1).replace('.', L(',', '.'))} km`);
     return `${P[Math.round(brg / 45) % 8]} · ${rough}`;
   }
 
@@ -710,7 +777,7 @@ export class Hud {
     const el = this.root.querySelector<HTMLElement>('.goal')!;
     el.classList.toggle('show', !!text);
     if (!text) return;
-    el.querySelector('.g-step')!.textContent = `Крок ${step}/${total}`;
+    el.querySelector('.g-step')!.textContent = L(`Крок ${step}/${total}`, `Step ${step}/${total}`);
     el.querySelector('.g-text')!.textContent = text;
     el.classList.remove('pop');
     void el.offsetWidth;
@@ -747,13 +814,13 @@ export class Hud {
     info.className = 'cc-info';
     const badge = document.createElement('div');
     badge.className = 'cc-badge';
-    badge.textContent = trophy ? (record ? '🏆 Трофей · рекорд!' : '🏆 Трофей!') : isNew ? 'Новий вид!' : record ? 'Рекорд виду!' : 'Улов';
+    badge.textContent = trophy ? (record ? L('🏆 Трофей · рекорд!', `🏆 Trophy · record!`) : L('🏆 Трофей!', `🏆 Trophy!`)) : isNew ? L('Новий вид!', `New species!`) : record ? L('Рекорд виду!', `Species record!`) : L('Улов', `Catch`);
     const nm = document.createElement('div');
     nm.className = 'cc-name';
     nm.textContent = name;
     const w = document.createElement('div');
     w.className = 'cc-kg';
-    w.textContent = `${kg.toFixed(2).replace('.', ',')} кг${note ? ' · ' + note : ''}`;
+    w.textContent = L(`${kg.toFixed(2).replace('.', L(',', '.'))} кг${note ? ' · ' + note : ''}`, `${kg.toFixed(2).replace('.', L(',', '.'))} kg${note ? ' · ' + note : ''}`);
     info.append(badge, nm, w);
     el.append(cv, info);
     this.elCatch.replaceChildren(el);

@@ -1,6 +1,7 @@
 import { clamp, mulberry32 } from '../core/math';
 import { FISH, FISH_BY_ID, fishPrice, ZONE_NAMES } from './fish';
 import type { FishItem, ZoneId } from '../core/types';
+import { L } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // Скупники риби: таверна, коптильня, ресторан, консервний завод і відлюдник
@@ -65,14 +66,14 @@ const HERMIT = ['lusk', 'shoraga', 'tunets', 'akula'];
 export const BUYERS: BuyerDef[] = [
   {
     id: 'tavern',
-    name: 'Таверна «Ситий баклан»',
-    who: 'кухарка Ганна',
+    name: L('Таверна «Ситий баклан»', `“Fat Cormorant” Tavern`),
+    who: L('кухарка Ганна', `Hanna the cook`),
     icon: '🍲',
-    wants: 'дрібна й середня риба · і сира, і варена',
-    blurb: 'Юшка, смажена камбала й оселедець під цибулею. Ганна платить більше за біржу і менше зважає на свіжість — їй однаково в казан. Варену рибу теж бере.',
+    wants: L('дрібна й середня риба · і сира, і варена', `small and medium fish · raw or cooked`),
+    blurb: L('Юшка, смажена камбала й оселедець під цибулею. Ганна платить більше за біржу і менше зважає на свіжість — їй однаково в казан. Варену рибу теж бере.', `Fish soup, fried flounder and herring with onions. Hanna pays more than the exchange and cares less about freshness — it all goes in the pot anyway. She takes cooked fish too.`),
     open: [7, 24],
     species: TAVERN,
-    reject: (f) => (TAVERN.includes(f.speciesId) ? null : 'для кухні завелика — неси в ресторан або на біржу'),
+    reject: (f) => (TAVERN.includes(f.speciesId) ? null : L('для кухні завелика — неси в ресторан або на біржу', `too big for the kitchen — take it to the restaurant or the exchange`)),
     mult: () => 1.09,
     freshW: 0.5,
     free: 3,
@@ -83,14 +84,14 @@ export const BUYERS: BuyerDef[] = [
   },
   {
     id: 'smoke',
-    name: 'Коптильня Гната',
-    who: 'дід Гнат',
+    name: L('Коптильня Гната', `Hnat's Smokehouse`),
+    who: L('дід Гнат', `old Hnat`),
     icon: '🔥',
-    wants: 'жирна риба на вагу · оптом дорожче',
-    blurb: 'Оселедець, скумбрія, лосось — у вільховий дим. Свіжість не головне, а партія від 6 рибин — плюс 10 %.',
+    wants: L('жирна риба на вагу · оптом дорожче', `oily fish by weight · bulk pays more`),
+    blurb: L('Оселедець, скумбрія, лосось — у вільховий дим. Свіжість не головне, а партія від 6 рибин — плюс 10 %.', `Herring, mackerel, salmon — into the alder smoke. Freshness isn't the point, and a batch of 6+ fish gets +10 %.`),
     open: [5, 21],
     species: SMOKE,
-    reject: (f) => (f.cooked ? 'варену не коптимо' : SMOKE.includes(f.speciesId) ? null : 'пісна — для диму не годиться'),
+    reject: (f) => (f.cooked ? L('варену не коптимо', `we don't smoke cooked fish`) : SMOKE.includes(f.speciesId) ? null : L('пісна — для диму не годиться', `too lean — no good for smoking`)),
     mult: () => 1.05,
     freshW: 0.25,
     free: 5,
@@ -102,17 +103,17 @@ export const BUYERS: BuyerDef[] = [
   },
   {
     id: 'chef',
-    name: 'Ресторан «Маяк»',
-    who: 'шеф Ліндстрем',
+    name: L('Ресторан «Маяк»', `“Lighthouse” Restaurant`),
+    who: L('шеф Ліндстрем', `chef Lindström`),
     icon: '🍽',
-    wants: 'лише велика делікатесна риба · трофеї — ще дорожче',
-    blurb: 'Шефу потрібне найкраще: окунь, лосось, тріска, палтус, тунець, акула — не менші за середній розмір. Трофейний екземпляр — ще ×1,6.',
+    wants: L('лише велика делікатесна риба · трофеї — ще дорожче', `only big delicacy fish · trophies pay even more`),
+    blurb: L('Шефу потрібне найкраще: окунь, лосось, тріска, палтус, тунець, акула — не менші за середній розмір. Трофейний екземпляр — ще ×1,6.', `The chef wants the best: redfish, salmon, cod, halibut, tuna, shark — no smaller than average. A trophy specimen pays ×1.6 more.`),
     open: [11, 24],
     species: CHEF,
     reject: (f) => {
-      if (!CHEF.includes(f.speciesId)) return 'не в меню';
-      if (f.cooked) return 'шеф готує сам';
-      if (f.kg < avg(f.speciesId)) return 'замала для подачі';
+      if (!CHEF.includes(f.speciesId)) return L('не в меню', `not on the menu`);
+      if (f.cooked) return L('шеф готує сам', `the chef cooks it himself`);
+      if (f.kg < avg(f.speciesId)) return L('замала для подачі', `too small to serve`);
       return null;
     },
     mult: (f) => 1.75 * (isTrophy(f) ? 1.6 : 1),
@@ -125,11 +126,11 @@ export const BUYERS: BuyerDef[] = [
   },
   {
     id: 'cannery',
-    name: 'Консервний завод «Балтика»',
-    who: 'приймальник Степан',
+    name: L('Консервний завод «Балтика»', `“Baltika” Cannery`),
+    who: L('приймальник Степан', `Stepan at the intake`),
     icon: '🥫',
-    wants: 'будь-яка риба тоннами · дешевше, зате без насичення',
-    blurb: 'Бере все: дрібну, несвіжу, варену. Ціна нижча за біржу, але ринок не засипається — скільки привіз, стільки й продав.',
+    wants: L('будь-яка риба тоннами · дешевше, зате без насичення', `any fish by the ton · cheaper, but never saturates`),
+    blurb: L('Бере все: дрібну, несвіжу, варену. Ціна нижча за біржу, але ринок не засипається — скільки привіз, стільки й продав.', `Takes everything: small, stale, cooked. The price is below the exchange, but the market never fills up — sell as much as you bring.`),
     open: null,
     species: null,
     reject: () => null,
@@ -144,11 +145,11 @@ export const BUYERS: BuyerDef[] = [
   },
   {
     id: 'hermit',
-    name: 'Хижа Старого Остапа',
-    who: 'відлюдник Остап',
+    name: L('Хижа Старого Остапа', `Old Ostap's Hut`),
+    who: L('відлюдник Остап', `Ostap the hermit`),
     icon: '🛖',
-    wants: 'глибоководна риба · рибу дня — майже вдвічі',
-    blurb: 'Колишній доглядач маяка живе на Сосновому острові. Платить щедро за тріску, палтуса, тунця й акулу — і щодня мріє про якусь особливу рибу.',
+    wants: L('глибоководна риба · рибу дня — майже вдвічі', `deep-water fish · fish of the day pays almost double`),
+    blurb: L('Колишній доглядач маяка живе на Сосновому острові. Платить щедро за тріску, палтуса, тунця й акулу — і щодня мріє про якусь особливу рибу.', `The old lighthouse keeper lives on Pine Island. He pays generously for cod, halibut, tuna and shark — and every day he dreams of some special fish.`),
     open: null,
     species: null, // + риба дня
     reject: () => null, // перевіряється з урахуванням риби дня (buyerReject)
@@ -167,10 +168,10 @@ export const BUYER_BY_ID = Object.fromEntries(BUYERS.map((b) => [b.id, b])) as R
 // ── репутація ──
 
 export const REP_LEVELS = [
-  { at: 0, name: 'Новачок', bonus: 0, offers: 2, reward: 1 },
-  { at: 15, name: 'Знайомий', bonus: 0.03, offers: 2, reward: 1.1 },
-  { at: 40, name: 'Постачальник', bonus: 0.07, offers: 3, reward: 1.25 },
-  { at: 75, name: 'Свій', bonus: 0.12, offers: 3, reward: 1.4 },
+  { at: 0, name: L('Новачок', `Newcomer`), bonus: 0, offers: 2, reward: 1 },
+  { at: 15, name: L('Знайомий', `Acquaintance`), bonus: 0.03, offers: 2, reward: 1.1 },
+  { at: 40, name: L('Постачальник', `Supplier`), bonus: 0.07, offers: 3, reward: 1.25 },
+  { at: 75, name: L('Свій', `Regular`), bonus: 0.12, offers: 3, reward: 1.4 },
 ];
 
 export function repLevel(rep: number) {
@@ -199,8 +200,8 @@ export interface Promo {
 
 /** відмінки: знахідний */
 const ACC: Record<string, string> = {
-  hamsa: 'шпрот', balyk: 'оселедця', leschak: 'камбалу', plyotka: 'пікшу', makrel: 'скумбрію', sula: 'сайду',
-  krap: 'морського окуня', forel: 'лосося', lusk: 'тріску', shoraga: 'палтуса', tunets: 'тунця', akula: 'акулу',
+  hamsa: L('шпрот', `sprat`), balyk: L('оселедця', `herring`), leschak: L('камбалу', `flounder`), plyotka: L('пікшу', `haddock`), makrel: L('скумбрію', `mackerel`), sula: L('сайду', `saithe`),
+  krap: L('морського окуня', `redfish`), forel: L('лосося', `salmon`), lusk: L('тріску', `cod`), shoraga: L('палтуса', `halibut`), tunets: L('тунця', `tuna`), akula: L('акулу', `shark`),
 };
 const acc = (id: string) => ACC[id] ?? nm(id).toLowerCase();
 
@@ -236,17 +237,17 @@ function rollPromos(day: number): Promo[] {
       if (kind === 'species') {
         const pct = 30 + Math.round(r() * 6) * 5; // 30..60
         const evening = r() < 0.5;
-        out.push({ id, buyer: b.id, kind, sp, mult: 1 + pct / 100, from: d0, until: d0 + (evening ? 18 : 24), text: `×${(1 + pct / 100).toFixed(1).replace('.', ',')} за ${acc(sp)} ${evening ? 'до вечора' : 'до кінця дня'}` });
+        out.push({ id, buyer: b.id, kind, sp, mult: 1 + pct / 100, from: d0, until: d0 + (evening ? 18 : 24), text: L(`×${(1 + pct / 100).toFixed(1).replace('.', L(',', '.'))} за ${acc(sp)} ${evening ? L('до вечора', `until evening`) : L('до кінця дня', `until the end of the day`)}`, `×${(1 + pct / 100).toFixed(1).replace('.', L(',', '.'))} for ${acc(sp)} ${evening ? L('до вечора', `until evening`) : L('до кінця дня', `until the end of the day`)}`) });
       } else if (kind === 'cooked') {
-        out.push({ id, buyer: b.id, kind, mult: 1.25, from: d0, until: d0 + 24, text: '+25 % за варену рибу (камбуз на яхті)' });
+        out.push({ id, buyer: b.id, kind, mult: 1.25, from: d0, until: d0 + 24, text: L('+25 % за варену рибу (камбуз на яхті)', `+25 % for cooked fish (the yacht's galley)`) });
       } else if (kind === 'bulk') {
-        out.push({ id, buyer: b.id, kind, mult: 1.15, from: d0, until: d0 + 24, text: '+15 % за партію від 8 рибин' });
+        out.push({ id, buyer: b.id, kind, mult: 1.15, from: d0, until: d0 + 24, text: L('+15 % за партію від 8 рибин', `+15 % for a batch of 8+ fish`) });
       } else if (kind === 'trophy') {
         const tsp = (b.id === 'chef' ? CHEF : HERMIT)[Math.floor(r() * (b.id === 'chef' ? CHEF.length : HERMIT.length))];
-        out.push({ id, buyer: b.id, kind, sp: tsp, mult: 2, from: d0, until: d0 + 24, text: `трофейний екземпляр (${nm(tsp).toLowerCase()}) — за подвійну ціну` });
+        out.push({ id, buyer: b.id, kind, sp: tsp, mult: 2, from: d0, until: d0 + 24, text: L(`трофейний екземпляр (${nm(tsp).toLowerCase()}) — за подвійну ціну`, `a trophy specimen (${nm(tsp).toLowerCase()}) — double price`) });
       } else {
         const start = 9 + Math.floor(r() * 9);
-        out.push({ id, buyer: b.id, kind, mult: 1.25, from: d0 + start, until: d0 + start + 3, text: `щаслива година ${hh(start)}–${hh(start + 3)}: +25 % на все` });
+        out.push({ id, buyer: b.id, kind, mult: 1.25, from: d0 + start, until: d0 + start + 3, text: L(`щаслива година ${hh(start)}–${hh(start + 3)}: +25 % на все`, `happy hour ${hh(start)}–${hh(start + 3)}: +25 % on everything`) });
       }
     }
   }
@@ -277,10 +278,10 @@ export interface Contract {
 /** що замовлення просить (людською мовою) */
 export function contractTitle(c: Omit<Contract, 'title' | 'got' | 'id'>): string {
   let t: string;
-  if (c.kg) t = c.sp ? `${fmtKg(c.kg)} кг · ${nm(c.sp)}` : `${fmtKg(c.kg)} кг риби · ${c.zone ? ZONE_NAMES[c.zone].toLowerCase() : 'будь-якої'}`;
+  if (c.kg) t = c.sp ? L(`${fmtKg(c.kg)} кг · ${nm(c.sp)}`, `${fmtKg(c.kg)} kg · ${nm(c.sp)}`) : L(`${fmtKg(c.kg)} кг риби · ${c.zone ? ZONE_NAMES[c.zone].toLowerCase() : L('будь-якої', `any`)}`, `${fmtKg(c.kg)} kg of fish · ${c.zone ? ZONE_NAMES[c.zone].toLowerCase() : L('будь-якої', `any`)}`);
   else t = `${c.n ?? 1} × ${nm(c.sp ?? '')}`;
-  if (c.minKg) t += c.kg ? ` (кожна від ${fmtKg(c.minKg)} кг)` : ` від ${fmtKg(c.minKg)} кг`;
-  if (c.minFresh) t += `, свіжість ≥ ${c.minFresh} %`;
+  if (c.minKg) t += c.kg ? L(` (кожна від ${fmtKg(c.minKg)} кг)`, ` (each at least ${fmtKg(c.minKg)} kg)`) : L(` від ${fmtKg(c.minKg)} кг`, ` from ${fmtKg(c.minKg)} kg`);
+  if (c.minFresh) t += L(`, свіжість ≥ ${c.minFresh} %`, `, freshness ≥ ${c.minFresh} %`);
   return t;
 }
 
@@ -290,7 +291,7 @@ function roundKg(v: number): number {
 }
 
 function fmtKg(v: number): string {
-  return (Math.round(v * 10) / 10).toString().replace('.', ',');
+  return (Math.round(v * 10) / 10).toString().replace('.', L(',', '.'));
 }
 
 /** типова ціна рибини виду на біржі (без трендів) */
@@ -411,9 +412,9 @@ export class FishTrade {
 
   reject(b: BuyerDef, f: FishItem, nowH: number): string | null {
     if (b.id === 'hermit') {
-      if (f.cooked) return 'варену не бере';
+      if (f.cooked) return L('варену не бере', `doesn't take cooked fish`);
       if (HERMIT.includes(f.speciesId) || f.speciesId === hermitWish(FishTrade.day(nowH))) return null;
-      return 'Остапу таке не треба';
+      return L('Остапу таке не треба', `Ostap has no use for that`);
     }
     return b.reject(f);
   }
@@ -554,13 +555,13 @@ export class FishTrade {
 }
 
 export function shortName(id: BuyerId): string {
-  return { tavern: 'Таверна', smoke: 'Коптильня', chef: 'Ресторан «Маяк»', cannery: 'Консервний завод', hermit: 'Остап' }[id];
+  return { tavern: L('Таверна', `Tavern`), smoke: L('Коптильня', `Smokehouse`), chef: L('Ресторан «Маяк»', `“Lighthouse” Restaurant`), cannery: L('Консервний завод', `Cannery`), hermit: L('Остап', `Ostap`) }[id];
 }
 
 /** «до 18:00 завтра» */
 export function fmtDeadline(deadline: number, nowH: number): string {
   const dDay = FishTrade.day(deadline) - FishTrade.day(nowH);
   const left = deadline - nowH;
-  const when = dDay <= 0 ? 'сьогодні' : dDay === 1 ? 'завтра' : 'післязавтра';
-  return `до ${hh(deadline)} ${when} · ${left < 1 ? 'менше години' : `${Math.floor(left)} год`}`;
+  const when = dDay <= 0 ? L('сьогодні', `today`) : dDay === 1 ? L('завтра', `tomorrow`) : L('післязавтра', `the day after tomorrow`);
+  return L(`до ${hh(deadline)} ${when} · ${left < 1 ? L('менше години', `under an hour`) : L(`${Math.floor(left)} год`, `${Math.floor(left)} h`)}`, `by ${hh(deadline)} ${when} · ${left < 1 ? L('менше години', `under an hour`) : L(`${Math.floor(left)} год`, `${Math.floor(left)} h`)}`);
 }

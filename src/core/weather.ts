@@ -1,5 +1,6 @@
 import { clamp, damp, rand, mulberry32 } from './math';
 import type { WeatherState, WeatherSnapshot } from './types';
+import { L } from './i18n';
 
 // ─────────────────────────────────────────────────────────────
 // Погода: Тиша → Повіє → Вітер → Шторм — довгими фазами, щоб встигнути
@@ -39,12 +40,12 @@ export function seaFactor(off: number): number {
 
 /** шкала Бофорта за швидкістю вітру (м/с) */
 const BEAUFORT: Array<[number, string]> = [
-  [0.3, 'штиль'], [1.6, 'тихий'], [3.4, 'легкий'], [5.5, 'слабкий'], [8.0, 'помірний'], [10.8, 'свіжий'],
-  [13.9, 'сильний'], [17.2, 'міцний'], [20.8, 'дуже міцний'], [24.5, 'шторм'], [28.5, 'сильний шторм'], [32.7, 'жорстокий шторм'], [Infinity, 'ураган'],
+  [0.3, L('штиль', `calm`)], [1.6, L('тихий', `light air`)], [3.4, L('легкий', `light breeze`)], [5.5, L('слабкий', `gentle breeze`)], [8.0, L('помірний', `moderate breeze`)], [10.8, L('свіжий', `fresh breeze`)],
+  [13.9, L('сильний', `strong breeze`)], [17.2, L('міцний', `near gale`)], [20.8, L('дуже міцний', `gale`)], [24.5, L('шторм', `strong gale`)], [28.5, L('сильний шторм', `storm`)], [32.7, L('жорстокий шторм', `violent storm`)], [Infinity, L('ураган', `hurricane`)],
 ];
 export function beaufort(ms: number): { b: number; name: string } {
   for (let i = 0; i < BEAUFORT.length; i++) if (ms < BEAUFORT[i][0]) return { b: i, name: BEAUFORT[i][1] };
-  return { b: 12, name: 'ураган' };
+  return { b: 12, name: L('ураган', `hurricane`) };
 }
 
 export class Weather {

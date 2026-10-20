@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="uk">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Грозова рибалка — Storm Fishers</title>
+    <title>Storm Fishers — Грозова рибалка</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Unbounded:wght@500;600;700;800&display=swap" rel="stylesheet" />
@@ -46,10 +46,24 @@
     <div id="app"></div>
     <div id="vignette"></div>
     <div id="loading">
-      <h1>Грозова<br>рибалка</h1>
+      <h1 id="loading-title">Storm<br>Fishers</h1>
       <div class="spinner"></div>
-      <p>готуємо море…</p>
+      <p id="loading-text">preparing the sea…</p>
     </div>
+    <script>
+      // мова екрана завантаження — до старту гри (як у src/core/i18n.ts)
+      (function () {
+        var l = null;
+        try { l = new URLSearchParams(location.search).get('lang'); } catch (e) {}
+        if (l !== 'uk' && l !== 'ua' && l !== 'en') { try { l = localStorage.getItem('storm-lang'); } catch (e) {} }
+        if (l === 'uk' || l === 'ua') {
+          document.documentElement.lang = 'uk';
+          document.title = 'Грозова рибалка — Storm Fishers';
+          document.getElementById('loading-title').innerHTML = 'Грозова<br>рибалка';
+          document.getElementById('loading-text').textContent = 'готуємо море…';
+        }
+      })();
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

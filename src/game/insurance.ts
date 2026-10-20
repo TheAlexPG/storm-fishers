@@ -1,5 +1,6 @@
 import type { UpgradeLevels } from '../core/types';
 import { UPGRADES } from './upgrades';
+import { L } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // Страховка човна (в дусі Star Citizen): щоденний внесок, що залежить
@@ -30,11 +31,11 @@ export interface InsPlan {
 }
 
 export const PLANS: InsPlan[] = [
-  { tier: 0, name: 'Без страховки', rate: 0, min: 0, keep: 0, cargo: 0, claimH: 10, tow: 350, blurb: 'Затонув — втрачаєш увесь улов і всі модулі. Рятувальники витягнуть голий корпус і візьмуть за буксир.' },
-  { tier: 1, name: 'Базова', rate: 0.006, min: 25, keep: 1, cargo: 0, claimH: 8, tow: 0, blurb: 'Новий корпус і перший рівень кожного модуля. Улов — твій ризик.' },
-  { tier: 2, name: 'Стандарт', rate: 0.014, min: 45, keep: 3, cargo: 0, claimH: 5, tow: 0, blurb: 'Модулі до 3-го рівня відновлять. Улов не покривається.' },
-  { tier: 3, name: 'Розширена', rate: 0.026, min: 80, keep: 5, cargo: 0.5, claimH: 3, tow: 0, blurb: 'Усі модулі й половина вартості улову. Човен — за 3 години.' },
-  { tier: 4, name: 'Преміум «Шторм»', rate: 0.042, min: 130, keep: 5, cargo: 1, claimH: 0, tow: 0, blurb: 'Усе: модулі, повна вартість улову, новий човен одразу біля причалу.' },
+  { tier: 0, name: L('Без страховки', `No insurance`), rate: 0, min: 0, keep: 0, cargo: 0, claimH: 10, tow: 350, blurb: L('Затонув — втрачаєш увесь улов і всі модулі. Рятувальники витягнуть голий корпус і візьмуть за буксир.', `If you sink you lose the whole catch and every module. Rescuers will tow in the bare hull and charge for it.`) },
+  { tier: 1, name: L('Базова', `Basic`), rate: 0.006, min: 25, keep: 1, cargo: 0, claimH: 8, tow: 0, blurb: L('Новий корпус і перший рівень кожного модуля. Улов — твій ризик.', `A new hull and the first level of every module. The catch is your risk.`) },
+  { tier: 2, name: L('Стандарт', `Standard`), rate: 0.014, min: 45, keep: 3, cargo: 0, claimH: 5, tow: 0, blurb: L('Модулі до 3-го рівня відновлять. Улов не покривається.', `Modules restored up to level 3. The catch isn't covered.`) },
+  { tier: 3, name: L('Розширена', `Extended`), rate: 0.026, min: 80, keep: 5, cargo: 0.5, claimH: 3, tow: 0, blurb: L('Усі модулі й половина вартості улову. Човен — за 3 години.', `All modules and half the value of the catch. A boat within 3 hours.`) },
+  { tier: 4, name: L('Преміум «Шторм»', `Premium “Storm”`), rate: 0.042, min: 130, keep: 5, cargo: 1, claimH: 0, tow: 0, blurb: L('Усе: модулі, повна вартість улову, новий човен одразу біля причалу.', `Everything: modules, the full value of the catch, a new boat right at the pier.`) },
 ];
 
 /** вартість човна: сума цін усіх куплених рівнів */

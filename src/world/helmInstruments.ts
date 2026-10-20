@@ -3,6 +3,7 @@ import { DECK_Y, COCKPIT } from './yachtLayout';
 import { terrainHeight } from './portTerrain';
 import { instrHas } from '../game/upgrades';
 import type { PartKit } from './upgradeParts';
+import { L } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // Прилади штурвала (апгрейд «Прилади», 0–5): від латунного компаса
@@ -53,7 +54,7 @@ const SCREEN_TILT = 0.2;
 const SCREEN_Q = new THREE.Quaternion().setFromEuler(new THREE.Euler(SCREEN_TILT, Math.PI, 0));
 
 const FONT = '-apple-system, "Segoe UI", sans-serif';
-const P8 = ['П', 'ПнСх', 'Сх', 'ПдСх', 'Пд', 'ПдЗх', 'Зх', 'ПнЗх'];
+const P8 = [L('П', `N`), L('ПнСх', `NE`), L('Сх', `E`), L('ПдСх', `SE`), L('Пд', `S`), L('ПдЗх', `SW`), L('Зх', `W`), L('ПнЗх', `NW`)];
 
 export function compass8(deg: number): string {
   return P8[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
@@ -64,7 +65,7 @@ export function bearingDeg(fx: number, fz: number, tx: number, tz: number): numb
   return b < 0 ? b + 360 : b;
 }
 function fmtDist(d: number): string {
-  return d >= 1000 ? (d / 1000).toFixed(1).replace('.', ',') + ' км' : Math.round(d) + ' м';
+  return d >= 1000 ? (d / 1000).toFixed(1).replace('.', L(',', '.')) + L(' км', ` km`) : Math.round(d) + L(' м', ` m`);
 }
 /**
  * висота дна для приладів: як terrainHeight, але перед набережною рельєф —
@@ -170,12 +171,12 @@ function compassCardTex(): THREE.CanvasTexture {
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     g.fillStyle = '#c0392b';
-    g.fillText('П', C, C - 96);
+    g.fillText(L('П', `N`), C, C - 96);
     g.fillStyle = '#2a3a46';
     g.font = `800 22px ${FONT}`;
-    g.fillText('Сх', C + 96, C);
-    g.fillText('Пд', C, C + 96);
-    g.fillText('Зх', C - 96, C);
+    g.fillText(L('Сх', `E`), C + 96, C);
+    g.fillText(L('Пд', `S`), C, C + 96);
+    g.fillText(L('Зх', `W`), C - 96, C);
   });
 }
 
@@ -214,14 +215,14 @@ function baroFaceTex(): THREE.CanvasTexture {
       g.fillText(t, 0, 0);
       g.restore();
     };
-    word(972, 'ШТОРМ', '#b23a2e');
-    word(992, 'ДОЩ', '#5a6b78');
-    word(1012, 'ЗМІННО', '#3a2f22');
-    word(1036, 'ЯСНО', '#a07a1c');
+    word(972, L('ШТОРМ', `STORM`), '#b23a2e');
+    word(992, L('ДОЩ', `RAIN`), '#5a6b78');
+    word(1012, L('ЗМІННО', `CHANGE`), '#3a2f22');
+    word(1036, L('ЯСНО', `FAIR`), '#a07a1c');
     g.font = `600 12px ${FONT}`;
     g.fillStyle = '#6b5d48';
     g.textAlign = 'center';
-    g.fillText('гПа', C, C + 52);
+    g.fillText(L('гПа', `hPa`), C, C + 52);
   });
 }
 
@@ -422,7 +423,7 @@ export class HelmInstruments {
         g.font = `800 22px ${FONT}`;
         g.textAlign = 'center';
         g.textBaseline = 'middle';
-        g.fillText('АВТОПІЛОТ', 64, 21);
+        g.fillText(L('АВТОПІЛОТ', `AUTOPILOT`), 64, 21);
       }), toneMapped: false }),
     );
     apScreen.position.set(0, 0.025, -0.026);
@@ -644,7 +645,7 @@ export class HelmInstruments {
     g.textBaseline = 'middle';
     g.fillStyle = '#e9f6ff';
     g.textAlign = 'left';
-    g.fillText(`SOG ${kn.toFixed(1)} вуз`, 10, 18);
+    g.fillText(L(`SOG ${kn.toFixed(1)} вуз`, `SOG ${kn.toFixed(1)} kn`), 10, 18);
     g.textAlign = 'right';
     g.fillText(`COG ${String(Math.round(cog) % 360).padStart(3, '0')}°`, W - 10, 18);
     g.textAlign = 'left';
@@ -654,15 +655,15 @@ export class HelmInstruments {
       const b = bearingDeg(f.x, f.z, r[0].x, r[0].z);
       const eta = f.speed > 0.4 ? Math.round(d / f.speed / 60) : null;
       g.fillStyle = '#ff9eea';
-      g.fillText(`→ №1 ${String(Math.round(b) % 360).padStart(3, '0')}° · ${fmtDist(d)}${eta != null ? ` · ${eta < 1 ? '<1' : eta} хв` : ''}`, 10, H - 17);
+      g.fillText(`→ №1 ${String(Math.round(b) % 360).padStart(3, '0')}° · ${fmtDist(d)}${eta != null ? L(` · ${eta < 1 ? '<1' : eta} хв`, ` · ${eta < 1 ? '<1' : eta} min`) : ''}`, 10, H - 17);
     } else {
       g.fillStyle = '#8fb0c4';
-      g.fillText('маршруту немає — постав точки на карті (M)', 10, H - 17);
+      g.fillText(L('маршруту немає — постав точки на карті (M)', `no route — set waypoints on the chart (M)`), 10, H - 17);
     }
     if (f.autopilot) {
       g.textAlign = 'right';
       g.fillStyle = '#48e07a';
-      g.fillText('АВТО', W - 10, H - 17);
+      g.fillText(L('АВТО', `AUTO`), W - 10, H - 17);
     }
     // рамка-світіння
     g.strokeStyle = '#0e1e2a';
@@ -727,17 +728,17 @@ export class HelmInstruments {
     g.textBaseline = 'middle';
     g.textAlign = 'left';
     g.fillStyle = d < 4.5 ? '#ff5a4a' : '#eaf6ff';
-    g.fillText(d > 240 ? '>250 м' : `${d.toFixed(d < 10 ? 1 : 0).replace('.', ',')} м`, 8, 21);
+    g.fillText(d > 240 ? L('>250 м', `>250 m`) : L(`${d.toFixed(d < 10 ? 1 : 0).replace('.', L(',', '.'))} м`, `${d.toFixed(d < 10 ? 1 : 0).replace('.', L(',', '.'))} m`), 8, 21);
     g.font = `700 14px ${FONT}`;
     g.textAlign = 'right';
-    const lvl = f.fish > 0.62 ? ['густо', '#48e07a'] : f.fish > 0.32 ? ['помірно', '#ffd34d'] : ['рідко', '#8fb0c4'];
+    const lvl = f.fish > 0.62 ? [L('густо', `dense`), '#48e07a'] : f.fish > 0.32 ? [L('помірно', `moderate`), '#ffd34d'] : [L('рідко', `sparse`), '#8fb0c4'];
     g.fillStyle = lvl[1];
-    g.fillText(`риба: ${lvl[0]}`, W - 8, 13);
+    g.fillText(L(`риба: ${lvl[0]}`, `fish: ${lvl[0]}`), W - 8, 13);
     g.fillStyle = '#8fb0c4';
     if (f.school) {
       const sd = Math.hypot(f.school.x - f.x, f.school.z - f.z);
-      g.fillText(sd < 60 ? `зграя: тут!` : `зграя ${compass8(bearingDeg(f.x, f.z, f.school.x, f.school.z))} · ${fmtDist(sd)}`, W - 8, 30);
-    } else g.fillText('зграй поблизу немає', W - 8, 30);
+      g.fillText(sd < 60 ? L(`зграя: тут!`, `school: right here!`) : L(`зграя ${compass8(bearingDeg(f.x, f.z, f.school.x, f.school.z))} · ${fmtDist(sd)}`, `school ${compass8(bearingDeg(f.x, f.z, f.school.x, f.school.z))} · ${fmtDist(sd)}`), W - 8, 30);
+    } else g.fillText(L('зграй поблизу немає', `no schools nearby`), W - 8, 30);
     // шкала глибин
     g.fillStyle = 'rgba(234,246,255,0.55)';
     g.font = `600 11px ${FONT}`;
@@ -866,9 +867,9 @@ export class HelmInstruments {
     g.font = `700 12px ${FONT}`;
     g.fillStyle = '#7dff9a';
     g.textAlign = 'left';
-    g.fillText('400 м', 6, 14);
+    g.fillText(L('400 м', `400 m`), 6, 14);
     g.textAlign = 'right';
-    g.fillText('курс ↑', W - 6, 14);
+    g.fillText(L('курс ↑', `heading ↑`), W - 6, 14);
     s.done(f.night);
   }
 }
@@ -918,13 +919,13 @@ export function instrShelfModel(lvl: number, k: PartKit): THREE.Object3D {
       c.fillRect(0, 0, 256, 168);
       c.fillStyle = '#7a94a0';
       c.font = `600 16px ${FONT}`;
-      c.fillText('ГЛИБИНА', 14, 30);
+      c.fillText(L('ГЛИБИНА', `DEPTH`), 14, 30);
       c.fillStyle = '#e8f4f6';
       c.font = `800 54px ${FONT}`;
       c.fillText('12,4', 14, 92);
       c.fillStyle = '#37c6b5';
       c.font = `700 20px ${FONT}`;
-      c.fillText('м   вітер 7,2 м/с', 14, 140);
+      c.fillText(L('м   вітер 7,2 м/с', `m   wind 7.2 m/s`), 14, 140);
     });
     s.position.set(0, y, 0.026);
     g.add(s);

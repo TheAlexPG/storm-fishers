@@ -3,6 +3,7 @@ import { PORT_POINTS } from '../world/port';
 import { terrainHeight } from '../world/portTerrain';
 import { ISLANDS, islandHeight } from '../world/islandShape';
 import { PORT_SITES, pierRect, siteBox, siteServices } from '../world/portSites';
+import { L } from '../core/i18n';
 
 /** суходоли поза підкладкою домашнього берега: гавані й острови (bbox x0,z0,x1,z1) */
 const LANDS: Array<[number, number, number, number]> = [
@@ -252,7 +253,7 @@ export class Minimap {
     c.fillStyle = '#e2674a';
     c.font = '800 11px Manrope, system-ui, sans-serif';
     c.textAlign = 'center';
-    c.fillText('П', cx, 13);
+    c.fillText(L('П', `N`), cx, 13);
 
     c.restore();
   }

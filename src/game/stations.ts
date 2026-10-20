@@ -4,6 +4,7 @@ import { Boat, BOAT } from '../world/boat';
 import { DECK_COLLIDERS, deckLimitX } from '../world/yachtLayout';
 import type { GameState } from './state';
 import type { AudioEngine } from '../core/audio';
+import { L } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // Станції та рутини: ремонт, помпа, кухня, сон, прибирання.
@@ -43,15 +44,15 @@ export class Stations {
     switch (id) {
       case 'engine': {
         if (!this.boat.engineOn) {
-          return this.startTimed('engine', 'Запуск двигуна…', 2.0, () => {
+          return this.startTimed('engine', L('Запуск двигуна…', `Starting the engine…`), 2.0, () => {
             this.boat.restartEngine();
             this.onBoatAction?.('engine');
             this.audio.click();
           });
         }
-        if (this.game.hull >= this.game.maxHull) return { ok: false, msg: 'Корпус справний' };
-        if (!this.game.spendEnergy(15)) return { ok: false, msg: 'Занадто втомлений (E → койка)' };
-        return this.startTimed('engine', 'Ремонт двигуна…', 3.0, () => {
+        if (this.game.hull >= this.game.maxHull) return { ok: false, msg: L('Корпус справний', `The hull is fine`) };
+        if (!this.game.spendEnergy(15)) return { ok: false, msg: L('Занадто втомлений (E → койка)', `Too tired (E → bunk)`) };
+        return this.startTimed('engine', L('Ремонт двигуна…', `Repairing the engine…`), 3.0, () => {
           this.game.repair(25);
           this.onBoatAction?.('repair', 25);
           this.audio.click();
@@ -62,10 +63,10 @@ export class Stations {
           this.stop();
           return { ok: true };
         }
-        if (this.boat.deckWater < 2 && this.boat.bilge < 1) return { ok: false, msg: 'Палуба й трюм сухі' };
+        if (this.boat.deckWater < 2 && this.boat.bilge < 1) return { ok: false, msg: L('Палуба й трюм сухі', `Deck and bilge are dry`) };
         this.active = {
           id: 'pump',
-          label: 'Помпа працює…',
+          label: L('Помпа працює…', `Pump running…`),
           duration: -1,
           t: 0,
           energyRate: 1.6,
@@ -78,9 +79,9 @@ export class Stations {
       }
       case 'kitchen': {
         const raw = this.game.hold.find((f) => !f.cooked);
-        if (!raw) return { ok: false, msg: 'Немає сирої риби' };
-        if (!this.game.spendEnergy(5)) return { ok: false, msg: 'Занадто втомлений' };
-        return this.startTimed('kitchen', 'Варимо рибу…', 2.5, () => {
+        if (!raw) return { ok: false, msg: L('Немає сирої риби', `No raw fish`) };
+        if (!this.game.spendEnergy(5)) return { ok: false, msg: L('Занадто втомлений', `Too tired`) };
+        return this.startTimed('kitchen', L('Варимо рибу…', `Cooking fish…`), 2.5, () => {
           raw.cooked = true;
           this.game.holdHook?.('cook', raw);
           this.audio.click();
@@ -92,9 +93,9 @@ export class Stations {
       }
       case 'clean': {
         const s = this.nearestStain();
-        if (!s) return { ok: false, msg: 'Палуба чиста' };
-        if (!this.game.spendEnergy(4)) return { ok: false, msg: 'Занадто втомлений' };
-        return this.startTimed('clean', 'Прибираємо…', 1.8, () => {
+        if (!s) return { ok: false, msg: L('Палуба чиста', `The deck is clean`) };
+        if (!this.game.spendEnergy(4)) return { ok: false, msg: L('Занадто втомлений', `Too tired`) };
+        return this.startTimed('clean', L('Прибираємо…', `Cleaning up…`), 1.8, () => {
           this.removeStain(s);
           // бонус до свіжості
           for (const f of this.game.hold) f.freshness = clamp(f.freshness + 2, 0, 100);

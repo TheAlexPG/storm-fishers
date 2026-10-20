@@ -1,5 +1,6 @@
 import Peer, { type DataConnection } from 'peerjs';
 import type { GameMsg, PeerInfo, Welcome } from './session';
+import { L } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // Кооп через інтернет без власного сервера: пряме з'єднання WebRTC
@@ -21,7 +22,7 @@ function makeCode(): string {
 
 function cleanNick(v: unknown): string {
   const s = String(v ?? '').replace(/[\u0000-\u001f<>&"']/g, '').trim().slice(0, 16);
-  return s || 'Моряк';
+  return s || L('Моряк', `Sailor`);
 }
 
 type Wire =
@@ -66,7 +67,7 @@ export class P2PSession {
       const peer = new Peer(PREFIX + code, { debug: 0 });
       const timer = setTimeout(() => {
         peer.destroy();
-        reject(new Error('Сервер знайомств не відповідає — перевір інтернет'));
+        reject(new Error(L('Сервер знайомств не відповідає — перевір інтернет', `The matchmaking server isn't responding — check your internet`)));
       }, 10000);
       peer.on('open', () => {
         clearTimeout(timer);
@@ -88,7 +89,7 @@ export class P2PSession {
         if (this.connected) return;
         peer.destroy();
         if (e.type === 'unavailable-id' && attempt < 5) this.host(nick, attempt + 1).then(resolve, reject);
-        else reject(new Error('Не вдалося створити кімнату: ' + (e.type ?? 'помилка мережі')));
+        else reject(new Error(L('Не вдалося створити кімнату: ', `Couldn't create a room: `) + (e.type ?? L('помилка мережі', `network error`))));
       });
     });
   }
@@ -100,7 +101,7 @@ export class P2PSession {
       if (!m || typeof m !== 'object') return;
       if (m.t === 'hello' && !gid) {
         if (this.conns.size >= MAX_PEERS - 1) {
-          c.send({ t: 'error', msg: `Кімната повна (${MAX_PEERS}/${MAX_PEERS})` });
+          c.send({ t: 'error', msg: '#full' }); // гість перекладе сам
           setTimeout(() => c.close(), 300);
           return;
         }
@@ -157,13 +158,13 @@ export class P2PSession {
         peer.destroy();
         reject(new Error(msg));
       };
-      const timer = setTimeout(() => fail(`Кімнату «${code}» не знайдено або капітан недоступний`), 12000);
+      const timer = setTimeout(() => fail(L(`Кімнату «${code}» не знайдено або капітан недоступний`, `Room “${code}” not found or the captain is unavailable`)), 12000);
       peer.on('error', (e: { type?: string }) => {
-        if (e.type === 'peer-unavailable') fail(`Кімнату «${code}» не знайдено`);
-        else if (!settled) fail('Немає з\'єднання: ' + (e.type ?? 'помилка мережі'));
+        if (e.type === 'peer-unavailable') fail(L(`Кімнату «${code}» не знайдено`, `Room “${code}” not found`));
+        else if (!settled) fail(L('Немає з\'єднання: ', `No connection: `) + (e.type ?? L('помилка мережі', `network error`)));
         else if (!this.closedByUs && this.connected) {
           this.connected = false;
-          this.onClosed?.('Зв\'язок із капітаном втрачено');
+          this.onClosed?.(L('Зв\'язок із капітаном втрачено', `Lost connection to the captain`));
         }
       });
       peer.on('open', () => {
@@ -192,7 +193,7 @@ export class P2PSession {
               break;
             }
             case 'error':
-              fail(m.msg);
+              fail(m.msg === '#full' ? L(`Кімната повна (${MAX_PEERS}/${MAX_PEERS})`, `The room is full (${MAX_PEERS}/${MAX_PEERS})`) : m.msg);
               break;
             case 'join': {
               const p = { id: m.id, nick: m.nick };
@@ -209,7 +210,7 @@ export class P2PSession {
             case 'hostLeft':
               this.closedByUs = true;
               this.connected = false;
-              this.onClosed?.('Капітана більше немає в грі — кімнату закрито');
+              this.onClosed?.(L('Капітана більше немає в грі — кімнату закрито', `The captain has left the game — the room is closed`));
               break;
             case 'msg':
               if (m.from != null) this.onMsg?.(m.from, m.d);
@@ -217,10 +218,10 @@ export class P2PSession {
           }
         });
         c.on('close', () => {
-          if (!settled) fail('З\'єднання закрито');
+          if (!settled) fail(L('З\'єднання закрито', `Connection closed`));
           else if (this.connected && !this.closedByUs) {
             this.connected = false;
-            this.onClosed?.('Зв\'язок із капітаном втрачено');
+            this.onClosed?.(L('Зв\'язок із капітаном втрачено', `Lost connection to the captain`));
           }
         });
       });
