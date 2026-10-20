@@ -603,35 +603,37 @@ body.intro-mode #vignette { opacity: 0.6; }
   position: fixed;
   left: 50%;
   top: 50%;
-  width: 5px;
-  height: 5px;
-  margin: -2.5px 0 0 -2.5px;
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
   border-radius: 50%;
-  background: rgba(255, 250, 240, 0.85);
-  box-shadow: 0 0 0 1px rgba(34, 48, 59, 0.45);
+  background: rgba(255, 250, 240, 0.9);
+  box-shadow: 0 0 0 0.5px rgba(34, 48, 59, 0.35);
   pointer-events: none;
   z-index: 15;
   opacity: 0;
   transition: width 0.14s ease, height 0.14s ease, margin 0.14s ease, background 0.14s, border-color 0.14s, opacity 0.2s;
-  border: 2px solid transparent;
+  border: 1.5px solid transparent;
   box-sizing: border-box;
 }
-#reticle.on { opacity: 1; }
+#reticle.on { opacity: 0.4; }
 #reticle.target {
-  width: 20px;
-  height: 20px;
-  margin: -10px 0 0 -10px;
-  background: rgba(255, 200, 103, 0.25);
-  border-color: #ffc867;
-  box-shadow: 0 0 0 1px rgba(34, 48, 59, 0.35), 0 0 10px rgba(255, 200, 103, 0.55);
+  opacity: 0.6;
+  width: 13px;
+  height: 13px;
+  margin: -6.5px 0 0 -6.5px;
+  background: rgba(255, 200, 103, 0.12);
+  border-color: rgba(255, 200, 103, 0.95);
+  box-shadow: 0 0 4px rgba(255, 200, 103, 0.35);
 }
 #reticle.fine {
-  width: 11px;
-  height: 11px;
-  margin: -5.5px 0 0 -5.5px;
+  opacity: 0.75;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
   background: #ffc867;
-  border-color: #fffaf0;
-  box-shadow: 0 0 0 1px rgba(34, 48, 59, 0.5), 0 0 8px rgba(255, 200, 103, 0.8);
+  border-color: rgba(255, 250, 240, 0.8);
+  box-shadow: 0 0 4px rgba(255, 200, 103, 0.5);
 }
 
 /* м'яка віньєтка поверх 3D (під HUD) */

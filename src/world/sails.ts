@@ -152,6 +152,13 @@ export class SailRig {
   private gennHead = new THREE.Vector3(0, RIG.top - 0.7, RIG.mastZ + 0.08);
 
   private boomAngle = 0;
+  /** кутова швидкість гіка (пружина шкота + інерція) */
+  private boomVel = 0;
+  /** рух корпусу для гойдання гіка: крен, швидкість крену й рискання */
+  private hullRoll = 0;
+  private hullRollRate = 0;
+  private hullYawRate = 0;
+  private gustT = Math.random() * 100;
   private side = 1; // +1 — гік на +X
   private boomPivot = new THREE.Group();
   private main: THREE.Mesh;
@@ -337,7 +344,13 @@ export class SailRig {
       }
       this.side = newSide;
     }
-    this.boomAngle = damp(this.boomAngle, this.side * want, this.hoist > 0.05 ? 2.2 : 0.6, dt);
+    // пориви: шкот трохи «дихає» — у пориві гік відходить, у затишші підбирається
+    this.gustT += dt;
+    const gt = this.gustT;
+    const gust = Math.sin(gt * 0.9) * Math.sin(gt * 0.37 + 1.3) + 0.35 * Math.sin(gt * 2.3 + 0.7);
+    const load = clamp(this.hoist * (this.aws / 9), 0, 1); // наскільки вітер тисне в парус
+    const boomTarget = this.side * clamp(want + gust * 0.07 * (0.4 + load), 0.06, 1.5);
+    this.updateBoom(dt, boomTarget, load);
 
     // перевантаження: шторм з повними парусами → розрив
     // (рахуємо й від справжнього вітру: шквали б'ють і на швидкому ходу)
@@ -365,6 +378,44 @@ export class SailRig {
     // крен: бокова сила в +X кладе човен на правий борт (roll < 0)
     const torqueRoll = -sideF * HEEL_LEVER * p.heel;
     return { fx, fz, torqueRoll };
+  }
+
+  /** рух корпусу (крен, кутові швидкості) — гойдає гік на хвилі й у поворотах */
+  setHullMotion(roll: number, rollRate: number, yawRate: number) {
+    this.hullRoll = roll;
+    this.hullRollRate = rollRate;
+    this.hullYawRate = yawRate;
+  }
+
+  /**
+   * Гік на пружині шкота: тягнеться до кута автотриму з легким перельотом;
+   * хвиля, що валяє човен з борту на борт, і поворот корпусу розгойдують його —
+   * сильніше, коли вітру в парусі мало (штиль, фордевінд, спущені паруси).
+   * Шкот не пускає далі за свою довжину — гік «б'ється» об нього й відскакує.
+   */
+  private updateBoom(dt: number, target: number, load: number) {
+    const up = this.hoist > 0.05;
+    const k = up ? 7 + 9 * load : 2.5;
+    const c = up ? 2.6 + 2 * load : 1.6;
+    const free = 1 - 0.75 * load;
+    // крен на борт — гік валиться на нижній борт; кутові швидкості — інерція
+    const acc = k * (target - this.boomAngle) - c * this.boomVel
+      + free * (-this.hullRoll * 3.2 - this.hullRollRate * 2.2)
+      - this.hullYawRate * 1.6;
+    const n = Math.max(1, Math.ceil(dt / 0.02));
+    const h = dt / n;
+    for (let i = 0; i < n; i++) {
+      this.boomVel += acc * h;
+      this.boomAngle += this.boomVel * h;
+    }
+    // шкот: далі за ціль (+ трохи слабини) гік не йде — відскок
+    const slack = 0.06 + 0.12 * (1 - load);
+    const lim = Math.abs(target) + slack;
+    if (up && Math.sign(this.boomAngle) === Math.sign(target) && Math.abs(this.boomAngle) > lim) {
+      this.boomAngle = Math.sign(this.boomAngle) * lim;
+      if (this.boomVel * Math.sign(this.boomAngle) > 0) this.boomVel *= -0.35;
+    }
+    this.boomAngle = clamp(this.boomAngle, -1.55, 1.55);
   }
 
   /** геометрія: грот (у рамці гіка), стаксель (між штагом і шкотовим кутом) */
@@ -483,6 +534,7 @@ export class SailRig {
     this.mode = 0;
     this.hoist = 0;
     this.boomAngle = 0;
+    this.boomVel = 0;
     this.stressT = 0;
     this.gennaker = 0;
   }

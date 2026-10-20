@@ -91,6 +91,8 @@ export class Boat {
   heading = MOOR_HEADING; // 0 → нос на +Z; старт — швартувальний курс
   pitch = 0;
   roll = 0;
+  private remRoll = 0;
+  private remHead = 0;
   angVel = new THREE.Vector3();
   /** зараз тримається на шварті (для HUD) */
   mooredNow = false;
@@ -751,6 +753,13 @@ export class Boat {
   }
 
   updateRemote(dt: number, t: number, ocean: Ocean, weather: Weather, game: GameState, particles: ParticlePool, audio: AudioEngine | null) {
+    // у чужої/екіпажної яхти кутових швидкостей немає — беремо з різниці кадрів
+    if (dt > 0) {
+      const rr = (this.roll - this.remRoll) / dt, yr = Math.atan2(Math.sin(this.heading - this.remHead), Math.cos(this.heading - this.remHead)) / dt;
+      this.sails.setHullMotion(this.roll, Math.max(-3, Math.min(3, rr)), Math.max(-2, Math.min(2, yr)));
+    }
+    this.remRoll = this.roll;
+    this.remHead = this.heading;
     this.sails.compute(dt, this.heading, this.vel, weather.windDir, weather.wind);
     this.sails.updateMeshes(dt, performance.now() / 1000);
     this.sails.updateWindex(this.heading, this.vel, weather.windDir);
@@ -885,6 +894,7 @@ export class Boat {
 
   /** сили вітрил → загальні сили/моменти кадру; анімація парусів */
   private applySails(dt: number, weather: Weather) {
+    this.sails.setHullMotion(this.roll, this.angVel.z, this.angVel.y);
     const sf = this.sails.compute(dt, this.heading, this.vel, weather.windDir, weather.wind);
     this._f.x += sf.fx;
     this._f.z += sf.fz;
