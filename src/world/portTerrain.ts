@@ -31,7 +31,8 @@ export function terrainHeight(x: number, z: number): number {
   // дно перед набережною (гавань); далі в морі — глибшає, і там можуть бути
   // острови та суходоли інших портів (раніше смуга до краю мапи їх «стирала»)
   if (ax <= PLATEAU.x1 && z > PLATEAU.z1) {
-    const h = -4.5 - 2.5 * smoothstep(PLATEAU.z1 + 120, PLATEAU.z1 + 260, z);
+    // за гаванню — плавно до глибокого моря (−12), інакше мілка смуга тяглася до краю світу
+    const h = -4.5 - 2.5 * smoothstep(PLATEAU.z1 + 120, PLATEAU.z1 + 260, z) - 5 * smoothstep(PLATEAU.z1 + 300, PLATEAU.z1 + 700, z);
     return z < PLATEAU.z1 + 120 ? h : Math.max(h, islandHeight(x, z));
   }
   // поза домашнім берегом (край мапи тоне в морі) — одразу глибоке море + острови/континенти

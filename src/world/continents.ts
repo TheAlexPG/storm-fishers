@@ -1,4 +1,4 @@
-import { fbm, smoothstep } from './portKit';
+import { fbm, noise2, smoothstep } from './portKit';
 import { L } from '../core/i18n';
 import { LANDMASSES, type Landmass } from '../core/region';
 
@@ -39,18 +39,18 @@ const LM = (id: string) => LANDMASSES.find((m) => m.id === id)!;
 export const CONTINENTS: ContinentDef[] = [
   {
     id: 'cont-med', name: L('Лазурове узбережжя', `The Azure Coast`), sub: L('білі містечка, оливи й тепле море', `white towns, olive groves and a warm sea`), style: 'med',
-    m: LM('med'), seed: 13.7, hill: 42, peak: 150, beachW: 22, shelf: 0.05, deep: -16,
+    m: LM('med'), seed: 13.7, hill: 42, peak: 135, beachW: 22, shelf: 0.05, deep: -16,
   },
   {
     id: 'cont-north', name: L('Північний край', `The Northern Reach`), sub: L('граніт, ялиці й холодний туман', `granite, firs and cold fog`), style: 'north',
-    m: LM('north'), seed: 29.3, hill: 58, peak: 240, beachW: 6, shelf: 0.22, deep: -22,
+    m: LM('north'), seed: 29.3, hill: 58, peak: 330, beachW: 6, shelf: 0.22, deep: -22,
   },
 ];
 
 export const CONTINENT_BY_ID: Record<string, ContinentDef> = Object.fromEntries(CONTINENTS.map((c) => [c.id, c]));
 
-/** «внутрішня» відстань від берега, м (>0 — суша): еліпс + лопаті + бухти й миси */
-export function contInside(c: ContinentDef, x: number, z: number): number {
+/** базовий берег: еліпс + лопаті + великі бухти й миси (від нього ставляться гавані) */
+function contBase(c: ContinentDef, x: number, z: number): number {
   const m = c.m;
   const dx = x - m.x, dz = z - m.z;
   const co = Math.cos(m.rot), si = Math.sin(m.rot);
@@ -94,7 +94,7 @@ function placePort(sp: (typeof PORT_SPECS)[number]): ContPort {
   const m = c.m;
   // старт — на суші (60% радіуса в напрямку ang), далі вздовж причалу до води
   let x = m.x + Math.cos(sp.ang) * m.rx * 0.55, z = m.z + Math.sin(sp.ang) * m.rz * 0.55;
-  for (let i = 0; i < 1200 && contInside(c, x, z) > 0; i++) {
+  for (let i = 0; i < 1200 && contBase(c, x, z) > 0; i++) {
     x += sp.o[0] * 2;
     z += sp.o[1] * 2;
   }
@@ -106,6 +106,105 @@ function placePort(sp: (typeof PORT_SPECS)[number]): ContPort {
 
 export const CONT_PORTS: ContPort[] = PORT_SPECS.map(placePort);
 
+// ── рваний берег поверх базового: фіорди, затоки, півострови, лагуна, шхери ──
+// Кожна риса — ламана з шириною, що змінюється від першої точки до останньої
+// (у фіорду — широке гирло в морі, вузька голова вглибині суші). Риси м'яко
+// згасають біля гаваней, тож причали, канали й плато містечок лишаються як були.
+
+interface Feat {
+  /** cut — вода (фіорд, затока); add — суша (півострів, мис); lagoon — мілка тепла вода в кільці суші */
+  k: 'cut' | 'add' | 'lagoon';
+  pts: Array<[number, number]>;
+  w0: number;
+  w1: number;
+  /** звивистість (м): зсув точки шумом перед відстанню до лінії */
+  warp: number;
+}
+
+const FEATS: Record<string, Feat[]> = {
+  'cont-med': [
+    // «чобіт»: довгий півострів на південний захід із п'ятою й носаком
+    { k: 'add', pts: [[3380, 3660], [3120, 3900], [2900, 4060], [2700, 4170]], w0: 200, w1: 90, warp: 45 },
+    { k: 'add', pts: [[3020, 4010], [3140, 4190]], w0: 95, w1: 70, warp: 30 },
+    // західна затока — відділяє «чобіт» від материка
+    { k: 'cut', pts: [[2380, 3560], [2760, 3640], [3060, 3560], [3200, 3430]], w0: 230, w1: 60, warp: 55 },
+    // затока між «чоботом» і материком
+    { k: 'cut', pts: [[3700, 4330], [3640, 3980], [3700, 3720]], w0: 230, w1: 70, warp: 50 },
+    // велика східна затока (Гольфо)
+    { k: 'cut', pts: [[4950, 2980], [4560, 2900], [4200, 2760], [4020, 2640]], w0: 330, w1: 80, warp: 60 },
+    // північно-східна бухта й мис над нею
+    { k: 'cut', pts: [[4520, 1980], [4260, 2180], [4080, 2300]], w0: 170, w1: 55, warp: 40 },
+    { k: 'add', pts: [[4180, 1980], [4430, 1720], [4560, 1650]], w0: 120, w1: 60, warp: 35 },
+    // південно-східна лагуна з вузьким проливом у море
+    { k: 'lagoon', pts: [[4180, 3560], [4300, 3620]], w0: 150, w1: 120, warp: 25 },
+    { k: 'cut', pts: [[4640, 3780], [4420, 3700], [4290, 3640]], w0: 40, w1: 28, warp: 15 },
+    // бухточки на південному березі
+    { k: 'cut', pts: [[4160, 4250], [4050, 4000]], w0: 120, w1: 40, warp: 35 },
+  ],
+  'cont-north': [
+    // фіорди на західному березі — довгі, вузькі, звивисті
+    { k: 'cut', pts: [[-4900, 2150], [-4560, 2230], [-4260, 2180], [-3990, 2290], [-3800, 2250]], w0: 95, w1: 22, warp: 55 },
+    { k: 'cut', pts: [[-4880, 2950], [-4520, 2870], [-4230, 2930], [-3960, 2820]], w0: 85, w1: 22, warp: 55 },
+    { k: 'cut', pts: [[-4560, 3800], [-4300, 3560], [-4100, 3420], [-3920, 3210]], w0: 90, w1: 20, warp: 50 },
+    // південний фіорд і східний — південніше від Сідар-Гарбор
+    { k: 'cut', pts: [[-3420, 4130], [-3480, 3820], [-3560, 3560], [-3540, 3330]], w0: 80, w1: 20, warp: 45 },
+    { k: 'cut', pts: [[-2380, 3260], [-2700, 3170], [-2960, 3060], [-3160, 3010]], w0: 85, w1: 22, warp: 45 },
+    // півострови: північно-західний ріг і південно-східна коса
+    { k: 'add', pts: [[-4180, 1700], [-4430, 1420], [-4640, 1300]], w0: 170, w1: 60, warp: 45 },
+    { k: 'add', pts: [[-3020, 3520], [-2830, 3800], [-2700, 3960]], w0: 150, w1: 55, warp: 40 },
+  ],
+};
+
+/** відстань від точки до ламаної й частка шляху вздовж неї (0..1) */
+function polyDist(pts: Array<[number, number]>, x: number, z: number): [number, number] {
+  let best = 1e9, bt = 0, acc = 0, total = 0;
+  for (let i = 1; i < pts.length; i++) total += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+  for (let i = 1; i < pts.length; i++) {
+    const [ax, az] = pts[i - 1], [bx, bz] = pts[i];
+    const vx = bx - ax, vz = bz - az, L2 = vx * vx + vz * vz, len = Math.sqrt(L2);
+    const t = Math.max(0, Math.min(1, ((x - ax) * vx + (z - az) * vz) / L2));
+    const d = Math.hypot(x - ax - vx * t, z - az - vz * t);
+    if (d < best) { best = d; bt = (acc + t * len) / total; }
+    acc += len;
+  }
+  return [best, bt];
+}
+
+/** затухання рис біля гаваней (1 — далеко, 0 — біля причалу) */
+function portFade(c: ContinentDef, x: number, z: number): number {
+  let f = 1;
+  for (const p of CONT_PORTS) if (p.cont === c.id) f = Math.min(f, smoothstep(330, 560, Math.hypot(x - p.x, z - p.z)));
+  return f;
+}
+
+/** «внутрішня» відстань від берега, м (>0 — суша): базовий берег + рваний берег */
+export function contInside(c: ContinentDef, x: number, z: number): number {
+  const base = contBase(c, x, z);
+  if (base < -700) return base;
+  const fade = portFade(c, x, z);
+  if (fade <= 0) return base;
+  const sd = c.seed;
+  // дрібні бухточки й мисики вздовж берега
+  let s = base + (fbm(x * 0.0085 + sd * 1.7, z * 0.0085 - sd, 3) - 0.5) * (c.style === 'north' ? 150 : 115) * smoothstep(320, 60, Math.abs(base));
+  for (const f of FEATS[c.id] ?? []) {
+    const wx = x + (fbm(x * 0.006 + sd, z * 0.006, 2) - 0.5) * 2 * f.warp;
+    const wz = z + (fbm(x * 0.006 - 31, z * 0.006 + sd, 2) - 0.5) * 2 * f.warp;
+    const [d, t] = polyDist(f.pts, wx, wz);
+    const w = f.w0 + (f.w1 - f.w0) * t;
+    if (f.k === 'add') s = Math.max(s, w - d);
+    else if (f.k === 'cut') s = Math.min(s, d - w);
+    // лагуна мілка: дно не глибше за ~2.5 м (пісок видно крізь бірюзу)
+    else s = Math.min(s, Math.max(d - w, -30));
+  }
+  // Північ: шхери — гранітні острівці в смузі ~40–300 м від берега
+  if (c.style === 'north' && s < -30 && s > -320) {
+    const n = fbm(x * 0.0105 + sd, z * 0.0105 - sd * 0.6, 3);
+    const band = smoothstep(-320, -220, s) * smoothstep(-30, -70, s);
+    if (n > 0.66) s = Math.max(s, ((n - 0.66) * 1300 - 18) * band - 40 * (1 - band));
+  }
+  return base + (s - base) * fade;
+}
+
 /** висота континенту без гаваней */
 function rawHeight(c: ContinentDef, x: number, z: number): number {
   const s = contInside(c, x, z);
@@ -113,9 +212,22 @@ function rawHeight(c: ContinentDef, x: number, z: number): number {
   const n1 = fbm(x * 0.004 + c.seed, z * 0.004 - c.seed, 3);
   const beach = Math.min(s, c.beachW) * (1.8 / c.beachW);
   const hills = smoothstep(c.beachW * 0.6, 300, s) * c.hill * (0.3 + 0.9 * n1);
-  const rf = fbm(x * 0.0016 - c.seed, z * 0.0016 + c.seed * 0.7, 4);
-  const ridge = 1 - Math.abs(rf * 2 - 1);
-  const mount = smoothstep(160, 700, s) * c.peak * ridge * ridge;
+  // хребти, а не купол: гостра «ребриста» сума октав зі зсунутим шумом —
+  // ланцюги вершин із сідлами й долинами; висота насичується вже за ~500 м
+  // від берега, тож середина не стає одним горбом
+  const wx = x + (fbm(x * 0.0009 + c.seed, z * 0.0009, 2) - 0.5) * 700;
+  const wz = z + (fbm(x * 0.0009 - 7, z * 0.0009 + c.seed, 2) - 0.5) * 700;
+  let ridge = 0, amp = 1, norm = 0, fx = wx * 0.00125, fz = wz * 0.00125;
+  for (let o = 0; o < 4; o++) {
+    const r = 1 - Math.abs(noise2(fx + c.seed * (o + 1), fz - c.seed) * 2 - 1);
+    ridge += r * r * amp;
+    norm += amp;
+    amp *= 0.5;
+    fx *= 2.1;
+    fz *= 2.1;
+  }
+  ridge /= norm;
+  const mount = smoothstep(90, 520, s) * c.peak * Math.min(1.15, Math.max(0, ridge * 2.5 - 0.62));
   // Північ: скелясті уступи біля води
   const cliff = c.style === 'north' ? smoothstep(2, 16, s) * 4 * n1 : 0;
   return beach + hills + mount + cliff;

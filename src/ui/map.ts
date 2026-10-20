@@ -40,6 +40,101 @@ const ROUTE = '#24878c';
 const ROUTE_D = '#1d6f73';
 
 /** що показує карта: зум (1 — увесь світ) і центр у світових координатах */
+/** підпис на лоції: рядки тексту з якорем (центр по x, базова лінія першого рядка) */
+interface MapLabel {
+  /** важливіші ставляться першими: гавані > континенти > вантаж > місця > райони > чутки */
+  prio: number;
+  x: number;
+  y: number;
+  lines: Array<{ t: string; font: string; fill: string }>;
+  /** крок між рядками, px */
+  lh?: number;
+  /** фон-«пігулка» під текстом */
+  pill?: string;
+  /** малювати навіть поверх інших (лише найважливіше) */
+  force?: boolean;
+  /** запасні зсуви, якщо основне місце зайняте */
+  alts?: Array<[number, number]>;
+}
+
+/**
+ * Розкладка підписів: кожен займає прямокутник; наступні не налазять на вже
+ * поставлені (і на значки, позначені через block). Не влазить ні на основне,
+ * ні на запасні місця — підпис ховається (дрібне зникає при віддаленні).
+ */
+class LabelLayout {
+  private items: MapLabel[] = [];
+  private boxes: Array<[number, number, number, number]> = [];
+  constructor(private c: CanvasRenderingContext2D, private w: number, private h: number) {}
+
+  /** перешкода: значок, якого підписи не мають закривати */
+  block(cx: number, cy: number, r: number) {
+    this.boxes.push([cx - r, cy - r, r * 2, r * 2]);
+  }
+
+  add(l: MapLabel) {
+    this.items.push(l);
+  }
+
+  private hit(b: [number, number, number, number]): boolean {
+    // допуск 2 px: дотик краями (пігулка над якорем) — не перекриття
+    const e = 2;
+    for (const o of this.boxes) if (b[0] + e < o[0] + o[2] && b[0] + b[2] - e > o[0] && b[1] + e < o[1] + o[3] && b[1] + b[3] - e > o[1]) return true;
+    return false;
+  }
+
+  flush() {
+    const c = this.c;
+    // стабільно: за пріоритетом, при рівних — у порядку додавання
+    const order = this.items.map((l, i) => [l, i] as const).sort((a, b) => b[0].prio - a[0].prio || a[1] - b[1]);
+    c.textAlign = 'center';
+    for (const [l] of order) {
+      const size = (f: string) => parseFloat(/(\d+(?:\.\d+)?)px/.exec(f)?.[1] ?? '12');
+      let tw = 0;
+      for (const ln of l.lines) {
+        c.font = ln.font;
+        tw = Math.max(tw, c.measureText(ln.t).width);
+      }
+      const lh = l.lh ?? 14;
+      const asc = size(l.lines[0].font) * 0.78;
+      const desc = size(l.lines[l.lines.length - 1].font) * 0.26;
+      const th = asc + (l.lines.length - 1) * lh + desc;
+      const px = l.pill ? 6 : 3, py = l.pill ? 4 : 2;
+      const cands: Array<[number, number]> = [[0, 0], ...(l.alts ?? [[0, th + 8], [0, -(th + 8)], [tw / 2 + 14, 0], [-(tw / 2 + 14), 0]])];
+      let at: [number, number] | null = null;
+      let box: [number, number, number, number] = [0, 0, 0, 0];
+      for (const [dx, dy] of cands) {
+        const b: [number, number, number, number] = [l.x + dx - tw / 2 - px, l.y + dy - asc - py, tw + px * 2, th + py * 2];
+        // зовсім за краєм — не місце
+        if (b[0] > this.w || b[1] > this.h || b[0] + b[2] < 0 || b[1] + b[3] < 0) continue;
+        if (!this.hit(b)) {
+          at = [dx, dy];
+          box = b;
+          break;
+        }
+      }
+      if (!at) {
+        if (!l.force) continue;
+        at = [0, 0];
+        box = [l.x - tw / 2 - px, l.y - asc - py, tw + px * 2, th + py * 2];
+      }
+      this.boxes.push(box);
+      if (l.pill) {
+        c.fillStyle = l.pill;
+        c.beginPath();
+        c.roundRect(box[0], box[1], box[2], box[3], box[3] / 2);
+        c.fill();
+      }
+      l.lines.forEach((ln, i) => {
+        c.font = ln.font;
+        c.fillStyle = ln.fill;
+        c.fillText(ln.t, l.x + at![0], l.y + at![1] + i * lh);
+      });
+    }
+    this.items = [];
+  }
+}
+
 export class MapViewState {
   zoom = 1;
   cx = (W0 + W1) / 2;
@@ -132,7 +227,7 @@ export class MapView {
     this.el.id = 'mapview';
     this.el.innerHTML = L(`
       <div class="map-head">
-        <span class="map-title">Лоція · Північне море</span>
+        <span class="map-title">Лоція · Грозові води</span>
         <span class="map-hint">ЛКМ — точка маршруту · тягни — рухати карту / точку · коліщатко — зум · ПКМ — прибрати точку · <kbd>M</kbd> закрити</span>
         <button class="map-close">✕</button>
       </div>
@@ -166,7 +261,7 @@ export class MapView {
       </div>
     `, `
       <div class="map-head">
-        <span class="map-title">Chart · North Sea</span>
+        <span class="map-title">Chart · The Storm Waters</span>
         <span class="map-hint">LMB — route point · drag — move chart / point · wheel — zoom · RMB — remove point · <kbd>M</kbd> close</span>
         <button class="map-close">✕</button>
       </div>
@@ -492,18 +587,21 @@ export class MapView {
       c.stroke();
       c.setLineDash([]);
     }
-    c.font = `600 11px ${FONT_D}`;
-    c.fillStyle = INK_SOFT;
     c.textAlign = 'center';
     const spaced = (t: string) => t.toUpperCase().split('').join('\u2009');
-    c.fillText(spaced(L('узбережжя', `coastal`)), mx(250 * WS), my(140 * WS));
-    c.fillText(spaced(L('середина', `mid-water`)), mx(0) + 650 * WS * s, my(0) + 120 * WS * s);
-    c.fillText(spaced(L('відкрите море', `open sea`)), mx(0), my(0) + 1000 * WS * s > h - 20 && view.zoom < 1.01 ? h - 24 : my(0) + 1000 * WS * s);
+    // усі підписи — через розкладку (важливіші першими, без налазання)
+    const labels = new LabelLayout(c, w, h);
+    // зони (кільця від дому): підписи лише зблизька — при віддаленні це місце
+    // назв районів і портів, а значення кілець пояснює легенда
+    if (s > 0.4) {
+      const zf = `600 11px ${FONT_D}`;
+      labels.add({ prio: 30, x: mx(250 * WS), y: my(140 * WS), lines: [{ t: spaced(L('узбережжя', `coastal`)), font: zf, fill: INK_SOFT }] });
+      labels.add({ prio: 30, x: mx(0) + 650 * WS * s, y: my(0) + 120 * WS * s, lines: [{ t: spaced(L('середина', `mid-water`)), font: zf, fill: INK_SOFT }] });
+      labels.add({ prio: 30, x: mx(0), y: my(0) + 1000 * WS * s, lines: [{ t: spaced(L('відкрите море', `open sea`)), font: zf, fill: INK_SOFT }] });
+    }
 
     // ── порт ──
-    c.font = `700 13px ${FONT_D}`;
-    c.fillStyle = INK;
-    c.fillText(L('Порт «Шторм»', `Storm Harbour`), mx(0), my(-150));
+    labels.add({ prio: 100, force: true, x: mx(0), y: my(-150), lines: [{ t: L('Порт «Шторм»', `Storm Harbour`), font: `700 13px ${FONT_D}`, fill: INK }] });
     // точки порту
     for (const pt of PORT_POINTS.filter((q) => !q.mapHide)) {
       c.beginPath();
@@ -519,18 +617,9 @@ export class MapView {
     }
     // наблизили — підписати, де що в порту (біржа, крамниця, верф…)
     if (s > 1.6) {
-      c.font = `800 ${Math.round(Math.min(13, 6 + s * 1.2))}px ${FONT}`;
-      c.textAlign = 'center';
+      const pf = `800 ${Math.round(Math.min(13, 6 + s * 1.2))}px ${FONT}`;
       for (const pt of [...PORT_POINTS.filter((q) => !q.mapHide), ...SITE_POINTS.filter((sp) => game.places.includes(sp.site))]) {
-        const txt = `${pt.icon} ${pt.name}`;
-        const tw = c.measureText(txt).width;
-        const lx = mx(pt.x), ly = my(pt.z) - 10;
-        c.fillStyle = 'rgba(255,250,240,0.9)';
-        c.beginPath();
-        c.roundRect(lx - tw / 2 - 5, ly - 11, tw + 10, 16, 8);
-        c.fill();
-        c.fillStyle = INK;
-        c.fillText(txt, lx, ly + 1);
+        labels.add({ prio: 75, x: mx(pt.x), y: my(pt.z) - 9, lines: [{ t: `${pt.icon} ${pt.name}`, font: pf, fill: INK }], pill: 'rgba(255,250,240,0.9)', alts: [[0, 22], [0, -18]] });
       }
     }
     // маяк
@@ -597,12 +686,16 @@ export class MapView {
       // райони-смуги (клімат континенту) — підпис над смугою; кола — над центром
       // клімат континенту — під суходолом (над ним — назви гаваней)
       const up = a.hh != null ? -(a.hh + a.r * 0.25) : a.r * 0.55;
-      c.font = `700 11px ${FONT_D}`;
-      c.fillStyle = calm ? 'rgba(36,120,140,0.85)' : 'rgba(70,86,104,0.85)';
-      c.fillText(`${calm ? '☀' : '⚠'} ${spaced(a.name)}`, mx(ax), my(az) - up * s);
-      c.font = `600 10.5px ${FONT}`;
-      c.fillStyle = calm ? 'rgba(36,120,140,0.7)' : 'rgba(70,86,104,0.7)';
-      c.fillText(calm ? L('тихе тепле море · рідкі шторми', `calm warm sea · rare storms`) : a.id === 'northc' ? L('холодно · туман і часті шторми', `cold · fog and frequent storms`) : L('вища хвиля · лютіші шторми', `higher seas · fiercer storms`), mx(ax), my(az) - up * s + 14);
+      labels.add({
+        prio: 60,
+        x: mx(ax),
+        y: my(az) - up * s,
+        lines: [
+          { t: `${calm ? '☀' : '⚠'} ${spaced(a.name)}`, font: `700 11px ${FONT_D}`, fill: calm ? 'rgba(36,120,140,0.85)' : 'rgba(70,86,104,0.85)' },
+          { t: calm ? L('тихе тепле море · рідкі шторми', `calm warm sea · rare storms`) : a.id === 'northc' ? L('холодно · туман і часті шторми', `cold · fog and frequent storms`) : L('вища хвиля · лютіші шторми', `higher seas · fiercer storms`), font: `600 10.5px ${FONT}`, fill: calm ? 'rgba(36,120,140,0.7)' : 'rgba(70,86,104,0.7)' },
+        ],
+        alts: [[0, 30], [0, -30], [0, 60], [0, -60]],
+      });
     }
 
     for (const l of LANDMARKS) {
@@ -611,13 +704,17 @@ export class MapView {
       const found = game.places.includes(l.id);
       // континенти — велика назва посередині суходолу (їх знають усі моряки)
       if (l.id.startsWith('cont-')) {
-        c.textAlign = 'center';
-        c.font = `800 ${Math.round(Math.min(26, 13 + s * 18))}px ${FONT_D}`;
-        c.fillStyle = 'rgba(42,58,70,0.72)';
-        c.fillText(spaced(l.name), px, pz);
-        c.font = `600 ${Math.round(Math.min(14, 9 + s * 8))}px ${FONT}`;
-        c.fillStyle = 'rgba(42,58,70,0.55)';
-        c.fillText(found ? l.sub : L('ще не бував', `not visited yet`), px, pz + 18);
+        labels.add({
+          prio: 90,
+          x: px,
+          y: pz,
+          lh: 18,
+          lines: [
+            { t: spaced(l.name), font: `800 ${Math.round(Math.min(26, 13 + s * 18))}px ${FONT_D}`, fill: 'rgba(42,58,70,0.72)' },
+            { t: found ? l.sub : L('ще не бував', `not visited yet`), font: `600 ${Math.round(Math.min(14, 9 + s * 8))}px ${FONT}`, fill: 'rgba(42,58,70,0.55)' },
+          ],
+          alts: [[0, 46], [0, -46], [0, 92], [0, -92]],
+        });
         continue;
       }
       // гавані — якір; назву знають і до відвідин (чутки моряків), відкриті — яскраві
@@ -633,15 +730,15 @@ export class MapView {
         c.textAlign = 'center';
         c.fillStyle = '#fffaf0';
         c.fillText('⚓', px, pz + 4.5);
-        c.font = `700 12px ${FONT_D}`;
-        const txt = found ? l.name : `${l.name} · ?`;
-        const tw = c.measureText(txt).width;
-        c.fillStyle = 'rgba(255,250,240,0.85)';
-        c.beginPath();
-        c.roundRect(px - tw / 2 - 6, pz - 31, tw + 12, 18, 9);
-        c.fill();
-        c.fillStyle = found ? INK : INK_SOFT;
-        c.fillText(txt, px, pz - 18);
+        labels.block(px, pz, 11);
+        {
+          const t = found ? l.name : `${l.name} · ?`;
+          const f = `700 12px ${FONT_D}`;
+          c.font = f;
+          const half = c.measureText(t).width / 2 + 20;
+          // назву гавані видно завжди: над якорем, під ним, праворуч чи ліворуч — де вільно
+          labels.add({ prio: 95, force: true, x: px, y: pz - 18, lines: [{ t, font: f, fill: found ? INK : INK_SOFT }], pill: 'rgba(255,250,240,0.85)', alts: [[0, 40], [half, 22], [-half, 22], [0, -22]] });
+        }
         continue;
       }
       c.beginPath();
@@ -654,10 +751,9 @@ export class MapView {
       c.stroke();
       c.setLineDash([]);
       c.textAlign = 'center';
+      labels.block(px, pz, found ? 7 : 10);
       if (found) {
-        c.font = `700 12px ${FONT_D}`;
-        c.fillStyle = INK;
-        c.fillText(l.name, px, pz - 12);
+        labels.add({ prio: 70, x: px, y: pz - 12, lines: [{ t: l.name, font: `700 12px ${FONT_D}`, fill: INK }], alts: [[0, 30], [0, -14]] });
       } else {
         c.font = `800 12px ${FONT}`;
         c.fillStyle = INK_SOFT;
@@ -683,15 +779,10 @@ export class MapView {
       c.font = '15px -apple-system, "Segoe UI", sans-serif';
       c.fillText('🎣', px, pz + 5);
       const risk = '⚠'.repeat(hs.risk);
-      c.font = `700 11.5px ${FONT_D}`;
-      c.fillStyle = found ? '#a8432c' : 'rgba(168,67,44,0.7)';
-      const label = found ? `${hs.name} · ${risk}` : L(`Чутки: рибне місце · ${risk}`, `Rumour: fishing ground · ${risk}`);
-      c.fillText(label, px, pz + rr + 14);
-      if (found) {
-        c.font = `600 10.5px ${FONT}`;
-        c.fillStyle = INK_SOFT;
-        c.fillText(L(`риба ×${hs.kg.toFixed(1).replace('.', ',')} ваги · трофеї частіше`, `fish ×${hs.kg.toFixed(1)} weight · more trophies`), px, pz + rr + 28);
-      }
+      labels.block(px, pz, 10);
+      const hl: MapLabel['lines'] = [{ t: found ? `${hs.name} · ${risk}` : L(`Чутки: рибне місце · ${risk}`, `Rumour: fishing ground · ${risk}`), font: `700 11.5px ${FONT_D}`, fill: found ? '#a8432c' : 'rgba(168,67,44,0.7)' }];
+      if (found) hl.push({ t: L(`риба ×${hs.kg.toFixed(1).replace('.', ',')} ваги · трофеї частіше`, `fish ×${hs.kg.toFixed(1)} weight · more trophies`), font: `600 10.5px ${FONT}`, fill: INK_SOFT });
+      labels.add({ prio: found ? 58 : 45, x: px, y: pz + rr + 14, lines: hl, alts: [[0, -(2 * rr + 24 + (found ? 14 : 0))], [0, 16]] });
     }
 
     // ── сті (радіо-звіти) ──
@@ -713,9 +804,9 @@ export class MapView {
       c.font = '16px -apple-system, "Segoe UI", sans-serif';
       c.textAlign = 'center';
       c.fillText('🐟', px, pz + 6);
-      c.font = `800 11.5px ${FONT}`;
-      c.fillStyle = '#1d6f73';
-      c.fillText(`${game.speciesName(r.speciesId)} ×${r.boost.toFixed(1).replace('.', L(',', '.'))}`, px, pz + Math.max(38, rr + 16));
+      labels.block(px, pz, 10);
+      const sy = pz + Math.max(38, rr + 16);
+      labels.add({ prio: 65, x: px, y: sy, lines: [{ t: `${game.speciesName(r.speciesId)} ×${r.boost.toFixed(1).replace('.', L(',', '.'))}`, font: `800 11.5px ${FONT}`, fill: '#1d6f73' }], alts: [[0, -(sy - pz) * 2 + 4], [0, 16]] });
     }
 
     // ── доставки: звідки → куди (коричневий пунктир, ящик біля гавані призначення) ──
@@ -738,11 +829,11 @@ export class MapView {
       c.font = '15px -apple-system, "Segoe UI", sans-serif';
       c.textAlign = 'center';
       c.fillText('📦', bx, bz);
-      c.font = `700 11px ${FONT}`;
-      c.fillStyle = '#a8620f';
       const late = game.clockH > o.dueH;
-      c.fillText(`${g.icon} ${g.name} ×${o.crates}${late ? L(' · прострочено', ' · overdue') : ''}`, bx, bz + 14);
+      labels.block(bx, bz - 5, 9);
+      labels.add({ prio: 80, x: bx, y: bz + 14, lines: [{ t: `${g.icon} ${g.name} ×${o.crates}${late ? L(' · прострочено', ' · overdue') : ''}`, font: `700 11px ${FONT}`, fill: '#a8620f' }], alts: [[0, 30], [0, -34]] });
     }
+    labels.flush();
     // ── маршрути екіпажу (кооп, свій борт): кольором автора, під своїм ──
     this.drawCrewRoutes(c, mx, my, boatX, boatZ, zk);
     if (main) this.updateCrewPanel();
