@@ -98,7 +98,9 @@ export type BoatAction =
   /** радіо: v — ЛКМ/ПКМ по органу, s — кроки коліщатка */
   | { a: 'radio'; c: string; v?: number; s?: number }
   /** спільний гаманець: v > 0 — заробіток екіпажу, v < 0 — витрата; k — стаття книги */
-  | { a: 'money'; v: number; k: string };
+  | { a: 'money'; v: number; k: string }
+  /** вимикач світла: k 0 — каюта, 1 — палуба; v — режим 0 авто / 1 увімк / 2 вимк */
+  | { a: 'lights'; k: number; v: number };
 
 export interface FriendMarker {
   x: number;

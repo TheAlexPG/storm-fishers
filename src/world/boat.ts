@@ -20,6 +20,7 @@ import { holderCount, pumpAuto, pumpManual } from '../game/upgrades';
 import { Anchor } from './anchor';
 import { CanvasTop } from './canvasTop';
 import { depthAt } from './helmInstruments';
+import { BoatLights, type LightMode } from './boatLights';
 
 // ─────────────────────────────────────────────────────────────
 // Вітрильна яхта «Шторм» (меш — yachtModel.ts, компонування — yachtLayout.ts):
@@ -76,6 +77,9 @@ export const STATION_POS: Record<string, { x: number; z: number; y?: number }> =
   // тент: скласти / розкласти (лівий обруч біміні) і штори (правий рулон)
   tent: { x: -0.72, z: -3.25 },
   curtain: { x: 0.72, z: -3.25 },
+  // вимикачі світла: щиток над штурманським столом і тумблер на лаві кокпіту
+  cablight: { x: 0.55, z: 0.36, y: SOLE_Y },
+  decklight: { x: 0.15, z: -1.25 },
 };
 
 export interface RockObstacle {
@@ -199,6 +203,11 @@ export class Boat {
   }
   private hullMats: THREE.MeshStandardMaterial[] = [];
   private interiorLight!: THREE.PointLight;
+  /** вимикачі світла: каюта й палуба (0 авто, 1 увімк, 2 вимк) — стан у сейві власника, екіпаж бачить зі знімка */
+  cabinLights: LightMode = 0;
+  deckLights: LightMode = 0;
+  lightsCtl!: BoatLights;
+  private stormNow = 0;
   private cockpitLight!: THREE.PointLight;
   private glowMats: THREE.MeshStandardMaterial[] = [];
   private lights: Array<{ light: THREE.PointLight | null; lamp: THREE.Mesh }> = [];
@@ -304,6 +313,7 @@ export class Boat {
     this.upg = r.upg;
     this.lights = r.lights;
     this.spotlight = r.spotlight;
+    this.lightsCtl = new BoatLights(this.group);
     this.sails = new SailRig(this.group, r.furledJib);
     this.fenders = r.fenders;
 
@@ -387,7 +397,9 @@ export class Boat {
 
     // світло
     const lightsLvl = levels.lights ?? 0;
-    const night = 1 - timeDaylight;
+    // вимикач «Палуба»: авто — як було (від ночі), увімк — горять і вдень, вимк — темно
+    const night = BoatLights.deckLevel(this.deckLights, timeDaylight);
+    this.lightsCtl.update(this.cabinLights, this.deckLights, timeDaylight, this.stormNow, this.anchor.state === 2, this.engineOn);
     for (const l of this.lights) {
       if (l.light) {
         l.light.intensity = lightsLvl > 0 ? night * (1.2 + lightsLvl * 0.5) : 0;
@@ -400,8 +412,9 @@ export class Boat {
 
   /** каютне світло: тепле сяйво вночі та у шторм, ілюмінатори світлять разом */
   setInteriorLight(daylight: number, storm: number) {
-    const night = 1 - daylight;
-    const i = Math.max(0.2, night * 1.7 + storm * 0.9);
+    this.stormNow = storm;
+    // вимикач «Каюта»: авто — вночі/у шторм, увімк — завжди, вимк — темно
+    const i = BoatLights.cabinLevel(this.cabinLights, daylight, storm);
     this.interiorLight.intensity = i;
     // кокпіт: дах завжди читається як темне дерево, вночі/штормі — тепле укриття
     this.cockpitLight.intensity = 2.5 + i * 3;
@@ -1032,6 +1045,7 @@ export class Boat {
       ...this.anchor.netState(),
       this.tentClosed ? 1 : 0, this.tentFolded ? 1 : 0,
       this.cargoCode,
+      this.cabinLights, this.deckLights,
     ];
   }
 
@@ -1060,6 +1074,10 @@ export class Boat {
       this.tentFolded = b[26] >= 0.5;
     }
     if (b.length > 27) this.cargoCode = b[27];
+    if (b.length > 29) {
+      this.cabinLights = (b[28] | 0) as LightMode;
+      this.deckLights = (b[29] | 0) as LightMode;
+    }
   }
 
   /** сили вітрил → загальні сили/моменти кадру; анімація парусів */

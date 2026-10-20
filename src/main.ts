@@ -14,6 +14,7 @@ import { Boat, BOAT, MOOR, MOOR_HEADING, STATION_POS } from './world/boat';
 import { moorSlotX, MOOR_SLOTS } from './net/coop';
 import { Port } from './world/port';
 import { terrainHeight } from './world/portTerrain';
+import { modeLabel, nextMode, type LightMode } from './world/boatLights';
 import { Player, type Interactable } from './world/player';
 import { Sky } from './world/sky';
 import { SkyEnvironment } from './world/graphics';
@@ -908,6 +909,12 @@ class Game {
         } else g.spend(-v, (Object.prototype.hasOwnProperty.call(g.ledger.spent, act.k) ? act.k : 'other') as SpendKind);
         break;
       }
+      case 'lights':
+        if (act.v === 0 || act.v === 1 || act.v === 2) {
+          if (act.k === 0) this.game.lightsCabin = act.v;
+          else this.game.lightsDeck = act.v;
+        }
+        break;
       case 'anchor':
         this.anchorResult(this.boat.anchor.toggle(this.boat), nick);
         break;
@@ -1110,6 +1117,8 @@ class Game {
     if (id === 'st:anchor') return [id, (this._windlass ??= this.boat.group.getObjectsByProperty('name', 'windlass'))];
     if (id === 'st:tent' || id === 'st:curtain') return [id + this.boat.tentLevel, id === 'st:tent' ? this.boat.canvas.foldObjects : this.boat.canvas.curtainObjects];
     if (id === 'st:door') return [id, [this.cabinDoor.group]];
+    if (id === 'st:cablight') return [id + this.boat.cabinLights, [this.boat.lightsCtl.cabinSwitch]];
+    if (id === 'st:decklight') return [id + this.boat.deckLights, [this.boat.lightsCtl.deckSwitch]];
     if (id === 'st:rod') return [id + this.fishing.rackObjects().length, [...this.fishing.rackObjects(), ...near('rack', 0.42, Y_DECK + 0.2, 3.76, 0.2, 0.6)]];
     if (id.startsWith('st:holder')) {
       const h = Number(id.slice(9));
@@ -1989,7 +1998,7 @@ class Game {
     this.radio.spectrum = this.audio.radioSpectrum();
     this.radio.update(dt, inCabin);
     this.radioHold -= dt;
-    this.cabinDecor.update(dt, this.time.hours, this.weather.base, this.boat.group, 1 - this.time.daylight);
+    this.cabinDecor.update(dt, this.time.hours, this.weather.base, this.boat.group, 1 - this.time.daylight, this.boat.cabinLights === 2 ? 0 : 1);
     {
       // хата: світло у вікнах і лампа; журнал на стіні — перемальовується, коли поруч
       const p = this.player;
@@ -2359,6 +2368,11 @@ class Game {
 
     if (id === 'st:tent' || id === 'st:curtain') {
       this.tentToggle(id === 'st:tent' ? 'tent' : 'curtain');
+      return;
+    }
+
+    if (id === 'st:cablight' || id === 'st:decklight') {
+      this.lightsToggle(id === 'st:cablight' ? 0 : 1);
       return;
     }
 
@@ -2839,6 +2853,8 @@ class Game {
       // тент: стан — у сейві власника; екіпаж бачить зі знімка
       this.boat.tentFolded = g.tentFolded;
       this.boat.tentClosed = g.tentClosed;
+      this.boat.cabinLights = g.lightsCabin as LightMode;
+      this.boat.deckLights = g.lightsDeck as LightMode;
     }
 
     // камера: від першої особи / з-за корми (V за штурвалом) / обліт у заставці
@@ -3403,6 +3419,26 @@ class Game {
         'warn', 4200,
       );
     }
+  }
+
+  /** вимикач світла (0 — каюта, 1 — палуба): авто → увімк → вимк; екіпаж — через власника */
+  private lightsToggle(k: 0 | 1) {
+    const b = this.boat;
+    const v = nextMode(k === 0 ? b.cabinLights : b.deckLights);
+    this.audio.click();
+    if (k === 0) b.cabinLights = v;
+    else b.deckLights = v;
+    if (this.coop.crewing) this.coop.sendAction({ a: 'lights', k, v });
+    else {
+      if (k === 0) this.game.lightsCabin = v;
+      else this.game.lightsDeck = v;
+      this.saveGame();
+    }
+    this.hud.toast(
+      k === 0 ? L(`💡 Світло в каюті: ${modeLabel(v)}`, `💡 Cabin lights: ${modeLabel(v)}`) : L(`🔦 Палуба й ходові вогні: ${modeLabel(v)}`, `🔦 Deck & running lights: ${modeLabel(v)}`),
+      'good',
+      1800,
+    );
   }
 
   /** тент: скласти/розкласти або опустити/скрутити штори (екіпаж — через власника) */

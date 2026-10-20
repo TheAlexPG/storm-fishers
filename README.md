@@ -59,6 +59,7 @@ explore islands, outrun Beaufort‑scale storms and come home with a hold full o
 ### ⛵ The yacht
 - **Sailing physics** — keel, sails trimmed to the apparent wind, a sail wheel at the mast to set exactly how much canvas you carry (two reefs, full sail, gennaker) with a suggestion for the current wind, gybes, a motor for the harbour, fuel, rudder and throttle at a real wheel.
 - **Walk the whole boat** — deck, cockpit and a cabin below with closable companionway doors (leave them open in a storm and water gets in!).
+- **Light switches** — a brass toggle on the nav-station panel for the cabin lights and one on the cockpit bench for the deck: running lights (red, green, stern; masthead under engine, anchor light at anchor), deck lanterns and a spreader floodlight for night fishing. Each cycles **auto → on → off**; in co-op the crew sees and can flip them.
 - **A cozy cabin** — settees with cushions, rugs, bookshelves, a ship in a bottle, a swinging oil lantern, and a clock and barometer that follow the game time and the weather.
 - **Physical radio «Шторм‑М1»** — a real set with a screen and separate controls: power, five preset buttons, a tuning knob (with static between stations) and a volume knob. Aim at a control and click it, or turn it with the mouse wheel. Its screen shows a 3‑day forecast, market prices with sparklines, fish reports, a live music spectrum or typed‑out channel 16 chatter.
 - **Chart table** — lean over a paper chart in the cabin, zoom it and plot your course with a pencil.
