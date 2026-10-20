@@ -25,6 +25,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      # превʼю експериментальних гілок: /preview/<гілка>/ (якщо гілка є)
+      - name: Build branch previews
+        run: |
+          for b in water-sot; do
+            if git fetch --depth=1 origin "$b"; then
+              rm -rf "/tmp/pv-$b" && git worktree add "/tmp/pv-$b" FETCH_HEAD
+              (cd "/tmp/pv-$b" && npm ci && npx vite build --base ./ --outDir "$GITHUB_WORKSPACE/dist/preview/$b")
+            fi
+          done
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
