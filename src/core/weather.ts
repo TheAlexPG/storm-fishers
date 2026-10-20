@@ -105,6 +105,29 @@ export class Weather {
     }
   }
 
+  /**
+   * Пропуск часу (сон): цикл погоди проходить стільки ж реальних секунд, скільки
+   * відповідає пропущеним ігровим годинам — фази змінюються, сила й напрям вітру
+   * встигають дійти до нових цілей. Без блискавок/звуків. Кооп-гість і заморожені
+   * тести (holdTimer ≥ 1e8) не рахують — погоду їм дає капітан.
+   */
+  advance(sec: number) {
+    if (this.holdTimer >= 1e8 || !(sec > 0)) return;
+    let left = sec;
+    while (left > 0) {
+      const step = Math.min(left, 2);
+      this.holdTimer -= step;
+      this.phaseLeft -= step;
+      if (this.phaseLeft <= 0) this.nextPhase();
+      else if (this.holdTimer <= 0) this.wobble();
+      this.base = damp(this.base, this.target, 0.025, step);
+      this.windDir = damp(this.windDir, this.windDirTarget, 0.08, step);
+      left -= step;
+    }
+    this.flash = 0;
+    this.nextLightning = rand(4, 14);
+  }
+
   /** наступна фаза циклу */
   private nextPhase() {
     const far = this.localMul > 1.15;

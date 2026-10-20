@@ -24,6 +24,7 @@ export interface Interactable {
 }
 
 const EYE = 1.62;
+const WORLD_UP = new THREE.Vector3(0, 1, 0);
 const WALK = 3.4;
 const RUN = 5.6;
 const SWIM = 2.3;
@@ -149,9 +150,16 @@ export class Player {
   /** на борту: голова з поточної пози човна (викликати після boat.update) */
   syncHead(boat: Boat) {
     if (this.mode !== 'boat') return;
-    boat.localToWorld(this.localX, this.floorY + EYE + this.jumpH, this.localZ, this.head);
+    // ноги — на палубі, а тіло балансує: «вгору» голови частково до вертикалі світу,
+    // тож на 1,6-метровому важелі голова не хитається з усім кренем корпусу
+    // (у каюті — менше, щоб не винести голову крізь переборки)
+    boat.localToWorld(this.localX, this.floorY, this.localZ, this.head);
+    this._bodyUp.set(0, 1, 0).applyQuaternion(boat.group.quaternion);
+    this._bodyUp.lerp(WORLD_UP, this.level === 'deck' ? 0.6 : 0.3).normalize();
+    this.head.addScaledVector(this._bodyUp, EYE + this.jumpH);
     this.head.y += this.headBob;
   }
+  private _bodyUp = new THREE.Vector3();
 
   /** свіжий кадр: миша + рух + переходи */
   update(dt: number, input: Input, boat: Boat, port: Port, ocean: Ocean, t: number) {
