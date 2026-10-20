@@ -147,6 +147,9 @@ export interface SaveData {
   tentFit?: number | null;
   tentFolded?: boolean;
   tentClosed?: boolean;
+  /** вимикачі світла яхти (0 авто, 1 увімк, 2 вимк) */
+  lightsCabin?: number;
+  lightsDeck?: number;
 }
 
 export interface PlayerStats {

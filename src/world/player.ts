@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { modeLabel } from './boatLights';
 import { clamp, damp } from '../core/math';
 import { Input } from '../core/input';
 import { Boat, BOAT, STATION_POS } from './boat';
@@ -32,7 +33,7 @@ const RUN = 5.6;
 const SWIM = 2.3;
 
 // станції в салоні (доступні лише внизу)
-const CABIN_STATIONS = new Set(['kitchen', 'radio', 'bed', 'chart', 'kettle', 'cookbook']);
+const CABIN_STATIONS = new Set(['kitchen', 'radio', 'bed', 'chart', 'kettle', 'cookbook', 'cablight']);
 /** куди дивитись, щоб «вибрати» станцію (локаль яхти) — для приладів на одному місці */
 const LOOK_AT: Record<string, [number, number, number]> = {
   radio: [1.04, SOLE_Y + 1.03, 0.95],
@@ -47,6 +48,9 @@ const LOOK_AT: Record<string, [number, number, number]> = {
   // тент: лівий обруч біміні (скласти) і правий рулон штори
   tent: [-1.02, 2.5, -2.95],
   curtain: [1.06, 2.95, -3.5],
+  // вимикачі світла (world/boatLights.ts)
+  cablight: [1.05, SOLE_Y + 1.12, 0.36],
+  decklight: [0.59, 1.3, -1.0],
 };
 /** дрібні органи: вибираються лише точним поглядом (cos кута до точки LOOK_AT), щоб не перебивати сусідів */
 const LOOK_ONLY: Record<string, number> = { autopilot: 0.985 };
@@ -689,6 +693,8 @@ export class Player {
       case 'pump': return boat.bilge > 1 ? L(`Помпа — відкачати трюм (${Math.round(boat.bilge)}%)`, `Pump — empty the bilge (${Math.round(boat.bilge)}%)`) : boat.deckWater > 5 ? L('Осушити палубу', `Drain the deck`) : L('Помпа (сухо)', `Pump (dry)`);
       case 'tent': return boat.tentFolded ? L('Тент — розкласти (козирок і біміні)', `Canvas — unfold (sprayhood and bimini)`) : L('Тент — скласти (відкрити небо й паруси)', `Canvas — fold (open up the sky and the sails)`);
       case 'curtain': return boat.tentClosed ? L('Штори тенту — скрутити (видно все навколо)', `Tent curtains — roll up (see all around)`) : L('Штори тенту — опустити (захист від хвиль і дощу)', `Tent curtains — lower (shelter from waves and rain)`);
+      case 'cablight': return L(`Світло в каюті: ${modeLabel(boat.cabinLights)} — перемкнути (авто → увімк → вимк)`, `Cabin lights: ${modeLabel(boat.cabinLights)} — switch (auto → on → off)`);
+      case 'decklight': return L(`Світло на палубі й ходові вогні: ${modeLabel(boat.deckLights)} — перемкнути`, `Deck & running lights: ${modeLabel(boat.deckLights)} — switch`);
       case 'door': return boat.doorOpen ? L('Двері каюти — зачинити (у шторм вода ллється в салон)', `Cabin doors — close (in a storm water pours into the saloon)`) : L('Двері каюти — відчинити', `Cabin doors — open`);
       case 'nets': return this.stationText?.('nets') ?? L('Сітки', `Nets`);
       case 'anchor': return this.stationText?.('anchor') ?? L('Брашпиль — якір', `Windlass — anchor`);

@@ -93,7 +93,9 @@ export type BoatAction =
   | { a: 'ap'; v: number }
   | { a: 'ign' }
   | { a: 'tent'; v: number }
-  | { a: 'curtain'; v: number };
+  | { a: 'curtain'; v: number }
+  /** вимикач світла: k 0 — каюта, 1 — палуба; v — режим 0 авто / 1 увімк / 2 вимк */
+  | { a: 'lights'; k: number; v: number };
 
 export interface FriendMarker {
   x: number;

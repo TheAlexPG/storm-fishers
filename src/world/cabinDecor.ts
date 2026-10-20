@@ -480,7 +480,7 @@ export class CabinDecor {
   }
 
   /** hours — час гри, storm — сила погоди 0..1, boat — група яхти (для гойдання лампи) */
-  update(dt: number, hours: number, storm: number, boat: THREE.Object3D, night: number) {
+  update(dt: number, hours: number, storm: number, boat: THREE.Object3D, night: number, lamp = 1) {
     this.t += dt;
     // годинник: справжній час гри
     const h12 = hours % 12;
@@ -501,6 +501,7 @@ export class CabinDecor {
     this.lantern.rotation.set(this.swing.x, 0, this.swing.y);
     // тепле світло: вночі яскравіше, полум'я ледь мерехтить
     const flick = 1 + Math.sin(this.t * 9) * 0.05 + Math.sin(this.t * 23) * 0.04;
-    for (const m of this.glow) m.emissiveIntensity = (0.7 + night * 0.9) * (m === this.flame ? flick * 1.3 : 1);
+    // вимикач «Каюта» (lamp 0) гасить і ліхтар
+    for (const m of this.glow) m.emissiveIntensity = lamp * (0.7 + night * 0.9) * (m === this.flame ? flick * 1.3 : 1);
   }
 }

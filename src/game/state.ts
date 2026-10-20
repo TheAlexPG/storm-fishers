@@ -43,6 +43,9 @@ export class GameState {
   tentFit: number | null = null;
   tentFolded = false;
   tentClosed = false;
+  /** вимикачі світла яхти: 0 авто, 1 увімк, 2 вимк */
+  lightsCabin = 0;
+  lightsDeck = 0;
 
   /** рівні апгрейдів, як вони стоять на яхті (тент можна зняти частково чи повністю) */
   fittedUpgrades(): Record<string, number> {
@@ -549,6 +552,8 @@ export class GameState {
       tentFit: this.tentFit,
       tentFolded: this.tentFolded,
       tentClosed: this.tentClosed,
+      lightsCabin: this.lightsCabin,
+      lightsDeck: this.lightsDeck,
       records: this.records,
       tut: this.tut,
       track: this.track,
@@ -638,6 +643,8 @@ export class GameState {
     this.tentFit = typeof data.tentFit === 'number' ? data.tentFit : null;
     this.tentFolded = data.tentFolded === true;
     this.tentClosed = data.tentClosed === true;
+    this.lightsCabin = [0, 1, 2].includes(data.lightsCabin as number) ? (data.lightsCabin as number) : 0;
+    this.lightsDeck = [0, 1, 2].includes(data.lightsDeck as number) ? (data.lightsDeck as number) : 0;
     this.records = {};
     if (data.records && typeof data.records === 'object') for (const [k, v] of Object.entries(data.records)) if (Number.isFinite(v)) this.records[k] = Number(v);
     // старі сейви без кроку: досвідчений гравець — навчання пропускаємо
