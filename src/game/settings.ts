@@ -16,11 +16,13 @@ export interface Settings {
   scale: number;
   /** «легка риболовля»: ширші вікна підсічки й зелена зона, більше часу на помилку */
   easyFish: boolean;
+  /** темп гри −1 спокійний … +1 динамічний (у кооп-кімнаті діє темп господаря) */
+  pace: number;
 }
 
 const KEY = 'storm-settings';
 
-export const DEFAULT_SETTINGS: Settings = { volume: 0.8, music: 0.7, sens: 1, invertY: false, fov: 70, scale: 1, easyFish: true };
+export const DEFAULT_SETTINGS: Settings = { volume: 0.8, music: 0.7, sens: 1, invertY: false, fov: 70, scale: 1, easyFish: true, pace: 0 };
 
 export function loadSettings(): Settings {
   const s = { ...DEFAULT_SETTINGS };

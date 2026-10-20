@@ -477,6 +477,8 @@ export class Dialogs {
         <label>Чіткість<input type="range" min="50" max="100" step="5" data-k="scale"><output></output></label>
         <label class="chk"><input type="checkbox" data-k="invertY"><span>Інвертувати мишу по вертикалі</span></label>
         <label class="chk"><input type="checkbox" data-k="easyFish"><span>Легка риболовля — більше часу на підсічку й помилки</span></label>
+        <label>Темп гри<input type="range" min="-100" max="100" step="25" data-k="pace"><output></output></label>
+        <p class="sub">Динамічний — клює частіше, але риба дешевша; спокійний — рідше, але дорожче. У кооп-кімнаті діє темп господаря.</p>
       </div>
       <h2>Керування</h2>
       <div class="intro-keys">
@@ -563,6 +565,8 @@ export class Dialogs {
         <label>Sharpness<input type="range" min="50" max="100" step="5" data-k="scale"><output></output></label>
         <label class="chk"><input type="checkbox" data-k="invertY"><span>Invert mouse Y</span></label>
         <label class="chk"><input type="checkbox" data-k="easyFish"><span>Easy fishing — more time to strike and to make mistakes</span></label>
+        <label>Game pace<input type="range" min="-100" max="100" step="25" data-k="pace"><output></output></label>
+        <p class="sub">Lively — more bites, but cheaper fish; relaxed — fewer bites, but pricier. In a co-op room the host's pace applies.</p>
       </div>
       <h2>Controls</h2>
       <div class="intro-keys">
@@ -630,8 +634,15 @@ export class Dialogs {
       sens: (v) => `×${v.toFixed(2).replace('.', L(',', '.'))}`,
       fov: (v) => `${Math.round(v)}°`,
       scale: (v) => (v >= 0.995 ? L('максимум', `maximum`) : `${Math.round(v * 100)} %`),
+      // клювання в рази частіше/рідше, ціна — та сама частка
+      pace: (v) => {
+        const k = Math.pow(1.6, v);
+        if (Math.abs(v) < 0.01) return L('звичайний', `normal`);
+        const x = (n: number) => `×${n.toFixed(2).replace('.', L(',', '.'))}`;
+        return (v > 0 ? L('динамічний', `lively`) : L('спокійний', `relaxed`)) + ` · ${L('клює', 'bites')} ${x(k)} · ${L('ціна', 'price')} ${x(1 / k)}`;
+      },
     };
-    const scale: Record<string, number> = { volume: 100, music: 100, sens: 100, fov: 1, scale: 100 };
+    const scale: Record<string, number> = { volume: 100, music: 100, sens: 100, fov: 1, scale: 100, pace: 100 };
     for (const el of this.panel.querySelectorAll<HTMLInputElement>('.settings input')) {
       const k = el.dataset.k as keyof Settings;
       const out = el.nextElementSibling as HTMLOutputElement | null;

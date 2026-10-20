@@ -42,6 +42,7 @@ const ZONE_SUB: Record<string, string> = { shore: L('тихі води біля 
 import { Coop, type BoatAction } from './net/coop';
 import { CameraRig } from './world/cameraRig';
 import { loadSettings, saveSettings, type Settings } from './game/settings';
+import { setPace } from './game/pace';
 import { WindLines } from './world/windLines';
 import { FoamTrail } from './world/foamTrail';
 import { FishJump } from './world/fishJump';
@@ -748,6 +749,7 @@ class Game {
     const wasCrew = this.coop.isClient;
     if (wasCrew) this.saveGame();
     this.coop.leave();
+    setPace(this.settings.pace); // знову свій темп, а не господаря
     this.hud.setRoster([]);
     if (wasCrew) {
       this.endCrew();
@@ -2556,6 +2558,8 @@ class Game {
   private applySettings(st: Settings) {
     this.settings = st;
     this.fishing.easy = st.easyFish;
+    // у чужій кооп-кімнаті темп задає господар (приходить зі знімком світу)
+    if (!(this.coop.active && !this.coop.isHost)) setPace(st.pace);
     this.audio.setLevels(st.volume, st.music);
     Input.instance.sens = st.sens;
     Input.instance.invertY = st.invertY;

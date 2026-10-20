@@ -3,6 +3,7 @@ import { clamp, rand } from '../core/math';
 import { Boat } from '../world/boat';
 import { FISH, FISH_BY_ID, fishingSpot, makeFish, rollKg, zoneFromDist, type FishingSpot } from './fish';
 import { eff, holderBiteSpeed, holderBiteWindow } from './upgrades';
+import { paceMul } from './pace';
 import { rodModel, RACK_SLOTS, HOLDER_MOUNTS, type PartKit } from '../world/upgradeParts';
 import type { GameState } from './state';
 import { offshore, type Weather } from '../core/weather';
@@ -462,6 +463,7 @@ export class Fishing {
     if (weather.intensity > 0.6) t *= 0.75;
     if (r.perfect) t *= 0.6;
     t *= game.kitchen.mul('biteWait'); // смажена скумбрія — «рибальське щастя»
+    t *= paceMul(); // темп гри: динамічний — клює частіше
     // з причалу/берега — риба полохлива й рідка
     if (pier) t *= 3.5;
     r.biteAt = Math.max(pier ? 12 : 2.5, t);
