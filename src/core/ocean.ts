@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { localIntensity, regionGlsl, seaMul } from './region';
+import { CLOUD_COLORS, CLOUD_COMMON, cloudUniforms } from '../world/clouds';
 import { wrapAngle } from './math';
 
 // ─────────────────────────────────────────────────────────────
@@ -298,6 +299,7 @@ uniform float uRefrOn;
 uniform float uRefrScale;
 uniform vec2 uGroupPh;
 varying vec3 vWorldPos;
+//CLOUDS//
 varying vec2 vBase;
 varying float vLocalI;
 varying float vDamp;
@@ -485,6 +487,21 @@ void main() {
   vec3 refl = mix(uSkyColor, uZenithColor, pow(ry, 0.55));
   // шорстка вода відбиває небо розмито (без шовкових смуг)
   refl = mix(refl, mix(uSkyColor, uZenithColor, 0.45), rough * 0.75);
+  // хмари у відбитті: стовпчик густини там, де відбитий промінь перетинає шар
+  // (рівніша нормаль і розмитий шум: інакше кожна хвиля «мармурить» відбиття)
+  vec3 Rc = reflect(-V, normalize(mix(vec3(0.0, 1.0, 0.0), Nm, 0.3)));
+  if (Rc.y > 0.03) {
+    float ch = mix(uCloudLayer.x, uCloudLayer.y, 0.3) - vWorldPos.y;
+    vec2 cq = vWorldPos.xz + Rc.xz / Rc.y * ch;
+    float cDist = ch / Rc.y;
+    vec3 ccv = cloudCoverAt(cq);
+    vec2 cuv = cloudUV(cq);
+    float cs = texture2D(uCloudNoise, cuv, 2.5).r * 0.62 + texture2D(uCloudNoise, cuv * 2.7 + vec2(0.37, 0.11), 2.5).a * 0.38;
+    float ca = smoothstep(-0.04, 0.22, cs - (1.0 - ccv.r)) * (1.0 - smoothstep(5000.0, 14000.0, cDist));
+    vec3 ccol = mix(mix(uCShade, uCLit, 0.55 + 0.25 * Rc.y), uCStorm, ccv.g);
+    ccol = mix(ccol, uSkyColor, smoothstep(2500.0, 14000.0, cDist) * 0.6);
+    refl = mix(refl, ccol, ca * (1.0 - rough * 0.5) * 0.6);
+  }
 
   // ── тіло води: стилізована палітра — темна синява в западинах, насичений синій
   // посередині, бірюза на гребенях; тонкі гребені просвічують (SSS) зеленкувато ──
@@ -505,12 +522,14 @@ void main() {
   body = mix(body, cCrest, smoothstep(0.68, 0.98, hr) * (0.9 - 0.25 * stormF));
   // світло: схил до сонця світліший — форму хвилі видно (стилізовано, м'яко)
   float lam = 0.6 + 0.4 * max(dot(Nm, L), 0.0);
-  body *= lam * sunI;
+  // тінь від хмар: плями повзуть по воді
+  float csh = cloudShadow(vWorldPos);
+  body *= lam * sunI * (0.3 + 0.7 * csh);
   // підповерхневе світіння: гребінь між оком і сонцем + грань хвилі під кутом
   float back = pow(clamp(dot(V, -L) * 0.5 + 0.5, 0.0, 1.0), 4.0);
   float face = clamp(1.0 - NdV, 0.0, 1.0);
   float thin = smoothstep(0.6, 1.0, hr);
-  float sss = thin * (0.25 + 1.6 * back) * (0.45 + 0.55 * face) * uSunStrength;
+  float sss = thin * (0.25 + 1.6 * back) * (0.45 + 0.55 * face) * uSunStrength * csh;
   body += cSSS * sss * (0.55 + 0.25 * stormF);
   // вода трохи бере колір неба (захід, ніч), але не сіріє
   body = mix(body, uSkyColor * 0.5, 0.12);
@@ -568,8 +587,8 @@ void main() {
   float NdH = max(dot(Ns, Hs), 0.0);
   float pw = mix(420.0, 60.0, rough);
   float spec = pow(NdH, pw) * (pw / 120.0) * uSunStrength * (0.3 + 0.7 * fres * 4.0);
-  col += vec3(1.0, 0.95, 0.84) * min(spec, 6.0);
-  col += vec3(1.0, 0.88, 0.68) * pow(NdH, 24.0) * 0.08 * uSunStrength * (1.0 - stormF);
+  col += vec3(1.0, 0.95, 0.84) * min(spec, 6.0) * csh * csh;
+  col += vec3(1.0, 0.88, 0.68) * pow(NdH, 24.0) * 0.08 * uSunStrength * (1.0 - stormF) * csh;
 
   // місячна доріжка (місяць — навпроти сонця, як moonLight у main.ts)
   vec3 Lm = normalize(vec3(-L.x, max(-L.y, 0.2), -L.z));
@@ -783,9 +802,10 @@ export class Ocean {
     }
     this.material = new THREE.ShaderMaterial({
       vertexShader: VERT.replace('//REGION//', regionGlsl()),
-      fragmentShader: FRAG,
+      fragmentShader: FRAG.replace('//CLOUDS//', CLOUD_COMMON + CLOUD_COLORS),
       defines: { NW: WAVE_COUNT },
       uniforms: {
+        ...cloudUniforms,
         uRipple: { value: rippleTexture() },
         uRefr: { value: null },
         uRefrDepth: { value: null },

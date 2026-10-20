@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { addCloudUniforms } from './clouds';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { eff } from '../game/upgrades';
 import type { UpgradeId } from '../core/types';
@@ -355,6 +356,7 @@ const PORTHOLE = { y: 0.7, r: 0.065, hl: 0.12, zs: [1.1, 1.9, 3.0] };
 function cutPortholes(m: THREE.MeshStandardMaterial) {
   const zs = PORTHOLE.zs.map((z) => z.toFixed(3));
   m.onBeforeCompile = (sh) => {
+    addCloudUniforms(sh.uniforms);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vHullPos;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvHullPos = position;');
