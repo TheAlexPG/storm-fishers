@@ -4,6 +4,7 @@ import { Input } from '../core/input';
 import { Boat, BOAT, STATION_POS } from './boat';
 import { DECK_COLLIDERS, COCKPIT, TENT, HOUSE, STAIR, SALOON, SOLE_Y, HALF_LEN, deckLimitX, stairY, type Box2 } from './yachtLayout';
 import { Port, PORT_POINTS, type Platform } from './port';
+import { insideCottage } from './cottageLayout';
 import { Ocean } from '../core/ocean';
 import type { GameState } from '../game/state';
 import type { PlayerMode } from '../core/types';
@@ -98,6 +99,8 @@ export class Player {
   private exitSide = 0;
   /** під дахом: каюта або кокпіт під тентом — захист від негоди */
   sheltered = false;
+  /** гравець у своїй хаті в домашньому порту (дах над головою: без дощу, тихіше надворі) */
+  inHouse = false;
   /** найближча інтерактивна ціль */
   nearest: Interactable | null = null;
   /** станції яхти в межах досяжності (з них від першої особи вибирає промінь погляду) */
@@ -241,6 +244,8 @@ export class Player {
     let moving = false;
     this.inCabin = false;
     this.sheltered = false;
+    this.inHouse = this.mode === 'port' && !this.onIsland && insideCottage(this.wx, this.wz, 0.1);
+    if (this.inHouse) this.sheltered = true;
 
     if (this.mode === 'boat') {
       if (this.wheeling) {
@@ -618,8 +623,16 @@ export class Player {
         const dBoat = Math.hypot(this.wx - boat.pos.x, this.wz - boat.pos.z);
         if (dBoat > 60) best = { id: 'swim-boat', label: L(`Повернутись на яхту (${Math.round(dBoat)} м)`, `Return to the yacht (${Math.round(dBoat)} m)`) };
       }
+      const home = insideCottage(this.wx, this.wz);
       for (const pt of PORT_POINTS) {
-        const d = Math.hypot(this.wx - pt.x, this.wz - pt.z);
+        // ліжко й стенд — лише в хаті; а з хати не тягнемось до крамниць надворі
+        if (!!pt.indoor !== home) continue;
+        let d = Math.hypot(this.wx - pt.x, this.wz - pt.z);
+        // у кімнаті все поруч — перевага тому, на що дивишся
+        if (home && d > 0.05) {
+          const look = (-Math.sin(this.yaw) * (pt.x - this.wx) - Math.cos(this.yaw) * (pt.z - this.wz)) / d;
+          if (look > 0.6) d *= 0.55;
+        }
         if (d < bestD) {
           bestD = d;
           best = { id: 'port:' + pt.id, label: pt.label };

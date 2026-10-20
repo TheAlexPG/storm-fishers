@@ -1,3 +1,4 @@
+import { insideCottage } from './cottageLayout';
 import * as THREE from 'three';
 import { mulberry32 } from '../core/math';
 import { GROUND_Y, terrainHeight } from './portTerrain';
@@ -137,6 +138,8 @@ export class PortLife {
   // ───────────── трава й квіти ─────────────
 
   private canGrow(x: number, z: number): boolean {
+    // хата рибалки — окрема модель із підлогою (world/homeCottage.ts)
+    if (insideCottage(x, z, 0.45)) return false;
     const onPlateau = Math.abs(x) <= 59.4 && z >= -129.4 && z <= -42.2;
     if (onPlateau) {
       if (onPath(x, z, 0.25)) return false;

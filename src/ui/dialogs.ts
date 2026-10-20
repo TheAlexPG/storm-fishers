@@ -866,7 +866,7 @@ export class Dialogs {
           // повний бак або стільки, на скільки вистачає грошей
           const liters = Math.min(game.maxFuel - game.fuel, Math.floor(game.money / fuelPrice));
           if (liters > 0) {
-            game.money -= Math.ceil(liters * fuelPrice);
+            game.spend(Math.ceil(liters * fuelPrice), 'fuel');
             game.addFuel(liters);
             this.onBoatPurchase?.({ fuel: liters });
           }
@@ -874,7 +874,7 @@ export class Dialogs {
           const liters = Math.min(Number(v), game.maxFuel - game.fuel);
           const cost = Math.ceil(liters * fuelPrice);
           if (game.money >= cost) {
-            game.money -= cost;
+            game.spend(cost, 'fuel');
             game.addFuel(liters);
             this.onBoatPurchase?.({ fuel: liters });
           }
@@ -888,7 +888,7 @@ export class Dialogs {
         const tier = Number((b as HTMLElement).dataset.plan);
         const fee = dailyPremium(tier, game.upgrades);
         if (tier > 0 && game.money < fee) return;
-        game.money -= fee; // перший день — одразу
+        game.spend(fee, 'insurance'); // перший день — одразу
         game.insurance = tier;
         this.audio.click();
         refresh();
@@ -896,7 +896,7 @@ export class Dialogs {
     });
     this.panel.querySelector('[data-patch]')?.addEventListener('click', () => {
       if (game.money >= patchCost && game.hull < game.maxHull) {
-        game.money -= patchCost;
+        game.spend(patchCost, 'repair');
         game.hull = Math.min(game.maxHull, game.hull + 25);
         this.onBoatPurchase?.({ patch: 25 });
         this.audio.click();
@@ -906,7 +906,7 @@ export class Dialogs {
     const rep = this.panel.querySelector('[data-repair]');
     rep?.addEventListener('click', () => {
       if (game.money >= fullCost) {
-        game.money -= fullCost;
+        game.spend(fullCost, 'repair');
         game.hull = game.maxHull;
         this.onBoatPurchase?.({ repair: true });
         this.audio.click();
@@ -1124,6 +1124,13 @@ export class Dialogs {
       this.close();
       onClose();
     });
+  }
+
+  // ── ЖУРНАЛ КАПІТАНА (стенд у хаті) ──
+
+  stats(html: string) {
+    this.show(html, true, 'stats');
+    this.panel.querySelector('[data-close]')?.addEventListener('click', () => this.close());
   }
 
   // ── РАДІО ──

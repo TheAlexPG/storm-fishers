@@ -23,6 +23,9 @@ import { Hud, type FightHud } from './ui/hud';
 import { Minimap } from './ui/minimap';
 import { MapView } from './ui/map';
 import { Dialogs, type Venue } from './ui/dialogs';
+import { StatsBoard, statsHtml, type StatsExtra } from './ui/statsBoard';
+import { HomeCottage } from './world/homeCottage';
+import { COTTAGE } from './world/cottageLayout';
 import { zoneFromDist, ZONE_NAMES, FISH, SCHOOL_ANCHORS, SCHOOL_R } from './game/fish';
 
 /** місця швартування й причали інших гаваней (portSites.ts) */
@@ -223,6 +226,12 @@ class Game {
   private anchorWarnT = 0;
   private anchorPrev = 0;
   private radioRoom = 0;
+  private cottage: HomeCottage;
+  private statsBoard: StatsBoard;
+  /** лоція для журналу (той самий малюнок, що на штурманському столі) */
+  private statsChart = Object.assign(document.createElement('canvas'), { width: 1100, height: 776 });
+  /** попередня позиція човна для лічильника шляху */
+  private ledgerPrev: [number, number] | null = null;
   private radioTextT = 0;
   /** орган радіо, на який дивиться гравець (кнопка/ручка) */
   private radioCtl: RadioCtl | null = null;
@@ -309,6 +318,10 @@ class Game {
     this.ocean = new Ocean(this.scene);
     this.sky = new Sky(this.scene);
     this.port = new Port(this.scene);
+    // хата рибалки: заходиш пішки — ліжко й «журнал капітана» на стіні
+    this.statsBoard = new StatsBoard();
+    this.cottage = new HomeCottage(this.port.group, this.statsBoard.tex);
+    this.port.setCottage(this.cottage.solids, this.cottage.chimneyTop);
     this.shopCounter = new ShopCounter(this.scene, this.port.solids);
     this.exchangeBoard = new ExchangeBoard(this.scene);
     // прибій уздовж берега бухти
@@ -1240,7 +1253,8 @@ class Game {
     const payout = Math.round(cargoValue * plan.cargo);
     const lostModules = withModules ? applySinkToUpgrades(g.upgrades, plan.tier) : [];
     const tow = plan.tow;
-    g.money = Math.max(0, g.money + payout - tow);
+    g.earn(payout, 'insurance');
+    g.spend(Math.min(g.money, tow), 'tow');
     if (lost.some((f) => f.storm)) g.objectives.stormReturn = true;
     return { plan, lostFish: lost.length, cargoValue, payout, lostModules, tow };
   }
@@ -1328,6 +1342,35 @@ class Game {
     else if (kind === 'radio') this.dialogs.radio(this.game, this.weather, this.time);
     else if (kind === 'exchange') this.dialogs.exchange(this.game);
     else this.dialogs.shop(this.game, kind as Venue);
+  }
+
+  /** дані для «журналу капітана», яких немає в GameState */
+  private statsExtra(): StatsExtra {
+    const g = this.game;
+    const treasures = g.finds.filter((f) => !f.startsWith('hat:')).length;
+    return {
+      day: g.today,
+      playTime: this.playTime,
+      places: { found: g.places.filter((id) => LANDMARKS.some((l) => l.id === id)).length, total: LANDMARKS.length },
+      ports: { found: 1 + PORT_SITES.filter((p) => g.places.includes(p.id)).length, total: 1 + PORT_SITES.length },
+      hats: { found: HATS.filter((h) => this.hatOwned(h.id)).length, total: HATS.length },
+      treasures,
+      chart: this.drawStatsChart(),
+    };
+  }
+
+  private drawStatsChart(): HTMLCanvasElement {
+    this.mapView.drawChart(this.statsChart, this.boat.pos.x, this.boat.pos.z, this.boat.heading, this.port.rocks, this.game);
+    return this.statsChart;
+  }
+
+  /** стенд у хаті: детальний журнал */
+  private openStats() {
+    this.phase = 'dialog';
+    this.expectUnlock = true;
+    document.exitPointerLock();
+    this.audio.click();
+    this.dialogs.stats(statsHtml(this.game, this.statsExtra()));
   }
 
   // ── штурвальна карта (M) ──
@@ -1492,7 +1535,7 @@ class Game {
       if (g.insurance > 0) {
         const fee = dailyPremium(g.insurance, g.upgrades);
         if (g.money >= fee) {
-          g.money -= fee;
+          g.spend(fee, 'insurance');
           this.hud.toast(L(`🛡 Страховка «${PLANS[g.insurance].name}»: −${fee} ₴`, `🛡 “${PLANS[g.insurance].name}” insurance: −${fee} ₴`), 'warn', 3500);
         } else {
           g.insurance = 0;
@@ -1772,6 +1815,7 @@ class Game {
       const trophy = this.fishing.lastTrophy;
       const record = prevRec > 0 && catched.kg > prevRec;
       g.recordCatch(catched);
+      if (trophy) g.ledger.trophies++;
       this.bumpFishSkill();
       if (trophy) {
         this.audio.trophy();
@@ -1798,6 +1842,13 @@ class Game {
     this.radio.spectrum = this.audio.radioSpectrum();
     this.radio.update(dt, inCabin);
     this.cabinDecor.update(dt, this.time.hours, this.weather.base, this.boat.group, 1 - this.time.daylight);
+    {
+      // хата: світло у вікнах і лампа; журнал на стіні — перемальовується, коли поруч
+      const p = this.player;
+      const near = p.mode === 'port' && !p.onIsland && Math.hypot(p.wx - COTTAGE.x, p.wz - COTTAGE.z) < 30;
+      this.cottage.update(dt, 1 - this.time.daylight, p.inHouse, near);
+      if (this.statsBoard.due(dt, near)) this.statsBoard.draw(this.game, this.statsExtra());
+    }
     // камбуз: міні-гра (клавіші — лише в грі), бафи, пара й полум'я
     this.kitchen.update(dt, input, t, locked && this.phase === 'play');
     this.exchangeBoard.update(dt, this.game);
@@ -1878,6 +1929,19 @@ class Game {
 
     // маршрут для лоції (лише капітан/соло — човен його)
     if (!this.coop.crewing) g.addTrack(this.boat.pos.x, this.boat.pos.z);
+    // книга капітана: шлях і час у морі — свої (і для екіпажу на чужій яхті)
+    {
+      const lg = g.ledger;
+      const bx = this.boat.pos.x, bz = this.boat.pos.z;
+      if (this.player.mode === 'boat' && this.ledgerPrev) {
+        const step = Math.hypot(bx - this.ledgerPrev[0], bz - this.ledgerPrev[1]);
+        // телепорт (переставили човен, міграція) — не рахуємо
+        if (step < 40) lg.distM += step;
+        if (!this.boat.mooredNow) lg.seaSec += dt;
+        lg.maxFar = Math.max(lg.maxFar, Math.hypot(bx, bz));
+      }
+      this.ledgerPrev = [bx, bz];
+    }
     // маршрут: дійшли до точки — компас веде на наступну
     if (g.advanceRoute(this.boat.pos.x, this.boat.pos.z)) {
       const nx = g.waypoint;
@@ -2010,7 +2074,7 @@ class Game {
       this.hud.titleCard(`${h.icon} ${h.name}`, L('знахідка · вже на тобі (змінити — в паузі)', `found · you're wearing it (change it in the pause menu)`));
       this.hud.toast(L(`🎩 Капелюхи: ${HATS.filter((x) => this.hatOwned(x.id)).length}/${HATS.length}`, `🎩 Hats: ${HATS.filter((x) => this.hatOwned(x.id)).length}/${HATS.length}`), 'good', 3500);
     } else {
-      if (f.money) g.money += f.money;
+      if (f.money) g.earn(f.money, 'finds');
       if (f.kind === 'bottle') {
         this.hud.titleCard(L('Пляшка із запискою', `A bottle with a note`), f.note ?? '');
         // записка на Мушлевому острові — ще й рецепт ухи
@@ -2215,6 +2279,10 @@ class Game {
       this.doSleep(id === 'port:house');
       return;
     }
+    if (id === 'port:board') {
+      this.openStats();
+      return;
+    }
     if (id.startsWith('shop:')) {
       this.useCounter(id.slice(5) as CounterTarget);
       return;
@@ -2334,6 +2402,7 @@ class Game {
       this.tickTrade(delta);
       this.fade.classList.remove('on');
       this.dawnCard();
+      if (inPort) this.saveGame();
       this.hud.toast(L(`Пройшло ${Math.round(delta)} год. ${inPort ? L('Виспався в хаті.', `Slept well in the cottage.`) : L('Виспався на койці.', `Slept well in the bunk.`)}`, `${Math.round(delta)} h passed. ${inPort ? L('Виспався в хаті.', `Slept well in the cottage.`) : L('Виспався на койці.', `Slept well in the bunk.`)}`), 'good', 3500);
       this.sleeping = false;
     }, 1100);
@@ -2364,7 +2433,7 @@ class Game {
       this.weather.rain,
       this.weather.windDir,
       time.hours,
-      this.player.mode === 'boat' && this.player.level !== 'deck',
+      (this.player.mode === 'boat' && this.player.level !== 'deck') || this.player.inHouse,
     );
     const sunI = time.sunStrength;
     const cloudFactor = 1 - this.weather.cloudiness * 0.55;

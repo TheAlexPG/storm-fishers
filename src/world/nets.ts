@@ -196,7 +196,7 @@ export class Nets {
         this.onEvent?.(L(`На ремонт сіток бракує ${cost - game.money} ₴`, `Mending the nets needs ${cost - game.money} ₴ more`), 'warn');
         return;
       }
-      game.money -= cost;
+      game.spend(cost, 'nets');
       this.gear = 0;
       this.lost = 0;
       this.onSound?.('thump', 0.4);

@@ -6,6 +6,7 @@ import type { RockObstacle } from './boat';
 import { Batch, T, boxGeo, cylGeo, gableBodyGeo, roofSlabGeo } from './portKit';
 import { GROUND_Y, addIslands, addSeaRocks, buildTerrain, buildTrees, terrainHeight, type TreeSpot } from './portTerrain';
 import { L } from '../core/i18n';
+import { COTTAGE, COTTAGE_SPOTS } from './cottageLayout';
 import {
   beamTex,
   cobbleTex,
@@ -37,13 +38,17 @@ export interface Platform {
 }
 
 export interface PortPoint {
-  id: 'shop' | 'fuel' | 'repair' | 'house' | 'market' | 'office' | 'tavern' | 'smoke' | 'chef' | 'cannery';
+  id: 'shop' | 'fuel' | 'repair' | 'house' | 'board' | 'market' | 'office' | 'tavern' | 'smoke' | 'chef' | 'cannery';
   x: number;
   z: number;
   label: string;
   /** коротка назва для карти */
   name: string;
   icon: string;
+  /** лише всередині хати (ліжко, стенд) — з вулиці крізь стіну не діє */
+  indoor?: boolean;
+  /** не показувати на лоції й мінімапі */
+  mapHide?: boolean;
 }
 
 export const PORT_POINTS: PortPoint[] = [
@@ -54,7 +59,9 @@ export const PORT_POINTS: PortPoint[] = [
   { id: 'repair', x: 14, z: -49.5, label: L('Верф — ремонт корпусу', `Shipyard — hull repairs`), name: L('Верф', `Shipyard`), icon: '🔧' },
   { id: 'market', x: 34, z: -45.2, label: L('Рибна біржа — продати улов', `Fish exchange — sell your catch`), name: L('Біржа', `Exchange`), icon: '🐟' },
   { id: 'office', x: 47, z: -47.6, label: L('Контора порту — страховка', `Harbour office — insurance`), name: L('Контора', `Office`), icon: '🛡' },
-  { id: 'house', x: -2, z: -58.5, label: L('Хата (сон)', `Cottage (sleep)`), name: L('Хата', `Cottage`), icon: '🏠' },
+  // хата: зайти можна пішки (world/homeCottage.ts); E — ліжко або «журнал капітана»
+  { id: 'house', x: COTTAGE_SPOTS.bed.x, z: COTTAGE_SPOTS.bed.z, label: L('Ліжко — поспати до ранку (гра збережеться)', `Bed — sleep until morning (the game saves)`), name: L('Дім', `Home`), icon: '🏠', indoor: true },
+  { id: 'board', x: COTTAGE_SPOTS.board.x, z: COTTAGE_SPOTS.board.z, label: L('Журнал капітана — заробіток, шлях, улов', `Captain's log — earnings, voyages, catch`), name: L('Журнал', `Log`), icon: '📒', indoor: true, mapHide: true },
   // скупники риби (game/buyers.ts, world/buyerStalls.ts): свої ціни, акції й замовлення
   { id: 'tavern', x: -21, z: -46.1, label: L('Таверна «Ситий баклан» — дрібна свіжа риба, замовлення', `“Fat Cormorant” tavern — small fresh fish, orders`), name: L('Таверна', `Tavern`), icon: '🍲' },
   { id: 'smoke', x: 24.4, z: -46.1, label: L('Коптильня Гната — жирна риба оптом, замовлення', `Hnat's Smokehouse — oily fish in bulk, orders`), name: L('Коптильня', `Smokehouse`), icon: '🔥' },
@@ -115,6 +122,9 @@ interface Bobber {
 export class Port {
   group = new THREE.Group();
   platforms: Platform[] = [
+    // підлога хати (вище бруківки) і поріг — першими, щоб перекривали «землю»
+    { x0: COTTAGE.x - COTTAGE.w / 2 + COTTAGE.t, z0: COTTAGE.z - COTTAGE.d / 2 + COTTAGE.t, x1: COTTAGE.x + COTTAGE.w / 2 - COTTAGE.t, z1: COTTAGE.z + COTTAGE.d / 2 - 0.02, y: COTTAGE.floorY },
+    { x0: COTTAGE.x - 0.85, z0: COTTAGE.z + COTTAGE.d / 2 - 0.02, x1: COTTAGE.x + 0.85, z1: COTTAGE.z + COTTAGE.d / 2 + 0.85, y: G + 0.16 },
     { x0: -24, z0: -40, x1: 24, z1: -18, y: DECK_Y }, // причал
     // дві сходинки з причалу на набережну (раніше гравець «висів» над нижньою)
     { x0: -25, z0: -40.8, x1: 25, z1: -40, y: 1.36 },
@@ -394,6 +404,12 @@ export class Port {
   }
 
   // ───────────────────────── колізії ─────────────────────────
+
+  /** хата (окрема модель): її стіни й меблі тверді, дим — з її комина */
+  setCottage(solids: Array<{ x: number; z: number; w: number; d: number }>, chimney: THREE.Vector3) {
+    for (const o of solids) this.solidBox(o.x, o.z, o.w, o.d);
+    this.smokeOrigin.copy(chimney);
+  }
 
   private solidBox(x: number, z: number, w: number, d: number, ry = 0) {
     this.solids.push({ x, z, hw: w / 2, hd: d / 2, ry });
@@ -901,12 +917,7 @@ export class Port {
     for (const sx of [-1, 1]) this.bx(M.woodDark, 0.08, 0.9, 0.7, 17.9 + sx * 1.0, G + 0.45, -56.5);
 
     // ── хата: кремова, сині віконниці, садочок ──
-    const hut = this.house({
-      x: -2, z: -62, w: 5.6, d: 5, h: 3.1, rh: 2.2,
-      wall: M.plasterCream, wallTile: 3, roof: M.roofRed, door: 0, doorMat: M.shutterGreen,
-      front: [-1.75, 1.75], back: [0], sideWin: true, shutter: M.shutterBlue, chimney: [1.6, -1.0], lit: 1,
-    });
-    if (hut.chimney) this.smokeOrigin.copy(hut.chimney);
+    // сама хата — окрема модель, у яку можна зайти (world/homeCottage.ts → setCottage)
     this.sign(L('ХАТА', `COTTAGE`), -2, G + 0.35 + 2.75, -59.32, 1.6, '#3f5e3a');
     // паркан-штахетник із хвірткою
     this.picketFence(-5.8, -56.6, -2.9, -56.6);
