@@ -620,6 +620,11 @@ export class HelmInstruments {
     this.setLevel(0);
   }
 
+  /** блок автопілота — окремий модуль, незалежно від радара */
+  setAutopilot(owned: boolean) {
+    this.apHead.visible = owned;
+  }
+
   setLevel(l: number) {
     this.level = l;
     const f = instrHas(l);
@@ -667,7 +672,6 @@ export class HelmInstruments {
     for (const c of this.arch.children) if (c.userData.lvl) c.visible = l >= c.userData.lvl;
     this.gpsAnt.visible = f.gps;
     this.radome.visible = f.radar;
-    this.apHead.visible = f.radar;
     this.plotter.on = f.gps;
     this.sonar.on = f.sonar;
     this.radar.on = f.radar;
@@ -1103,6 +1107,40 @@ export class HelmInstruments {
 
 function staticScreen(w: number, h: number, sx: number, sy: number, draw: (g: CanvasRenderingContext2D) => void): THREE.Mesh {
   return new THREE.Mesh(new THREE.PlaneGeometry(sx, sy), new THREE.MeshBasicMaterial({ map: canvasTex(w, h, draw), toneMapped: false }));
+}
+
+/** полиця крамниці: блок автопілота в коробці — пульт з екранчиком і кнопкою, поруч привод */
+export function autopilotShelfModel(k: PartKit): THREE.Object3D {
+  const g = new THREE.Group();
+  const dark = k.mat(0x1c2126, 0.5, 0.4);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.11, 0.05), dark);
+  head.position.set(-0.06, 0.07, 0);
+  g.add(head);
+  const scr = staticScreen(128, 40, 0.11, 0.035, (c) => {
+    c.fillStyle = '#0a1a14';
+    c.fillRect(0, 0, 128, 40);
+    c.fillStyle = '#7dffb0';
+    c.font = `800 22px ${FONT}`;
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(L('АВТОПІЛОТ', `AUTOPILOT`), 64, 21);
+  });
+  scr.position.set(-0.06, 0.095, 0.026);
+  g.add(scr);
+  const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.02, 16), new THREE.MeshStandardMaterial({ color: 0x103a1a, emissive: 0x37ff7a, emissiveIntensity: 1 }));
+  btn.rotation.x = Math.PI / 2;
+  btn.position.set(-0.06, 0.048, 0.03);
+  g.add(btn);
+  // привод керма: циліндр-мотор із шестернею
+  const motor = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.12, 16), k.mat(0x8a929a, 0.35, 0.8));
+  motor.rotation.z = Math.PI / 2;
+  motor.position.set(0.1, 0.035, 0);
+  g.add(motor);
+  const gear = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.015, 12), k.mat(0xc9a227, 0.3, 0.85));
+  gear.rotation.z = Math.PI / 2;
+  gear.position.set(0.17, 0.035, 0);
+  g.add(gear);
+  return g;
 }
 
 export function instrShelfModel(lvl: number, k: PartKit): THREE.Object3D {

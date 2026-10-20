@@ -4,7 +4,7 @@ import { L, fmtNum, plural } from '../core/i18n';
 import { formatMoney } from '../core/math';
 import { WORLD } from '../core/region';
 import { FISH } from '../game/fish';
-import { UPGRADES, MAX_LEVEL } from '../game/upgrades';
+import { UPGRADES, maxLevel } from '../game/upgrades';
 import type { EarnKind, SpendKind } from '../game/ledger';
 import type { GameState } from '../game/state';
 
@@ -322,7 +322,7 @@ export function statsHtml(game: GameState, ex: StatsExtra): string {
 
   const ups = UPGRADES.map((u) => {
     const lvl = game.upgrades[u.id] ?? 0;
-    const dots = Array.from({ length: MAX_LEVEL }, (_, i) => `<i class="${i < lvl ? 'on' : ''}"></i>`).join('');
+    const dots = Array.from({ length: maxLevel(u.id) }, (_, i) => `<i class="${i < lvl ? 'on' : ''}"></i>`).join('');
     return `<div class="st-up"><span>${esc(u.name)}</span><span class="st-dots">${dots}</span></div>`;
   }).join('');
 

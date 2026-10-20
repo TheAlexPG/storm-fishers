@@ -7,7 +7,7 @@ import { Ocean, UNDERWATER_LAYER } from './core/ocean';
 import { AudioEngine } from './core/audio';
 import { clamp, rand, formatMoney } from './core/math';
 import type { UpgradeId } from './core/types';
-import { UPGRADE_BY_ID, MAX_LEVEL, upgradeCost, upgradeLock } from './game/upgrades';
+import { UPGRADE_BY_ID, maxLevel, upgradeCost, upgradeLock } from './game/upgrades';
 import { GameState, newsText } from './game/state';
 import { Boat, BOAT, MOOR, MOOR_HEADING, STATION_POS } from './world/boat';
 import { moorSlotX, MOOR_SLOTS } from './net/coop';
@@ -1273,7 +1273,7 @@ class Game {
     }
     const id = t.slice(3) as UpgradeId;
     const u = UPGRADE_BY_ID[id];
-    if (g.upgrades[id] >= MAX_LEVEL) {
+    if (g.upgrades[id] >= maxLevel(id)) {
       this.hud.toast(L(`${u.name}: усе вже стоїть на човні`, `${u.name}: everything is already on the boat`), 'warn', 2200);
       return;
     }
@@ -1586,8 +1586,8 @@ class Game {
     // X за штурвалом — ключ запалювання: заглушити / запустити двигун
     if (input.pressed('KeyX') && this.phase === 'play' && !this.dialogs.isOpen && this.player.mode === 'boat' && this.player.wheeling) this.ignition();
     // V — вид з-за корми / від першої особи (за штурвалом)
-    // T за штурвалом — автопілот (з «Приладами» 5)
-    if (input.pressed('KeyT') && this.phase === 'play' && !this.dialogs.isOpen && this.player.mode === 'boat' && this.player.wheeling && instrHas(this.game.upgrades.instr ?? 0).radar) this.toggleAutopilot();
+    // T за штурвалом — автопілот (окремий модуль)
+    if (input.pressed('KeyT') && this.phase === 'play' && !this.dialogs.isOpen && this.player.mode === 'boat' && this.player.wheeling && (this.game.upgrades.autopilot ?? 0) >= 1) this.toggleAutopilot();
     if (input.pressed('KeyV') && this.phase === 'play' && !this.dialogs.isOpen) {
       this.chasePref = !this.chasePref;
       try {
@@ -3396,6 +3396,11 @@ class Game {
 
   /** автопілот: увімк./вимк. (екіпаж просить власника яхти) */
   private toggleAutopilot(on = !this.boat.autopilot) {
+    // веде маршрутом GPS-картплотера — без приладів ≥ 3 лише підказка
+    if (on && (this.game.upgrades.instr ?? 0) < 3) {
+      this.hud.toast(L('🤖 Автопілоту потрібен GPS — постав «Прилади» рівня 3 (картплотер)', `🤖 The autopilot needs GPS — fit Instruments level 3 (chartplotter)`), 'warn', 3200);
+      return;
+    }
     if (this.coop.crewing) {
       this.coop.sendAction({ a: 'ap', v: on ? 1 : 0 });
       this.boat.autopilot = on; // відразу на своєму пульті; знімок власника підтвердить
@@ -3405,7 +3410,7 @@ class Game {
 
   private setAutopilot(on: boolean, why = '') {
     if (on === this.boat.autopilot) return;
-    if (on && this.game.upgrades.instr < 5) return;
+    if (on && ((this.game.upgrades.autopilot ?? 0) < 1 || (this.game.upgrades.instr ?? 0) < 3)) return;
     this.boat.autopilot = on;
     this.apHold = this.boat.heading;
     this.apPrevH = this.boat.heading;
@@ -3428,7 +3433,7 @@ class Game {
       if (steering) this.toggleAutopilot(false);
       return;
     }
-    if (steering || (this.game.upgrades.instr ?? 0) < 5) {
+    if (steering || (this.game.upgrades.autopilot ?? 0) < 1 || (this.game.upgrades.instr ?? 0) < 3) {
       this.setAutopilot(false, steering ? L('кермо в руках', `hands on the wheel`) : '');
       return;
     }
@@ -3461,6 +3466,7 @@ class Game {
     const lvl = g.upgrades.instr ?? 0;
     const has = instrHas(lvl);
     if (this.instruments.level !== lvl) this.instruments.setLevel(lvl);
+    this.instruments.setAutopilot((g.upgrades.autopilot ?? 0) >= 1);
     const bots = [...this.bots.markers(), ...this.traders.markers()];
     this.minimap.bots = bots;
     this.minimap.ais = has.radar;

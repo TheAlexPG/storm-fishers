@@ -344,6 +344,8 @@ export class Boat {
   tentK = 0;
   /** рівень «Приладів» (пульт автопілота — з 5-го) */
   instrLevel = 0;
+  /** модуль автопілота стоїть на яхті */
+  apOwned = false;
   /** автопілот увімкнено (симулює власник яхти, екіпаж бачить зі знімка) */
   autopilot = false;
   /** прилади пульта (yachtModel) — їх показує HelmInstruments за рівнем */
@@ -352,7 +354,7 @@ export class Boat {
   stationOn(id: string): boolean {
     if (id.startsWith('holder')) return Number(id.slice(6)) < this.holderSlots;
     if (id === 'nets') return this.netLevel > 0;
-    if (id === 'autopilot') return this.instrLevel >= 5;
+    if (id === 'autopilot') return this.apOwned;
     if (id === 'tent') return this.tentLevel >= 1;
     if (id === 'curtain') return this.tentLevel >= 3 && !this.tentFolded;
     return true;
@@ -363,6 +365,7 @@ export class Boat {
     this.sails.setLevel(levels.sails ?? 0);
     this.netLevel = levels.nets ?? 0;
     this.instrLevel = levels.instr ?? 0;
+    this.apOwned = (levels.autopilot ?? 0) >= 1;
     this.tentLevel = levels.tent ?? 0;
     this.pumpLevel = levels.pump ?? 0;
     this.canvas.setLevel(this.tentLevel);

@@ -679,7 +679,7 @@ export class Player {
       case 'wheel': {
         if (!this.wheeling) return L('Стати за штурвал (газ W/S, кермо A/D)', `Take the wheel (throttle W/S, rudder A/D)`);
         const ign = boat.engineOn ? L(' · X — заглушити двигун', ` · X — stop the engine`) : boat.engineKilled ? L(' · X — запустити двигун', ` · X — start the engine`) : '';
-        return (boat.instrLevel >= 5 ? (boat.autopilot ? L('Вийти зі штурвала (автопілот кермує) · T — вимкнути автопілот', `Leave the wheel (autopilot steering) · T — autopilot off`) : L('Вийти зі штурвала · T — автопілот', `Leave the wheel · T — autopilot`)) : L('Вийти зі штурвала', `Leave the wheel`)) + ign;
+        return (boat.apOwned ? (boat.autopilot ? L('Вийти зі штурвала (автопілот кермує) · T — вимкнути автопілот', `Leave the wheel (autopilot steering) · T — autopilot off`) : L('Вийти зі штурвала · T — автопілот', `Leave the wheel · T — autopilot`)) : L('Вийти зі штурвала', `Leave the wheel`)) + ign;
       }
       case 'sails': return boat.sails.mode === 0 ? L('Фали на щоглі — підняти паруси (E — меню)', `Halyards at the mast — hoist the sails (E — menu)`) : L(`Фали й рифи — зараз ${boat.sails.label()} (E — меню)`, `Halyards & reefs — now ${boat.sails.label()} (E — menu)`);
       case 'rod': return this.stationText?.('rod') ?? L('Стійка з вудками', `Rod rack`);

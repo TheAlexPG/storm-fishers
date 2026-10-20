@@ -8,7 +8,7 @@ import { Ledger, type EarnKind, type LedgerSave, type SpendKind } from './ledger
 import { CargoBook, type CargoSave } from './cargo';
 import { BUYER_BY_ID, contractNeed, fitsContract, FishTrade, type BuyerId, type Contract, type TradeSave } from './buyers';
 import { PORT_SITES, PORT_SITE_BY_ID, type PortSite } from '../world/portSites';
-import { defaultUpgrades, eff, UPGRADES, MAX_LEVEL, upgradeCost, upgradeLock } from './upgrades';
+import { defaultUpgrades, eff, UPGRADES, maxLevel, upgradeCost, upgradeLock } from './upgrades';
 import type {
   FishItem,
   ObjectiveState,
@@ -506,7 +506,7 @@ export class GameState {
 
   private checkObjectives() {
     if (this.discovered.length >= FISH.length) this.objectives.allSpecies = true;
-    if (UPGRADES.every((u) => this.upgrades[u.id] >= MAX_LEVEL)) this.objectives.maxUpgrades = true;
+    if (UPGRADES.every((u) => this.upgrades[u.id] >= maxLevel(u.id))) this.objectives.maxUpgrades = true;
     if (this.money >= 25000) this.objectives.rich = true;
   }
 
@@ -623,6 +623,8 @@ export class GameState {
         const sum = Object.values(data.upgrades).reduce((a: number, v) => a + (Number(v) || 0), 0);
         this.upgrades.instr = sum >= 10 ? 2 : sum >= 3 ? 1 : 0;
       }
+      // автопілот колись був у «Приладах» 5 — у кого вони є, модуль уже стоїть
+      if (data.upgrades.autopilot == null) this.upgrades.autopilot = (this.upgrades.instr ?? 0) >= 5 ? 1 : 0;
       // старий сейв (з жорстким дахом-hardtop): дах прибрали, натомість досвідченим — тент
       if (data.upgrades.tent == null) {
         const sum = Object.values(data.upgrades).reduce((a: number, v) => a + (Number(v) || 0), 0);

@@ -1,6 +1,6 @@
 import { formatMoney } from '../core/math';
 import { fishSellPrice, FISH, FISH_BY_ID, ZONE_NAMES } from '../game/fish';
-import { UPGRADES, UPGRADE_BY_ID, MAX_LEVEL, upgradeCost, upgradeLock } from '../game/upgrades';
+import { UPGRADES, UPGRADE_BY_ID, maxLevel, upgradeCost, upgradeLock } from '../game/upgrades';
 import { PartPreview } from './partPreview';
 import { PLANS, boatValue, dailyPremium, type SinkReport } from '../game/insurance';
 import type { UpgradeId } from '../core/types';
@@ -719,9 +719,9 @@ export class Dialogs {
     const patchCost = Math.round(35 * rk), fullCost = Math.round(100 * rk);
     // типова вибрана річ — наступна, яку можна купити
     if (!this.shopSel) {
-      const next = UPGRADES.find((u) => game.upgrades[u.id] < MAX_LEVEL && (upgradeCost(u.id, game.upgrades[u.id]) ?? 1e9) <= game.money)
-        ?? UPGRADES.find((u) => game.upgrades[u.id] < MAX_LEVEL) ?? UPGRADES[0];
-      this.shopSel = { id: next.id, lvl: Math.min(MAX_LEVEL, game.upgrades[next.id] + 1) };
+      const next = UPGRADES.find((u) => game.upgrades[u.id] < maxLevel(u.id) && (upgradeCost(u.id, game.upgrades[u.id]) ?? 1e9) <= game.money)
+        ?? UPGRADES.find((u) => game.upgrades[u.id] < maxLevel(u.id)) ?? UPGRADES[0];
+      this.shopSel = { id: next.id, lvl: Math.min(maxLevel(next.id), game.upgrades[next.id] + 1) };
     }
     const sel = this.shopSel;
 
@@ -744,7 +744,7 @@ export class Dialogs {
           </button>`;
       }).join('');
       return `<div class="shelf">
-          <div class="shelf-label"><b>${u.name}</b><small>${u.role}</small><span class="shelf-lvl">${cur}/5</span></div>
+          <div class="shelf-label"><b>${u.name}</b><small>${u.role}</small><span class="shelf-lvl">${cur}/${u.costs.length}</span></div>
           <div class="shelf-row">${items}</div>
         </div>`;
     }).join('');
@@ -774,7 +774,7 @@ export class Dialogs {
     const showcase = L(`
       <div class="showcase">
         <div class="sc-view" data-view></div>
-        <div class="sc-cat">${def.name} · рівень ${sel.lvl}/5</div>
+        <div class="sc-cat">${def.name} · рівень ${sel.lvl}/${def.costs.length}</div>
         <h3 class="sc-name">${esc(part.name)}</h3>
         <p class="sc-blurb">${esc(part.blurb)}</p>
         <table class="sc-stats">${statHead}${statRows}</table>
@@ -783,7 +783,7 @@ export class Dialogs {
       </div>`, `
       <div class="showcase">
         <div class="sc-view" data-view></div>
-        <div class="sc-cat">${def.name} · level ${sel.lvl}/5</div>
+        <div class="sc-cat">${def.name} · level ${sel.lvl}/${def.costs.length}</div>
         <h3 class="sc-name">${esc(part.name)}</h3>
         <p class="sc-blurb">${esc(part.blurb)}</p>
         <table class="sc-stats">${statHead}${statRows}</table>
@@ -880,7 +880,7 @@ export class Dialogs {
         this.audio.catchJingle();
         this.shopNote = L(`🔧 «${esc(UPGRADE_BY_ID[id].parts[game.upgrades[id] - 1].name)}» вже на човні`, `🔧 “${esc(UPGRADE_BY_ID[id].parts[game.upgrades[id] - 1].name)}” is already on the boat`);
         // вітрина одразу показує наступну річ із цієї ж полиці
-        if (game.upgrades[id] < MAX_LEVEL) this.shopSel = { id, lvl: game.upgrades[id] + 1 };
+        if (game.upgrades[id] < maxLevel(id)) this.shopSel = { id, lvl: game.upgrades[id] + 1 };
         const sc = this.panel.querySelector('.shelves');
         const scroll = sc?.scrollTop ?? 0;
         refresh();

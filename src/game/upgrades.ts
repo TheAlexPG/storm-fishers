@@ -220,7 +220,7 @@ export const UPGRADES: UpgradeDef[] = [
   {
     id: 'instr',
     name: L('Прилади', `Instruments`),
-    role: L('від латунного компаса до радара й автопілота', `from a brass compass to radar and autopilot`),
+    role: L('від латунного компаса до радара', `from a brass compass to radar`),
     desc: (l) => INSTR_DESC[Math.max(0, Math.min(5, l))],
     costs: [300, 900, 2200, 4200, 8000],
     parts: [
@@ -228,7 +228,7 @@ export const UPGRADES: UpgradeDef[] = [
       { name: L('Ехолот і вітромір', `Depth sounder and wind gauge`), blurb: L('Електронний дисплей: глибина під кілем із сигналом мілини, вимпельний і справжній вітер, цифрові показники.', `An electronic display: depth under the keel with a shallow alarm, apparent and true wind, digital readouts.`) },
       { name: L('GPS-картплотер', `GPS chartplotter`), blurb: L('Кольоровий екран із картою навколо яхти й твоїм маршрутом. Точний курс, відстань і час до точки, маршрут на мінікарті.', `A colour screen with the chart around the yacht and your route. Exact bearing, distance and time to the waypoint, the route on the minimap.`) },
       { name: L('Ехолот-рибошукач', `Fish-finding sonar`), blurb: L('Сонар показує рибу під кілем і рельєф дна, а на компасі з\'являється стрілка до найближчої зграї.', `The sonar shows fish under the keel and the seabed, and an arrow to the nearest school appears on the compass.`) },
-      { name: L('Радар, AIS і автопілот', `Radar, AIS and autopilot`), blurb: L('Обтічник радара на щоглі, екран зі скелями й човнами, імена суден на мінікарті. Автопілот веде яхту маршрутом сам.', `A radome on the mast, a screen with rocks and boats, vessel names on the minimap. The autopilot sails the route by itself.`) },
+      { name: L('Радар і AIS', `Radar and AIS`), blurb: L('Обтічник радара на щоглі, екран зі скелями й човнами, імена суден на мінікарті.', `A radome on the mast, a screen with rocks and boats, vessel names on the minimap.`) },
     ],
     stats: [
       { label: L('Приладів біля штурвала', `Instruments at the helm`), value: (l) => [4, 6, 8, 9, 10, 12][Math.max(0, Math.min(5, l))], fmt: (v) => `${Math.round(v)}` },
@@ -271,6 +271,21 @@ export const UPGRADES: UpgradeDef[] = [
       { label: L('Автоматика', `Automatic`), value: (l) => pumpAuto(l), fmt: (v) => (v > 0 ? L(`${Math.round(v)} %/с`, `${Math.round(v)} %/s`) : '—') },
     ],
   },
+  {
+    // окремий модуль (не рівень «Приладів»): веде маршрутом GPS, тож потрібні прилади ≥ 3
+    id: 'autopilot',
+    name: L('Автопілот', `Autopilot`),
+    role: L('сам веде яхту маршрутом або тримає курс', `steers the yacht along the route or holds course`),
+    desc: (l) => (l >= 1 ? L('блок біля штурвала: T або кнопка — увімк./вимк.', `unit at the helm: T or the button — on/off`) : L('кермуєш сам', `you steer yourself`)),
+    costs: [3600],
+    requires: { id: 'instr', lvl: 3 },
+    parts: [
+      { name: L('Блок автопілота', `Autopilot unit`), blurb: L('Румпельний привод і пульт біля штурвала. Веде яхту маршрутом із GPS-картплотера або тримає поточний курс; кермо (A/D) чи T — вимкнути.', `A wheel drive and a control head at the helm. Steers along the GPS chartplotter route or holds the current course; rudder (A/D) or T — off.`) },
+    ],
+    stats: [
+      { label: L('Автокерування', `Self-steering`), value: (l) => (l >= 1 ? 1 : 0), fmt: (v) => (v ? L('так', `yes`) : '—') },
+    ],
+  },
 ];
 
 /** помпа: множник ручного качання (швидкість і менше сил на хід) */
@@ -304,7 +319,7 @@ const INSTR_DESC = [
   L('+ ехолот глибини й вітромір', `+ depth sounder and wind gauge`),
   L('+ GPS-картплотер з маршрутом', `+ GPS chartplotter with route`),
   L('+ рибошукач і стрілка до зграї', `+ fish finder and an arrow to the school`),
-  L('+ радар, AIS і автопілот', `+ radar, AIS and autopilot`),
+  L('+ радар і AIS', `+ radar and AIS`),
 ];
 
 /** які можливості дає рівень «Приладів» */
@@ -383,14 +398,16 @@ export function holderBiteSpeed(l: number): number {
 
 export const UPGRADE_BY_ID: Record<string, UpgradeDef> = Object.fromEntries(UPGRADES.map((u) => [u.id, u]));
 export const MAX_LEVEL = 5;
+/** скільки рівнів у дерева (автопілот — один модуль) */
+export const maxLevel = (id: UpgradeId): number => UPGRADE_BY_ID[id]?.costs.length ?? MAX_LEVEL;
 
 export function defaultUpgrades(): UpgradeLevels {
-  return { engine: 0, hull: 0, hold: 0, rod: 0, fuel: 0, lights: 0, stab: 0, holders: 0, sails: 0, nets: 0, instr: 0, tent: 0, pump: 0 };
+  return { engine: 0, hull: 0, hold: 0, rod: 0, fuel: 0, lights: 0, stab: 0, holders: 0, sails: 0, nets: 0, instr: 0, tent: 0, pump: 0, autopilot: 0 };
 }
 
 export function upgradeCost(id: UpgradeId, currentLevel: number): number | null {
   const def = UPGRADE_BY_ID[id];
-  if (!def || currentLevel >= MAX_LEVEL) return null;
+  if (!def || currentLevel >= def.costs.length) return null;
   return def.costs[currentLevel];
 }
 

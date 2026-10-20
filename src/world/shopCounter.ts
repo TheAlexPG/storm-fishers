@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { UpgradeId, UpgradeLevels } from '../core/types';
-import { UPGRADES, UPGRADE_BY_ID, MAX_LEVEL, upgradeCost, upgradeLock } from '../game/upgrades';
+import { UPGRADES, UPGRADE_BY_ID, maxLevel, upgradeCost, upgradeLock } from '../game/upgrades';
 import { buildPartModel, partViewYaw, type PartKit } from './upgradeParts';
 import { GROUND_Y } from './portTerrain';
 import { formatMoney } from '../core/math';
@@ -206,7 +206,7 @@ export class ShopCounter {
   refresh(up: UpgradeLevels, money: number) {
     for (const s of this.slots) {
       const lvl = up[s.id] ?? 0;
-      const next = lvl < MAX_LEVEL ? lvl + 1 : 0;
+      const next = lvl < maxLevel(s.id) ? lvl + 1 : 0;
       if (next !== s.shownLvl) {
         s.shownLvl = next;
         for (const o of s.holder.children) o.traverse((q) => (q as THREE.Mesh).geometry?.dispose());
@@ -312,7 +312,7 @@ export class ShopCounter {
     const id = t.slice(3) as UpgradeId;
     const u = UPGRADE_BY_ID[id];
     const lvl = up[id] ?? 0;
-    if (lvl >= MAX_LEVEL) return L(`${u.name}: усе вже на човні (макс.)`, `${u.name}: everything is already on the boat (max)`);
+    if (lvl >= maxLevel(id)) return L(`${u.name}: усе вже на човні (макс.)`, `${u.name}: everything is already on the boat (max)`);
     const part = u.parts[lvl];
     const cost = upgradeCost(id, lvl) ?? 0;
     // перша характеристика, що справді змінюється на цьому рівні

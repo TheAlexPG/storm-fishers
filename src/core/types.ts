@@ -45,7 +45,8 @@ export type UpgradeId =
   | 'nets'
   | 'instr'
   | 'tent'
-  | 'pump';
+  | 'pump'
+  | 'autopilot';
 
 export type UpgradeLevels = Record<UpgradeId, number>;
 

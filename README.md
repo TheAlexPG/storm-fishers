@@ -63,6 +63,7 @@ explore islands, outrun Beaufort‑scale storms and come home with a hold full o
 - **Physical radio «Шторм‑М1»** — a real set with a screen and separate controls: power, five preset buttons, a tuning knob (with static between stations) and a volume knob. Aim at a control and click it, or turn it with the mouse wheel. Its screen shows a 3‑day forecast, market prices with sparklines, fish reports, a live music spectrum or typed‑out channel 16 chatter.
 - **Chart table** — lean over a paper chart in the cabin, zoom it and plot your course with a pencil.
 - **Upgrades you can see** — hull, sails, hold, rods, nets: every level physically changes the boat.
+- **Helm instruments & autopilot** — from a brass compass and wind gauge to a teak-and-brass gauge console, depth sounder, GPS chartplotter, fish finder and radar; the **autopilot** is a separate module (needs the GPS chartplotter) that sails your route by itself.
 - **Mooring & gangway** — step ashore and back aboard without climbing over the rails.
 
 ### 🎣 Fishing
@@ -135,6 +136,7 @@ explore islands, outrun Beaufort‑scale storms and come home with a hold full o
 | **R** | reel in the line |
 | **M** | nautical chart (wheel — zoom, drag — pan, click — add route point, RMB — remove) |
 | **Radio** | aim at a button or knob · **LMB** press · **RMB** back · **wheel** turn |
+| **T** | autopilot on/off at the wheel (autopilot module) |
 | **V** | stern chase camera / first person at the wheel |
 | **P** · **H** | photo mode · hide the interface |
 | **Enter** | co‑op chat |

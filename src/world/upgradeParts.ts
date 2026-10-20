@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { UpgradeId } from '../core/types';
-import { instrShelfModel } from './helmInstruments';
+import { autopilotShelfModel, instrShelfModel } from './helmInstruments';
 import { tentShelfModel } from './canvasTop';
 import { HALF_LEN, DECK_Y, WATERLINE_Y, HOUSE, RIG, ARCH, sheerY, hullBottomY, hullHalfWidth, hullXAt } from './yachtLayout';
 
@@ -954,6 +954,8 @@ export const PART_SPECS: Record<UpgradeId, PartSpec[]> = {
   ],
   // прилади штурвала живуть у HelmInstruments (екрани, стрілки) — тут лише речі для полиці
   instr: [1, 2, 3, 4, 5].map((l) => ({ model: (k: PartKit) => instrShelfModel(l, k), view: -0.25, onBoat: () => new THREE.Group() })),
+  // автопілот: на яхті блок живе в HelmInstruments (кнопка, лампа) — тут лише коробка для полиці
+  autopilot: [{ model: autopilotShelfModel, view: -0.25, onBoat: () => new THREE.Group() }],
   // тент живе в CanvasTop (полотна, складання, штори) — тут лише згортки для полиці
   tent: [1, 2, 3, 4, 5].map((l) => ({ model: (k: PartKit) => tentShelfModel(l, k), view: -0.25, onBoat: () => new THREE.Group() })),
   // помпа — біля рукояті штатної помпи в кокпіті (станція pump: x −0.62, z −4.05)
