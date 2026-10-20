@@ -61,8 +61,9 @@ export class FishJump {
 
   constructor(scene: THREE.Scene) {
     // тіло: сплюснутий ромбоїд з двох конусів (верх темний, черево світле)
-    const g = new THREE.SphereGeometry(1, 8, 6);
-    g.scale(0.28, 0.42, 1);
+    // риба сплюснута з боків: вузька, але висока — інакше в польоті до камери це «куля»
+    const g = new THREE.SphereGeometry(1, 10, 6);
+    g.scale(0.15, 0.36, 1);
     this.body = new THREE.Mesh(g, [this.topMat, this.bellyMat]);
     // дві групи матеріалів: верхня половина вершин — темна
     g.clearGroups();
@@ -83,6 +84,17 @@ export class FishJump {
     this.tail = new THREE.Mesh(tg, this.topMat);
     this.tail.position.z = -1.1;
     this.fish.add(this.tail);
+    // спинний плавець і очі — щоб силует читався як риба
+    const fin = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.5, 3).scale(0.15, 1, 1), this.topMat);
+    fin.position.set(0, 0.42, -0.1);
+    fin.rotation.x = -0.5;
+    this.fish.add(fin);
+    const eyeM = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.3 });
+    for (const sx of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 4), eyeM);
+      eye.position.set(sx * 0.11, 0.08, 0.72);
+      this.fish.add(eye);
+    }
     this.fish.visible = false;
     scene.add(this.fish);
   }
@@ -124,7 +136,8 @@ export class FishJump {
     p.y += Math.sin(k * Math.PI) * 1.4;
     // дивиться по траєкторії, б'є хвостом
     const dx = this.to.x - this.from.x, dz = this.to.z - this.from.z;
-    this.fish.rotation.set(Math.cos(k * Math.PI) * 0.9, Math.atan2(dx, dz), Math.sin(time * 30) * 0.25);
+    // летить боком до рибалки (як на волосіні, що закидає її на борт) — видно силует
+    this.fish.rotation.set(Math.cos(k * Math.PI) * 0.6, Math.atan2(dx, dz) + (this.leap ? 0 : 1.25), Math.sin(time * 30) * 0.25);
     this.tail.rotation.y = Math.sin(time * 34) * 0.7;
     // на палубі: лежить і ще трохи б'ється, тоді зникає (у трюм)
     if (u > 1) {

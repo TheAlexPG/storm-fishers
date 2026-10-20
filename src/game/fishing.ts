@@ -715,7 +715,10 @@ export class Fishing {
     // фрикціон: вище зеленої зони котушка травить волосінь — натяг росте ледве-ледве
     const over = clamp((this.fightTension - swz.hi) / Math.max(1, this.lineBreakAt - swz.hi), 0, 1);
     const drag = 1 - over * (easy ? 0.8 : 0.5);
-    this.dragSlip = reeling && over > 0.25 ? over : 0;
+    // травить лише тоді, коли риба реально тягне; втомлена не опирається — її дотягуєш
+    // (інакше з затиснутим Space натяг упирався у фрикціон, і риба вічно стояла на місці)
+    const fishForce = tired ? 0 : this.pull !== 0 ? 0.45 + 0.55 * this.pullK : 0.45;
+    this.dragSlip = reeling && over > 0.25 ? over * fishForce : 0;
     let rate = reeling ? (24 + power * 18) * drag * (jumping ? (easy ? 1.6 : 2.2) : 1) : -42;
     rate += this.pull !== 0 ? (1 - counter) * 26 * power * this.pullK : 6 * power;
     if (easy) rate *= 0.85;
@@ -731,6 +734,8 @@ export class Fishing {
     let drain = 1.2;
     if (sweet) drain += 3 + Math.max(0, counter) * 3.5;
     if (jumping && !reeling) drain += 9;
+    // риба, що тягне проти фрикціону, теж втомлюється
+    if (this.dragSlip > 0) drain += 2.5;
     this.stamina = Math.max(0, this.stamina - drain * dt);
 
     // поки риба має сили — підтягується повільно; важка — ще повільніше

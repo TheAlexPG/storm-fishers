@@ -429,6 +429,7 @@ export class Hud {
       this.elPromptText.textContent = extra.prompt;
       const k = extra.promptKey ?? 'E';
       if (this.elPromptKey.textContent !== k) this.elPromptKey.textContent = k;
+      this.elPromptKey.style.display = k ? '' : 'none';
     } else {
       this.elPrompt.classList.remove('show', 'bite', 'timed');
     }

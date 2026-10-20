@@ -2783,6 +2783,11 @@ class Game {
     // боротьба — перш за все
     if (this.fishing.state === 'fight' || this.fishing.state === 'charge') return { text: null, bite: false };
     if (this.fishing.state === 'bite') return { text: 'Клює! Підсікай!', bite: true, key: 'ЛКМ' };
+    // волосінь у воді — підказка риболовлі важливіша за сусідню станцію (люк, ящик…)
+    if (this.fishing.state === 'waiting') {
+      const fp = this.fishing.prompt();
+      if (fp) return { text: fp, bite: false, key: '' };
+    }
     // станція-дія активна
     if (this.stations.active) return { text: this.stations.active.label, bite: false };
     // риба на палубі / в руках
