@@ -1,5 +1,6 @@
 import { GameState } from './state';
 import type { SaveData } from '../core/types';
+import { L } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // Перенесення сейву на інший комп'ютер: файл .json з обома слотами
@@ -33,7 +34,7 @@ export function hasAnySave(): boolean {
 export function describeSave(d: Partial<SaveData> | null | undefined): string {
   if (!d) return '—';
   const up = Object.values(d.upgrades ?? {}).reduce((a: number, v) => a + (Number(v) || 0), 0);
-  return `день ${d.dayCount ?? 1}, ${Math.round(d.money ?? 0)} ₴, апгрейдів ${up}, улов ${d.hold?.length ?? 0}`;
+  return L(`день ${d.dayCount ?? 1}, ${Math.round(d.money ?? 0)} ₴, апгрейдів ${up}, улов ${d.hold?.length ?? 0}`, `day ${d.dayCount ?? 1}, ${Math.round(d.money ?? 0)} ₴, upgrades ${up}, catch ${d.hold?.length ?? 0}`);
 }
 
 /** завантажити файл сейву */
@@ -63,22 +64,22 @@ export interface ParsedSave {
 
 /** прочитати й перевірити файл сейву (кидає помилку з поясненням) */
 export async function parseSaveFile(file: File): Promise<ParsedSave> {
-  if (file.size > 5_000_000) throw new Error('Файл завеликий — це не сейв гри');
+  if (file.size > 5_000_000) throw new Error(L('Файл завеликий — це не сейв гри', `The file is too large — it's not a game save`));
   let j: Partial<SaveFile> & Partial<SaveData>;
   try {
     j = JSON.parse(await file.text());
   } catch {
-    throw new Error('Не вдалося прочитати файл — це не сейв гри');
+    throw new Error(L('Не вдалося прочитати файл — це не сейв гри', `Couldn't read the file — it's not a game save`));
   }
   // підтримка «голого» соло-сейву (вміст localStorage)
   if (j.game !== TAG) {
     if (validSave(j)) return { solo: j, coop: null, summary: describeSave(j) };
-    throw new Error('Це не файл сейву «Грозової рибалки»');
+    throw new Error(L('Це не файл сейву «Грозової рибалки»', `This is not a Storm Fishers save file`));
   }
   const solo = validSave(j.solo) ? j.solo : null;
   const coop = validSave(j.coop) ? j.coop : null;
-  if (!solo && !coop) throw new Error('У файлі немає збереженої гри');
-  const parts = [solo ? `соло: ${describeSave(solo)}` : '', coop ? `кооп: ${describeSave(coop)}` : ''].filter(Boolean);
+  if (!solo && !coop) throw new Error(L('У файлі немає збереженої гри', `There is no saved game in this file`));
+  const parts = [solo ? L(`соло: ${describeSave(solo)}`, `solo: ${describeSave(solo)}`) : '', coop ? L(`кооп: ${describeSave(coop)}`, `co-op: ${describeSave(coop)}`) : ''].filter(Boolean);
   return { solo, coop, summary: parts.join(' · ') };
 }
 

@@ -94,6 +94,9 @@ explore islands, outrun Beaufort‑scale storms and come home with a hold full o
 ### 💾 Progress
 - Autosave in the browser, plus **save export/import** to move your progress to another computer.
 
+### 🌍 Languages
+- **English** (default) and **Ukrainian** — switch with the EN | UA toggle on the title screen or in the pause menu, or open the game with `?lang=uk` / `?lang=en`. In co-op every player sees the game in their own language.
+
 ---
 
 ## 🎮 Controls
@@ -162,6 +165,6 @@ Storm Fishers is free and open source under the [MIT License](LICENSE) — play 
 
 <div align="center">
 
-Made with ☕ and sea spray · interface in Ukrainian 🇺🇦
+Made with ☕ and sea spray · in English and Ukrainian 🇺🇦
 
 </div>

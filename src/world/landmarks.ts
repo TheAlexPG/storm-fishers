@@ -5,6 +5,7 @@ import type { RockObstacle } from './boat';
 import type { Ocean } from '../core/ocean';
 import { ISLANDS } from './islandShape';
 import { PORT_SITES, siteToWorld } from './portSites';
+import { L } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // Пам'ятки в морі — те, заради чого варто відійти від берега:
@@ -25,12 +26,12 @@ export interface Landmark {
 }
 
 export const LANDMARKS: Landmark[] = [
-  { id: 'wreck', name: 'Затонула шхуна', sub: 'щогла досі тримається', x: -300, z: 650, r: 55 },
-  { id: 'seals', name: 'Тюленячі скелі', sub: 'не буди їх', x: 395, z: 312, r: 50 },
-  { id: 'oldlight', name: 'Старий маяк', sub: 'світив до шторму 1953-го', x: -440, z: 500, r: 55 },
-  { id: 'stack', name: 'Пташиний стовп', sub: 'тут гніздяться мартини', x: 545, z: 175, r: 60 },
-  { id: 'arch', name: 'Кам\'яна арка', sub: 'пропливи крізь неї', x: 150, z: 660, r: 50 },
-  { id: 'bell', name: 'Дзвоновий буй', sub: 'слухай його в тумані', x: -650, z: 250, r: 45 },
+  { id: 'wreck', name: L('Затонула шхуна', `Sunken Schooner`), sub: L('щогла досі тримається', `her mast still stands`), x: -300, z: 650, r: 55 },
+  { id: 'seals', name: L('Тюленячі скелі', `Seal Rocks`), sub: L('не буди їх', `don't wake them`), x: 395, z: 312, r: 50 },
+  { id: 'oldlight', name: L('Старий маяк', `Old Lighthouse`), sub: L('світив до шторму 1953-го', `shone until the storm of 1953`), x: -440, z: 500, r: 55 },
+  { id: 'stack', name: L('Пташиний стовп', `Bird Stack`), sub: L('тут гніздяться мартини', `the gulls nest here`), x: 545, z: 175, r: 60 },
+  { id: 'arch', name: L('Кам\'яна арка', `Stone Arch`), sub: L('пропливи крізь неї', `sail right through it`), x: 150, z: 660, r: 50 },
+  { id: 'bell', name: L('Дзвоновий буй', `Bell Buoy`), sub: L('слухай його в тумані', `listen for it in the fog`), x: -650, z: 250, r: 45 },
   // острови (islandShape.ts) — на них можна зійти
   ...ISLANDS.map((d) => ({ id: d.id, name: d.name, sub: d.sub, x: d.x, z: d.z, r: d.r * Math.sqrt(d.elong) + 45 })),
   // інші гавані (portSites.ts) — позначка трохи в морі перед причалом

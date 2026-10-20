@@ -10,6 +10,7 @@ import { terrainHeight } from './portTerrain';
 import { ISLANDS, ISLAND_SOLIDS, islandHeight, islandHeightOf, type IslandDef } from './islandShape';
 import type { Boat } from './boat';
 import type { GameState } from '../game/state';
+import { L } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // Острови в морі: рельєф (пляж, пагорб), реквізит за характером острова
@@ -36,8 +37,8 @@ export const FINDS: FindDef[] = [
   { id: 'hat:straw', island: 'isl-palm', dx: 14, dz: 2, kind: 'hat', hat: 'straw' },
   { id: 'hat:tricorn', island: 'isl-pirate', dx: -6, dz: 10, kind: 'hat', hat: 'tricorn' },
   { id: 'hat:crown', island: 'isl-shell', dx: 3, dz: 5, kind: 'hat', hat: 'crown' },
-  { id: 'bottle:palm', island: 'isl-palm', dx: -16, dz: -6, kind: 'bottle', money: 250, note: '«Хто знайде — пригостіть кока рибною юшкою. Я так і не повернувся по свою капелюшину…»' },
-  { id: 'bottle:shell', island: 'isl-shell', dx: -12, dz: -4, kind: 'bottle', money: 300, note: '«Мапа брехала: скриня не під пальмою, а на Піратській бухті, біля прапора»' },
+  { id: 'bottle:palm', island: 'isl-palm', dx: -16, dz: -6, kind: 'bottle', money: 250, note: L('«Хто знайде — пригостіть кока рибною юшкою. Я так і не повернувся по свою капелюшину…»', `“Whoever finds this — treat the cook to a bowl of fish soup. I never made it back for my hat…”`) },
+  { id: 'bottle:shell', island: 'isl-shell', dx: -12, dz: -4, kind: 'bottle', money: 300, note: L('«Мапа брехала: скриня не під пальмою, а на Піратській бухті, біля прапора»', `“The map lied: the chest isn't under the palm, it's at Pirate Cove, by the flag”`) },
   { id: 'chest:pirate', island: 'isl-pirate', dx: 9, dz: -5, kind: 'chest', money: 900 },
 ];
 
@@ -457,7 +458,7 @@ export class Islands {
     }
     if (!best) return null;
     const f = best.def;
-    const label = f.kind === 'hat' ? `Підняти: ${HAT_BY_ID[f.hat!].name.toLowerCase()}` : f.kind === 'bottle' ? 'Підняти пляшку із запискою' : 'Відкрити стару скриню';
+    const label = f.kind === 'hat' ? L(`Підняти: ${HAT_BY_ID[f.hat!].name.toLowerCase()}`, `Pick up: ${HAT_BY_ID[f.hat!].name.toLowerCase()}`) : f.kind === 'bottle' ? L('Підняти пляшку із запискою', `Pick up the bottle with a note`) : L('Відкрити стару скриню', `Open the old chest`);
     return { id: 'find:' + f.id, label };
   }
 

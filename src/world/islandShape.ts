@@ -1,5 +1,6 @@
 import { fbm, smoothstep } from './portKit';
 import { portLandHeight } from './portSites';
+import { L } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // Форма островів у морі (чиста математика — без three.js): висота
@@ -27,11 +28,11 @@ export interface IslandDef {
 }
 
 export const ISLANDS: IslandDef[] = [
-  { id: 'isl-gull', name: 'Чаячий острівець', sub: 'зійди на берег — тут щось блищить', kind: 'gull', x: -110, z: 196, r: 22, elong: 1.3, rot: 0.6, peak: 5, seed: 11 },
-  { id: 'isl-pine', name: 'Сосновий острів', sub: 'руїни хатини доглядача', kind: 'pine', x: -238, z: 392, r: 44, elong: 1.25, rot: -0.4, peak: 16, seed: 23 },
-  { id: 'isl-palm', name: 'Пальмова коса', sub: 'теплий пісок посеред Північного моря', kind: 'palm', x: 296, z: 442, r: 30, elong: 2.0, rot: 0.35, peak: 3.5, seed: 37 },
-  { id: 'isl-pirate', name: 'Піратська бухта', sub: 'кажуть, тут закопали скриню', kind: 'pirate', x: 690, z: 520, r: 40, elong: 1.35, rot: 1.1, peak: 13, seed: 41 },
-  { id: 'isl-shell', name: 'Мушлевий острів', sub: 'море приносить сюди найкращі мушлі', kind: 'shell', x: -668, z: 590, r: 30, elong: 1.4, rot: -1.0, peak: 7, seed: 53 },
+  { id: 'isl-gull', name: L('Чаячий острівець', `Gull Islet`), sub: L('зійди на берег — тут щось блищить', `go ashore — something glitters here`), kind: 'gull', x: -110, z: 196, r: 22, elong: 1.3, rot: 0.6, peak: 5, seed: 11 },
+  { id: 'isl-pine', name: L('Сосновий острів', `Pine Island`), sub: L('руїни хатини доглядача', `ruins of the keeper's hut`), kind: 'pine', x: -238, z: 392, r: 44, elong: 1.25, rot: -0.4, peak: 16, seed: 23 },
+  { id: 'isl-palm', name: L('Пальмова коса', `Palm Spit`), sub: L('теплий пісок посеред Північного моря', `warm sand in the middle of the North Sea`), kind: 'palm', x: 296, z: 442, r: 30, elong: 2.0, rot: 0.35, peak: 3.5, seed: 37 },
+  { id: 'isl-pirate', name: L('Піратська бухта', `Pirate Cove`), sub: L('кажуть, тут закопали скриню', `they say a chest is buried here`), kind: 'pirate', x: 690, z: 520, r: 40, elong: 1.35, rot: 1.1, peak: 13, seed: 41 },
+  { id: 'isl-shell', name: L('Мушлевий острів', `Shell Island`), sub: L('море приносить сюди найкращі мушлі', `the sea brings the finest shells here`), kind: 'shell', x: -668, z: 590, r: 30, elong: 1.4, rot: -1.0, peak: 7, seed: 53 },
 ];
 
 /** найдовший радіус з урахуванням витягнутості й шуму берега (+ підводний схил) */

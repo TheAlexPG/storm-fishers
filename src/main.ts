@@ -7,7 +7,7 @@ import { AudioEngine } from './core/audio';
 import { clamp, rand, formatMoney } from './core/math';
 import type { UpgradeId } from './core/types';
 import { UPGRADE_BY_ID, MAX_LEVEL, upgradeCost, upgradeLock } from './game/upgrades';
-import { GameState } from './game/state';
+import { GameState, newsText } from './game/state';
 import { Boat, BOAT, MOOR, MOOR_HEADING, STATION_POS } from './world/boat';
 import { moorSlotX, MOOR_SLOTS } from './net/coop';
 import { Port } from './world/port';
@@ -30,15 +30,15 @@ const SITE_DOCKS: Record<string, Platform> = Object.fromEntries(PORT_SITES.map((
 
 /** м'яке навчання: крок → підказка; умова виконання — у Game.updateTutorial */
 const TUTORIAL = [
-  'Підійди до штурвала на кормі й натисни E',
-  'Виведи яхту з гавані: W — газ, A/D — кермо',
-  'Підніми паруси: біля щогли натисни E. Найкраще йти, коли вітер збоку',
-  'Візьми вудку з носової стійки (E). Тримай ЛКМ і відпусти в зеленій зоні — закид',
-  'Коли поплавок пірне — клікни ЛКМ. Далі тримай/відпускай Space, щоб натяг був у зеленій зоні; A/D — проти ривка. Рибу з палуби неси в трюм на баку',
-  'Повертайся в порт і продай улов на рибній біржі (навіс на східній набережній)',
+  L('Підійди до штурвала на кормі й натисни E', `Go to the wheel at the stern and press E`),
+  L('Виведи яхту з гавані: W — газ, A/D — кермо', `Take the yacht out of the harbour: W — throttle, A/D — rudder`),
+  L('Підніми паруси: біля щогли натисни E. Найкраще йти, коли вітер збоку', `Hoist the sails: press E at the mast. It's best to sail with the wind on the beam`),
+  L('Візьми вудку з носової стійки (E). Тримай ЛКМ і відпусти в зеленій зоні — закид', `Take a rod from the bow rack (E). Hold LMB and release in the green zone to cast`),
+  L('Коли поплавок пірне — клікни ЛКМ. Далі тримай/відпускай Space, щоб натяг був у зеленій зоні; A/D — проти ривка. Рибу з палуби неси в трюм на баку', `When the float goes under — click LMB. Then hold/release Space to keep the tension in the green; A/D — against the pull. Carry fish from the deck to the hold on the foredeck`),
+  L('Повертайся в порт і продай улов на рибній біржі (навіс на східній набережній)', `Head back to port and sell your catch at the fish exchange (the awning on the east promenade)`),
 ];
 
-const ZONE_SUB: Record<string, string> = { shore: 'тихі води біля дому', mid: 'тут ходить скумбрія', open: 'далеко від берега' };
+const ZONE_SUB: Record<string, string> = { shore: L('тихі води біля дому', `quiet waters near home`), mid: L('тут ходить скумбрія', `mackerel roam here`), open: L('далеко від берега', `far from the shore`) };
 import { Coop, type BoatAction } from './net/coop';
 import { CameraRig } from './world/cameraRig';
 import { loadSettings, saveSettings, type Settings } from './game/settings';
@@ -53,14 +53,15 @@ import { CabinDecor } from './world/cabinDecor';
 import { CabinDoor } from './world/cabinDoor';
 import { ChartTable, CHART_CENTER } from './world/chartTable';
 import { Nets, type NetsNet } from './world/nets';
-import { Bots } from './world/bots';
+import { Bots, botName } from './world/bots';
+import { sailEventText } from './world/sails';
 import { HelmInstruments, depthAt, bearingDeg } from './world/helmInstruments';
 import { instrHas } from './game/upgrades';
 import { ShopCounter, type CounterTarget } from './world/shopCounter';
 import { ExchangeBoard } from './world/exchangeBoard';
 import { BuyerStalls } from './world/buyerStalls';
 import { OrdersChip } from './ui/buyers';
-import { BUYER_BY_ID, shortName, type BuyerId } from './game/buyers';
+import { BUYER_BY_ID, contractTitle, shortName, type BuyerId } from './game/buyers';
 import { describeSave } from './game/saveTransfer';
 import { Highlighter } from './world/highlight';
 import { HOLDER_MOUNTS } from './world/upgradeParts';
@@ -77,6 +78,7 @@ import { PORT_SITES, PORT_SITE_BY_ID, PORT_SERVICE_HANDLERS, pierRect, siteBerth
 import type { Platform } from './world/port';
 import { Avatar } from './world/avatar';
 import './styles.css';
+import { L } from './core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // Головний цикл: світ, ігри, UI.
@@ -325,7 +327,7 @@ class Game {
         this.shallowToastT -= 1;
         if (this.shallowToastT <= 0) {
           this.shallowToastT = 6;
-          this.hud.toast(`⚠ Мілина! Під кілем ${d.toFixed(1).replace('.', ',')} м`, 'bad', 2200);
+          this.hud.toast(L(`⚠ Мілина! Під кілем ${d.toFixed(1).replace('.', L(',', '.'))} м`, `⚠ Shallows! ${d.toFixed(1).replace('.', L(',', '.'))} m under the keel`), 'bad', 2200);
         }
       };
     }
@@ -354,7 +356,7 @@ class Game {
       }
       return 'lost';
     };
-    this.deckFish.onWashed = (f) => this.hud.toast(`🌊 Хвиля змила за борт: ${this.game.speciesName(f.speciesId)}! Клади рибу в ящик одразу.`, 'bad', 4000);
+    this.deckFish.onWashed = (f) => this.hud.toast(L(`🌊 Хвиля змила за борт: ${this.game.speciesName(f.speciesId)}! Клади рибу в ящик одразу.`, `🌊 A wave washed it overboard: ${this.game.speciesName(f.speciesId)}! Put fish in the box right away.`), 'bad', 4000);
     this.player.onJump = () => this.audio.step(this.player.mode === 'boat' ? 0 : 2, true);
     this.player.stationText = (id) =>
       id === 'anchor'
@@ -363,10 +365,10 @@ class Game {
         ? this.radio.label(this.radioCtl)
         : id === 'fishbox'
         ? !this.boat.hatchOpen
-          ? `Відкрити люк трюму (${this.game.hold.length}/${this.game.holdCap})${this.deckFish.carried ? ' й покласти рибу' : ''}`
+          ? L(`Відкрити люк трюму (${this.game.hold.length}/${this.game.holdCap})${this.deckFish.carried ? L(' й покласти рибу', ` and put the fish in`) : ''}`, `Open the hold hatch (${this.game.hold.length}/${this.game.holdCap})${this.deckFish.carried ? L(' й покласти рибу', ` and put the fish in`) : ''}`)
           : this.deckFish.carried
-            ? `Покласти в трюм: ${this.game.speciesName(this.deckFish.carried.fish.speciesId).toLowerCase()} (${this.game.hold.length}/${this.game.holdCap})`
-            : 'Закрити люк трюму'
+            ? L(`Покласти в трюм: ${this.game.speciesName(this.deckFish.carried.fish.speciesId).toLowerCase()} (${this.game.hold.length}/${this.game.holdCap})`, `Put in the hold: ${this.game.speciesName(this.deckFish.carried.fish.speciesId).toLowerCase()} (${this.game.hold.length}/${this.game.holdCap})`)
+            : L('Закрити люк трюму', `Close the hold hatch`)
         : id === 'nets'
         ? this.nets.stationLabel(this.game.upgrades.nets ?? 0, this.boat)
         : this.fishing.stationLabel(id);
@@ -376,7 +378,7 @@ class Game {
       onEvent: (e, v) => this.onCoopEvent(e, v),
       onChat: (nick, text, color) => this.hud.chatLine(nick, text, color),
       onPeer: (nick, joined) => {
-        this.hud.toast(joined ? `👋 ${nick} на борту` : `${nick} — поза грою`, joined ? 'good' : 'warn', 3500);
+        this.hud.toast(joined ? L(`👋 ${nick} на борту`, `👋 ${nick} is aboard`) : L(`${nick} — поза грою`, `${nick} — left the game`), joined ? 'good' : 'warn', 3500);
         this.audio.click();
       },
       onClosed: (reason) => this.onCoopClosed(reason),
@@ -386,7 +388,7 @@ class Game {
     // жива біржа: запаси симулює капітан кімнати, гості отримують знімок і шлють йому свої продажі
     this.coop.marketState = () => this.game.marketSnapshot();
     this.coop.onMarket = (d) => {
-      for (const n of this.game.applyMarketSnapshot(d)) this.marketNewsToast(n.who, n.text);
+      for (const n of this.game.applyMarketSnapshot(d)) this.marketNewsToast(n.who, newsText(n.text, n.who));
     };
     this.coop.onMarketSale = (portId, sp, u) => this.game.marketOf(portId).addStock(sp, u);
 
@@ -446,7 +448,7 @@ class Game {
 
     // колбACKи човна
     this.boat.onHullHit = (power) => {
-      this.hud.toast(`Удар! Міцність −${Math.round(power * 6)}`, 'bad');
+      this.hud.toast(L(`Удар! Міцність −${Math.round(power * 6)}`, `Impact! Hull −${Math.round(power * 6)}`), 'bad');
       this.audio.thump(power / 6);
       this.coop.sendEvent('hit', power);
     };
@@ -457,17 +459,18 @@ class Game {
         const tip = this.slamTipT <= 0;
         if (tip) this.slamTipT = 25;
         const msg = kind === 'bow'
-          ? `💥 Ніс ляснув об хвилю! Корпус −${Math.round(dmg)}${tip ? ' · скинь газ і бери хвилю під кутом 20–40°' : ''}`
-          : `🌊 Гребінь ударив у борт! Корпус −${Math.round(dmg)}${tip ? ' · не стій лагом до хвилі — розвернись носом' : ''}`;
+          ? L(`💥 Ніс ляснув об хвилю! Корпус −${Math.round(dmg)}${tip ? L(' · скинь газ і бери хвилю під кутом 20–40°', ` · ease the throttle and take the wave at 20–40°`) : ''}`, `💥 The bow slammed into a wave! Hull −${Math.round(dmg)}${tip ? L(' · скинь газ і бери хвилю під кутом 20–40°', ` · ease the throttle and take the wave at 20–40°`) : ''}`)
+          : L(`🌊 Гребінь ударив у борт! Корпус −${Math.round(dmg)}${tip ? L(' · не стій лагом до хвилі — розвернись носом', ` · don't sit beam-on to the waves — turn your bow into them`) : ''}`, `🌊 A crest hit the side! Hull −${Math.round(dmg)}${tip ? L(' · не стій лагом до хвилі — розвернись носом', ` · don't sit beam-on to the waves — turn your bow into them`) : ''}`);
         this.hud.toast(msg, 'bad', tip ? 5000 : 2500);
         this.coop.sendEvent('slam', [Math.round(dmg), kind === 'bow' ? 1 : 2, Math.round(power * 10) / 10]);
       } else {
         this.coop.sendEvent('slam', [0, kind === 'bow' ? 1 : 2, Math.round(power * 10) / 10]);
       }
     };
-    this.boat.sails.onEvent = (msg, kind) => {
+    this.boat.sails.onEvent = (msg, kind, id) => {
       this.hud.toast(msg, kind, 4000);
-      this.coop.sendEvent('toast', [msg, kind]);
+      // екіпажу — номер події: кожен читає своєю мовою
+      this.coop.sendEvent('toast', [`#sail${id}`, kind]);
     };
     this.fishing.onEvent = (msg, kind) => this.hud.toast(msg, kind, 4500);
     this.fishing.onSplash = (pos, power) => {
@@ -481,12 +484,12 @@ class Game {
       this.leapJump.start(sp, kg, pos, to, true);
     };
     this.boat.onEngineStall = () => {
-      this.hud.toast('Хвиля заглушила двигун! Запусти його на двигунній (E)', 'bad');
+      this.hud.toast(L('Хвиля заглушила двигун! Запусти його на двигунній (E)', `A wave stalled the engine! Restart it at the engine (E)`), 'bad');
       this.audio.snap();
       this.coop.sendEvent('stall');
     };
     this.boat.onSunk = () => this.handleSunk();
-    this.boat.onDockPump = () => this.hud.toast('⚓ У порту воду з трюму відкачують з причалу — пришвартована яхта не потоне (на якорі — може!)', 'good', 3500);
+    this.boat.onDockPump = () => this.hud.toast(L('⚓ У порту воду з трюму відкачують з причалу — пришвартована яхта не потоне (на якорі — може!)', `⚓ In port the bilge is pumped out from the pier — a moored yacht won't sink (at anchor it can!)`), 'good', 3500);
     this.player.onStep = (surf, run) => this.audio.step(surf, run);
 
     // звук стартує з першого жесту (політика автоплею) — музика грає вже в заставці
@@ -553,7 +556,7 @@ class Game {
           await this.coop.start(n, null);
           if (GameState.hasSave()) this.continueGame();
           else this.startNew();
-          this.hud.toast(`👥 Кімната ${this.coop.room} відкрита. Код і посилання — у меню (Esc).`, 'good', 9000);
+          this.hud.toast(L(`👥 Кімната ${this.coop.room} відкрита. Код і посилання — у меню (Esc).`, `👥 Room ${this.coop.room} is open. The code and the link are in the menu (Esc).`), 'good', 9000);
         },
         onJoin: async (n, c, own) => {
           remember(n);
@@ -615,8 +618,8 @@ class Game {
     this.requestLock();
     this.hud.flashHints();
     const cap = this.coop.nickOf(owner);
-    this.hud.toast(`👥 Ти на яхті ${cap} в екіпажі. Трюм спільний: хто продав рибу — тому й гроші.`, 'good', 7000);
-    if (!keepWorld) this.hud.toast('Enter — чат з екіпажем', 'warn', 6000);
+    this.hud.toast(L(`👥 Ти на яхті ${cap} в екіпажі. Трюм спільний: хто продав рибу — тому й гроші.`, `👥 You're crew on yacht ${cap}. The hold is shared: whoever sells the fish gets the money.`), 'good', 7000);
+    if (!keepWorld) this.hud.toast(L('Enter — чат з екіпажем', `Enter — chat with the crew`), 'warn', 6000);
   }
 
   /** кооп: на своїй яхті (свій соло-сейв: гроші, модулі, трюм) */
@@ -649,7 +652,7 @@ class Game {
     this.phase = 'play';
     this.requestLock();
     this.hud.flashHints();
-    this.hud.toast(`⛵ Ти на своїй яхті — місце ${MOOR_SLOTS.indexOf(this.boat.moor.x) + 1} біля причалу. Друзі можуть піднятися на борт через меню (Esc).`, 'good', 7000);
+    this.hud.toast(L(`⛵ Ти на своїй яхті — місце ${MOOR_SLOTS.indexOf(this.boat.moor.x) + 1} біля причалу. Друзі можуть піднятися на борт через меню (Esc).`, `⛵ You're on your own yacht — berth ${MOOR_SLOTS.indexOf(this.boat.moor.x) + 1} at the pier. Friends can come aboard via the menu (Esc).`), 'good', 7000);
   }
 
   /** пересісти на іншу яхту флотилії (з меню паузи) */
@@ -695,7 +698,7 @@ class Game {
     } else {
       this.phase = 'play';
       this.requestLock();
-      this.hud.toast('Кімнату закрито — граєш сам.', 'warn');
+      this.hud.toast(L('Кімнату закрито — граєш сам.', `The room is closed — you're playing solo.`), 'warn');
     }
   }
 
@@ -705,25 +708,25 @@ class Game {
     switch (act.a) {
       case 'sails': {
         const m = this.boat.sails.cycle();
-        const txt = m === 2 ? 'паруси підняті' : m === 1 ? 'взято риф' : 'паруси спущено';
+        const txt = m === 2 ? L('паруси підняті', `sails hoisted`) : m === 1 ? L('взято риф', `reef taken`) : L('паруси спущено', `sails dropped`);
         this.hud.toast(`⛵ ${nick}: ${txt}`, 'good', 2200);
         break;
       }
       case 'engine':
         this.boat.restartEngine();
-        this.hud.toast(`${nick}: двигун запущено`, 'good');
+        this.hud.toast(L(`${nick}: двигун запущено`, `${nick}: engine started`), 'good');
         break;
       case 'repair':
         g.repair(Math.min(25, Math.max(0, act.v)));
-        this.hud.toast(`🔧 ${nick}: корпус підлатано`, 'good');
+        this.hud.toast(L(`🔧 ${nick}: корпус підлатано`, `🔧 ${nick}: hull patched`), 'good');
         break;
       case 'fuel':
         g.addFuel(Math.max(0, act.v));
-        this.hud.toast(`⛽ ${nick}: +${Math.round(act.v)} л пального`, 'good');
+        this.hud.toast(L(`⛽ ${nick}: +${Math.round(act.v)} л пального`, `⛽ ${nick}: +${Math.round(act.v)} l of fuel`), 'good');
         break;
       case 'hullFull':
         g.hull = g.maxHull;
-        this.hud.toast(`🔧 ${nick}: ремонт корпусу оплачено`, 'good');
+        this.hud.toast(L(`🔧 ${nick}: ремонт корпусу оплачено`, `🔧 ${nick}: hull repair paid`), 'good');
         break;
       case 'hatch':
         this.boat.hatchOpen = act.v === 1;
@@ -774,7 +777,7 @@ class Game {
             g.tentFolded = false;
           }
           this.syncUpgrades();
-          this.hud.toast(`🛠 ${nick}: нова прокачка човна`, 'good');
+          this.hud.toast(L(`🛠 ${nick}: нова прокачка човна`, `🛠 ${nick}: a new boat upgrade`), 'good');
         }
         break;
       }
@@ -791,22 +794,23 @@ class Game {
         const [dmg, k, power] = (Array.isArray(v) ? v : [0, 1, 3]) as number[];
         this.slamShake = Math.min(1, 0.35 + power * 0.08);
         this.audio.thump(Math.min(1, power / 6));
-        if (dmg >= 1) this.hud.toast(k === 1 ? `💥 Ніс ляснув об хвилю! Корпус −${dmg}` : `🌊 Гребінь ударив у борт! Корпус −${dmg}`, 'bad', 2500);
+        if (dmg >= 1) this.hud.toast(k === 1 ? L(`💥 Ніс ляснув об хвилю! Корпус −${dmg}`, `💥 The bow slammed into a wave! Hull −${dmg}`) : L(`🌊 Гребінь ударив у борт! Корпус −${dmg}`, `🌊 A crest hit the side! Hull −${dmg}`), 'bad', 2500);
         break;
       }
       case 'hit': {
         const power = Number(v) || 1;
-        this.hud.toast(`Удар! Міцність −${Math.round(power * 6)}`, 'bad');
+        this.hud.toast(L(`Удар! Міцність −${Math.round(power * 6)}`, `Impact! Hull −${Math.round(power * 6)}`), 'bad');
         this.audio.thump(power / 6);
         break;
       }
       case 'stall':
-        this.hud.toast('Хвиля заглушила двигун! Запусти його на двигунній (E)', 'bad');
+        this.hud.toast(L('Хвиля заглушила двигун! Запусти його на двигунній (E)', `A wave stalled the engine! Restart it at the engine (E)`), 'bad');
         this.audio.snap();
         break;
       case 'toast': {
         const [msg, kind] = v as [string, 'good' | 'bad' | 'warn'];
-        this.hud.toast(String(msg), kind, 4000);
+        const m = /^#sail(\d+)$/.exec(String(msg));
+        this.hud.toast(m ? sailEventText(Number(m[1])) : String(msg), kind, 4000);
         break;
       }
       case 'bolt':
@@ -819,11 +823,11 @@ class Game {
         this.fishing.reelIn();
         this.player.resetToBoat();
         this.player.localZ = -1.2;
-        this.hud.toast(`Затоплення! Втрачено риби: ${r.lostFish}${r.payout ? `, страхова виплата +${r.payout} ₴` : ' — не застраховано'}.`, 'bad', 7000);
+        this.hud.toast(L(`Затоплення! Втрачено риби: ${r.lostFish}${r.payout ? L(`, страхова виплата +${r.payout} ₴`, `, insurance payout +${r.payout} ₴`) : L(' — не застраховано', ` — not insured`)}.`, `Sunk! Fish lost: ${r.lostFish}${r.payout ? L(`, страхова виплата +${r.payout} ₴`, `, insurance payout +${r.payout} ₴`) : L(' — не застраховано', ` — not insured`)}.`), 'bad', 7000);
         break;
       }
       case 'sleep':
-        this.hud.toast('Капітан спить — ніч минула.', 'warn', 3500);
+        this.hud.toast(L('Капітан спить — ніч минула.', `The captain is asleep — the night is over.`), 'warn', 3500);
         break;
     }
   }
@@ -846,7 +850,7 @@ class Game {
     this.phase = 'play';
     this.requestLock();
     this.hud.flashHints();
-    this.hud.toast('Вітаємо на борту «Шторму»! Море чекає.', 'good', 6000);
+    this.hud.toast(L('Вітаємо на борту «Шторму»! Море чекає.', `Welcome aboard the “Storm”! The sea is waiting.`), 'good', 6000);
   }
 
   private continueGame() {
@@ -880,7 +884,7 @@ class Game {
     this.phase = 'play';
     this.requestLock();
     this.hud.flashHints();
-    this.hud.toast('Завантажено. Знову в море!', 'good');
+    this.hud.toast(L('Завантажено. Знову в море!', `Loaded. Back to sea!`), 'good');
   }
 
   private syncUpgrades() {
@@ -896,7 +900,7 @@ class Game {
     const sp = this.rescuePort(this.boat.pos.x, this.boat.pos.z);
     this.boat.reset(sp.berth.x, sp.berth.z, sp.berth.h);
     g.portId = sp.id;
-    if (sp.id !== 'home') this.hud.toast(`🛟 Рятувальники відбуксирували тебе до гавані «${PORT_SITE_BY_ID[sp.id].name}»`, 'warn', 6000);
+    if (sp.id !== 'home') this.hud.toast(L(`🛟 Рятувальники відбуксирували тебе до гавані «${PORT_SITE_BY_ID[sp.id].name}»`, `🛟 Rescuers towed you to “${PORT_SITE_BY_ID[sp.id].name}” harbour`), 'warn', 6000);
     this.player.resetToBoat();
     this.fishing.reelIn();
     // новий човен від страхової — цілий; без страховки — латаний корпус
@@ -1021,7 +1025,7 @@ class Game {
     const id = t.slice(3) as UpgradeId;
     const u = UPGRADE_BY_ID[id];
     if (g.upgrades[id] >= MAX_LEVEL) {
-      this.hud.toast(`${u.name}: усе вже стоїть на човні`, 'warn', 2200);
+      this.hud.toast(L(`${u.name}: усе вже стоїть на човні`, `${u.name}: everything is already on the boat`), 'warn', 2200);
       return;
     }
     const cost = upgradeCost(id, g.upgrades[id]) ?? 0;
@@ -1031,14 +1035,14 @@ class Game {
       return;
     }
     if (!g.buyUpgrade(id)) {
-      this.hud.toast(`Не вистачає ${formatMoney(cost - g.money)} на «${u.parts[g.upgrades[id]].name}»`, 'warn', 2600);
+      this.hud.toast(L(`Не вистачає ${formatMoney(cost - g.money)} на «${u.parts[g.upgrades[id]].name}»`, `Short by ${formatMoney(cost - g.money)} for “${u.parts[g.upgrades[id]].name}”`), 'warn', 2600);
       return;
     }
     // гість купує для спільного човна — капітан ставить річ (як у вікні крамниці)
     this.dialogs.onBoatPurchase?.({ upgrade: id });
     this.syncUpgrades();
     this.audio.catchJingle();
-    this.hud.toast(`🔧 «${u.parts[g.upgrades[id] - 1].name}» — вже на човні (−${formatMoney(cost)})`, 'good', 3200);
+    this.hud.toast(L(`🔧 «${u.parts[g.upgrades[id] - 1].name}» — вже на човні (−${formatMoney(cost)})`, `🔧 “${u.parts[g.upgrades[id] - 1].name}” — now on the boat (−${formatMoney(cost)})`), 'good', 3200);
     this.saveGame();
   }
 
@@ -1054,7 +1058,7 @@ class Game {
     if (now - this.marketNewsT < 45 || this.phase !== 'play') return;
     if (Math.hypot(this.boat.pos.x, this.boat.pos.z) > 200 && this.player.mode === 'boat') return;
     this.marketNewsT = now;
-    this.hud.toast(`🚢 «${who}» ${text}`, 'warn', 4200);
+    this.hud.toast(`🚢 «${botName(who)}» ${text}`, 'warn', 4200);
   }
 
   /** дані для екрана радіо: прогноз, біржа, звіти, трюм */
@@ -1064,7 +1068,7 @@ class Game {
     const bf = w.beaufort;
     const h = Math.floor(this.time.hours), m = Math.floor((this.time.hours % 1) * 60);
     return {
-      clock: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')} · день ${this.time.dayCount}`,
+      clock: L(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')} · день ${this.time.dayCount}`, `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')} · day ${this.time.dayCount}`),
       now: { bf: bf.b, name: bf.name, ms: w.windMs, wave: Math.round((0.2 + w.intensity * w.intensity * 4.2) * 10) / 10, dir: w.windDir },
       forecast: forecast3(w.base, snap.forecast, w.windDir, this.time.dayCount),
       // ціни — та сама функція, що й біржа та продаж (біржа порту, де ти зараз; свіжа риба)
@@ -1076,8 +1080,8 @@ class Game {
         demand: g.venueMarket.demand(sp.id),
         event: g.venueMarket.eventFor(sp.id)?.text,
       })),
-      events: [...g.market.events.map((e) => `${e.mult > 1 ? '▲' : '▼'} ${e.text}`), ...g.market.news.slice(-2).map((n) => `🚢 «${n.who}» ${n.text}`), ...g.trade.tickerTexts(g.clockH)],
-      news: g.market.news.map((n) => ({ who: `«${n.who}»`, text: n.text, h: n.h })),
+      events: [...g.market.events.map((e) => `${e.mult > 1 ? '▲' : '▼'} ${e.text}`), ...g.market.news.slice(-2).map((n) => `🚢 «${botName(n.who)}» ${newsText(n.text, n.who)}`), ...g.trade.tickerTexts(g.clockH)],
+      news: g.market.news.map((n) => ({ who: `«${botName(n.who)}»`, text: newsText(n.text, n.who), h: n.h })),
       reports: g.reports.map((r) => ({ zone: ZONE_NAMES[r.zone], name: g.speciesName(r.speciesId), boost: r.boost })),
       hold: { count: g.hold.length, cap: g.holdCap, value: g.hold.reduce((a, f) => a + g.sellPrice(f), 0) },
       stormSoon: w.stormEta != null || snap.forecast > 0.74 || w.base > 0.74,
@@ -1085,7 +1089,7 @@ class Game {
         const zone = zoneFromDist(Math.hypot(this.boat.pos.x, this.boat.pos.z));
         const night = this.time.isNight;
         const here = FISH.filter((f) => f.zones.includes(zone) && (night ? f.night : f.day)).map((f) => f.name.toLowerCase());
-        return here.length ? `${night ? 'Ніч' : 'День'} · ${ZONE_NAMES[zone]}: тут зараз ловиться ${here.join(', ')}` : '';
+        return here.length ? L(`${night ? L('Ніч', `Night`) : L('День', `Day`)} · ${ZONE_NAMES[zone]}: тут зараз ловиться ${here.join(', ')}`, `${night ? L('Ніч', `Night`) : L('День', `Day`)} · ${ZONE_NAMES[zone]}: biting here now — ${here.join(', ')}`) : '';
       })(),
     };
   }
@@ -1138,7 +1142,7 @@ class Game {
               const to = owner < 0 ? this.coop.myId : owner;
               if (this.coop.isHost && to !== this.coop.myId) {
                 // світ (час, погоду) веде капітан кімнати — він завжди на своїй яхті
-                this.hud.toast('Капітан кімнати плаває на своїй яхті — друзі можуть прийти до тебе в екіпаж', 'warn', 4500);
+                this.hud.toast(L('Капітан кімнати плаває на своїй яхті — друзі можуть прийти до тебе в екіпаж', `The room's captain sails their own yacht — friends can join you as crew`), 'warn', 4500);
                 this.phase = 'play';
                 this.requestLock();
                 return;
@@ -1175,7 +1179,7 @@ class Game {
     const g = this.game;
     g.clockH = this.time.dayCount * 24 + this.time.hours;
     const failed = g.trade.tick(hours, g.clockH);
-    for (const c of failed) this.hud.toast(`📜 Замовлення згоріло: ${c.title} (${shortName(c.buyer)}) — репутація −4`, 'warn', 4200);
+    for (const c of failed) this.hud.toast(L(`📜 Замовлення згоріло: ${contractTitle(c)} (${shortName(c.buyer)}) — репутація −4`, `📜 Order expired: ${contractTitle(c)} (${shortName(c.buyer)}) — reputation −4`), 'warn', 4200);
     if (failed.length) this.saveGame();
   }
 
@@ -1307,7 +1311,7 @@ class Game {
       } catch {
         /* ок */
       }
-      if (!this.player.wheeling) this.hud.toast(this.chasePref ? 'Вид з-за корми — коли стоїш за штурвалом' : 'Вид від першої особи', 'warn', 2200);
+      if (!this.player.wheeling) this.hud.toast(this.chasePref ? L('Вид з-за корми — коли стоїш за штурвалом', `Stern view — when you're at the wheel`) : L('Вид від першої особи', `First-person view`), 'warn', 2200);
     }
     // P — фото-режим
     if (input.pressed('KeyP') && this.phase === 'play' && !this.dialogs.isOpen) this.setPhoto(!this.photo);
@@ -1349,14 +1353,14 @@ class Game {
         const fee = dailyPremium(g.insurance, g.upgrades);
         if (g.money >= fee) {
           g.money -= fee;
-          this.hud.toast(`🛡 Страховка «${PLANS[g.insurance].name}»: −${fee} ₴`, 'warn', 3500);
+          this.hud.toast(L(`🛡 Страховка «${PLANS[g.insurance].name}»: −${fee} ₴`, `🛡 “${PLANS[g.insurance].name}” insurance: −${fee} ₴`), 'warn', 3500);
         } else {
           g.insurance = 0;
-          this.hud.toast('🛡 Не вистачило грошей на внесок — страховка згоріла!', 'bad', 6000);
+          this.hud.toast(L('🛡 Не вистачило грошей на внесок — страховка згоріла!', `🛡 Not enough money for the premium — the insurance lapsed!`), 'bad', 6000);
         }
       }
-      this.hud.toast(`Новий день. ${g.priceTrendText}.`, 'warn');
-      if (g.lastMarketEvent) this.hud.toast(`📈 Біржа: ${g.lastMarketEvent.text}`, g.lastMarketEvent.mult > 1 ? 'good' : 'warn', 6000);
+      this.hud.toast(L(`Новий день. ${g.priceTrendText}.`, `A new day. ${g.priceTrendText}.`), 'warn');
+      if (g.lastMarketEvent) this.hud.toast(L(`📈 Біржа: ${g.lastMarketEvent.text}`, `📈 Exchange: ${g.lastMarketEvent.text}`), g.lastMarketEvent.mult > 1 ? 'good' : 'warn', 6000);
     }
 
     // погода: у відкритому морі сильніша (множник від відстані до берега)
@@ -1370,18 +1374,18 @@ class Game {
     const eta = this.weather.stormEta;
     if (eta != null && eta > 60 && !this.stormWarned) {
       this.stormWarned = true;
-      this.hud.toast(`📻 Штормове попередження: шторм приблизно за ${Math.max(1, Math.round(eta / 60))} хв (≈${Math.max(1, Math.round(eta / 25))} год гри). Рибалки вертаються в порт${this.boat.doorOpen || this.boat.hatchOpen ? ' · зачини двері каюти й люк трюму' : ''}`, 'warn', 6500);
+      this.hud.toast(L(`📻 Штормове попередження: шторм приблизно за ${Math.max(1, Math.round(eta / 60))} хв (≈${Math.max(1, Math.round(eta / 25))} год гри). Рибалки вертаються в порт${this.boat.doorOpen || this.boat.hatchOpen ? L(' · зачини двері каюти й люк трюму', ` · close the cabin doors and the hold hatch`) : ''}`, `📻 Storm warning: a storm in about ${Math.max(1, Math.round(eta / 60))} min (≈${Math.max(1, Math.round(eta / 25))} game hours). Fishermen are heading back to port${this.boat.doorOpen || this.boat.hatchOpen ? L(' · зачини двері каюти й люк трюму', ` · close the cabin doors and the hold hatch`) : ''}`), 'warn', 6500);
     } else if (eta == null && this.weather.state() !== 'storm') this.stormWarned = false;
     if (this.weather.state() !== this.lastWeather) {
       const st = this.weather.state();
       if (st === 'storm') {
         // що відчинене — туди й заллє: двері каюти й люк трюму
-        const open = [this.boat.doorOpen ? 'двері каюти' : '', this.boat.hatchOpen ? 'люк трюму' : ''].filter(Boolean);
-        this.hud.toast(`⛈ ШТОРМ! Хвилі ростуть. Дістанься порту або ризикуй!${open.length ? ` Зачини ${open.join(' і ')} — інакше заллє й потопить` : ''}`, 'bad', 6000);
+        const open = [this.boat.doorOpen ? L('двері каюти', `the cabin doors`) : '', this.boat.hatchOpen ? L('люк трюму', `the hold hatch`) : ''].filter(Boolean);
+        this.hud.toast(L(`⛈ ШТОРМ! Хвилі ростуть. Дістанься порту або ризикуй!${open.length ? L(` Зачини ${open.join(L(' і ', ` and `))} — інакше заллє й потопить`, ` Close ${open.join(L(' і ', ` and `))} — or you'll be swamped and sink`) : ''}`, `⛈ STORM! The sea is building. Make it to port or take your chances!${open.length ? L(` Зачини ${open.join(L(' і ', ` and `))} — інакше заллє й потопить`, ` Close ${open.join(L(' і ', ` and `))} — or you'll be swamped and sink`) : ''}`), 'bad', 6000);
       }
       else if (st === 'calm' && this.lastWeather === 'storm') {
         g.stats.stormsSurvived++;
-        this.hud.toast('Шторм минув. Ти справжній рибал.', 'good', 4500);
+        this.hud.toast(L('Шторм минув. Ти справжній рибал.', `The storm has passed. You're a true fisherman.`), 'good', 4500);
       }
       this.lastWeather = st;
     }
@@ -1432,7 +1436,7 @@ class Game {
       if (g.spendFuel(fuelUse)) {
         if (g.fuel <= 0.01 && !this.outOfFuelWarned) {
           this.outOfFuelWarned = true;
-          this.hud.toast('Паливо скінчилось! Повертайся в порт.', 'bad', 5000);
+          this.hud.toast(L('Паливо скінчилось! Повертайся в порт.', `Out of fuel! Head back to port.`), 'bad', 5000);
         }
       } else {
         g.fuel = 0;
@@ -1526,7 +1530,7 @@ class Game {
         this.boat.throttle = 0;
         if (!this.boat.anchor.down && !this.anchorAuto) {
           this.anchorAuto = true;
-          if (this.boat.anchor.toggle(this.boat) === 'drop') this.hud.toast('⚓ Якір віддано автоматично — яхта чекатиме біля берега', 'good', 3200);
+          if (this.boat.anchor.toggle(this.boat) === 'drop') this.hud.toast(L('⚓ Якір віддано автоматично — яхта чекатиме біля берега', `⚓ Anchor dropped automatically — the yacht will wait by the shore`), 'good', 3200);
         }
         if (!this.boat.anchor.down) this.boat.vel.multiplyScalar(Math.exp(-dt * 2.5));
       } else if (p.mode === 'boat') this.anchorAuto = false;
@@ -1543,7 +1547,7 @@ class Game {
     // відійшов від щогли — робота з фалами переривається
     if (this.stations.active?.id === 'sails' && this.player.nearest?.id !== 'st:sails') {
       this.stations.stop();
-      this.hud.toast('Відійшов від щогли — фал кинуто', 'warn', 2000);
+      this.hud.toast(L('Відійшов від щогли — фал кинуто', `You left the mast — halyard released`), 'warn', 2000);
     }
     this.stations.update(dt, this.time.hours);
 
@@ -1595,14 +1599,14 @@ class Game {
       this.bumpFishSkill();
       if (trophy) {
         this.audio.trophy();
-        this.hud.toast(`🏆 Трофей! ${name} ${catched.kg.toFixed(1).replace('.', ',')} кг — ${record || !prevRec ? 'новий рекорд виду' : `рекорд ${prevRec.toFixed(1).replace('.', ',')} кг`}`, 'good', 5000);
+        this.hud.toast(L(`🏆 Трофей! ${name} ${catched.kg.toFixed(1).replace('.', L(',', '.'))} кг — ${record || !prevRec ? L('новий рекорд виду', `new species record`) : L(`рекорд ${prevRec.toFixed(1).replace('.', L(',', '.'))} кг`, `record ${prevRec.toFixed(1).replace('.', L(',', '.'))} kg`)}`, `🏆 Trophy! ${name} ${catched.kg.toFixed(1).replace('.', L(',', '.'))} kg — ${record || !prevRec ? L('новий рекорд виду', `new species record`) : L(`рекорд ${prevRec.toFixed(1).replace('.', L(',', '.'))} кг`, `record ${prevRec.toFixed(1).replace('.', L(',', '.'))} kg`)}`), 'good', 5000);
       }
       if (this.player.mode === 'boat') {
         // риба падає на палубу й б'ється — її треба віднести в ящик на баку
         this.deckFish.drop(catched, me, 1.05);
-        this.hud.catchCard(name, catched.kg, catched.speciesId, isNew, catched.storm ? 'штормова · на палубі' : 'на палубі — неси в ящик', trophy, record);
+        this.hud.catchCard(name, catched.kg, catched.speciesId, isNew, catched.storm ? L('штормова · на палубі', `storm catch · on deck`) : L('на палубі — неси в ящик', `on deck — carry it to the box`), trophy, record);
       } else if (g.storeFish(catched)) {
-        this.hud.catchCard(name, catched.kg, catched.speciesId, isNew, catched.storm ? 'штормова' : '', trophy, record);
+        this.hud.catchCard(name, catched.kg, catched.speciesId, isNew, catched.storm ? L('штормова', `storm catch`) : '', trophy, record);
       }
     }
     // риба на палубі: б'ється, псується, хвиля може змити
@@ -1638,7 +1642,7 @@ class Game {
       this.hatchWarnT -= dt;
       if (this.hatchWarnT <= 0) {
         this.hatchWarnT = 6;
-        this.hud.toast(`🌊 Вода заливає відкритий трюм (${Math.round(this.boat.bilge)}%)! Закрий люк (ящик із червоним ричагом на носі) й відкачай помпою!`, 'bad', 4500);
+        this.hud.toast(L(`🌊 Вода заливає відкритий трюм (${Math.round(this.boat.bilge)}%)! Закрий люк (ящик із червоним ричагом на носі) й відкачай помпою!`, `🌊 Water is pouring into the open hold (${Math.round(this.boat.bilge)}%)! Close the hatch (the box with the red lever on the bow) and pump it out!`), 'bad', 4500);
       }
     }
 
@@ -1647,7 +1651,7 @@ class Game {
       this.doorWarnT -= dt;
       if (this.doorWarnT <= 0) {
         this.doorWarnT = 7;
-        this.hud.toast(`🌊 Вода ллється в каюту через відчинені двері! Зачини двері біля трапа (E — червоний засув).`, 'bad', 4500);
+        this.hud.toast(L(`🌊 Вода ллється в каюту через відчинені двері! Зачини двері біля трапа (E — червоний засув).`, `🌊 Water is pouring into the cabin through the open doors! Close the doors by the companionway (E — the red latch).`), 'bad', 4500);
       }
     }
 
@@ -1674,7 +1678,7 @@ class Game {
       m.rotation.y = this.boat.moorHeading;
       if (this.boat.mooredNow) g.portId = this.moorSite;
       if (this.boat.mooredNow && !this.wasMoored && this.leftHarbour) {
-        this.hud.toast(this.moorSite === 'home' ? '⚓ Пришвартовано' : `⚓ Пришвартовано · ${PORT_SITE_BY_ID[this.moorSite]?.name ?? ''}`, 'good', 2500);
+        this.hud.toast(this.moorSite === 'home' ? L('⚓ Пришвартовано', `⚓ Moored`) : L(`⚓ Пришвартовано · ${PORT_SITE_BY_ID[this.moorSite]?.name ?? ''}`, `⚓ Moored · ${PORT_SITE_BY_ID[this.moorSite]?.name ?? ''}`), 'good', 2500);
         this.audio.click();
         this.leftHarbour = false;
       }
@@ -1687,7 +1691,7 @@ class Game {
     // маршрут: дійшли до точки — компас веде на наступну
     if (g.advanceRoute(this.boat.pos.x, this.boat.pos.z)) {
       const nx = g.waypoint;
-      this.hud.toast(nx ? `✓ Точку пройдено · далі ${this.mapView.fmtDist(Math.hypot(nx.x - this.boat.pos.x, nx.z - this.boat.pos.z))}, ще ${g.route.length}` : '🏁 Маршрут пройдено', 'good', 2600);
+      this.hud.toast(nx ? L(`✓ Точку пройдено · далі ${this.mapView.fmtDist(Math.hypot(nx.x - this.boat.pos.x, nx.z - this.boat.pos.z))}, ще ${g.route.length}`, `✓ Waypoint reached · next ${this.mapView.fmtDist(Math.hypot(nx.x - this.boat.pos.x, nx.z - this.boat.pos.z))}, ${g.route.length} to go`) : L('🏁 Маршрут пройдено', `🏁 Route complete`), 'good', 2600);
       this.audio.click();
       this.chart.markDirty();
       if (this.phase === 'map') this.mapView.refresh(this.boat.pos.x, this.boat.pos.z, this.boat.heading, this.port.rocks, g);
@@ -1703,9 +1707,9 @@ class Game {
       this.inPort = portNow;
       if (!portNow) {
         g.stats.tripsOut++;
-        this.hud.toast('У море! Пам\'ятай про паливо і погоду.', 'warn', 4000);
+        this.hud.toast(L('У море! Пам\'ятай про паливо і погоду.', `To sea! Mind your fuel and the weather.`), 'warn', 4000);
       } else {
-        this.hud.titleCard('Порт «Шторм»', 'вдома');
+        this.hud.titleCard(L('Порт «Шторм»', `Storm Harbour`), L('вдома', `home`));
         if (g.hold.some((f) => f.storm)) g.objectives.stormReturn = true;
       }
     }
@@ -1798,7 +1802,7 @@ class Game {
     if (done()) {
       g.tut++;
       this.audio.click();
-      if (g.tut >= TUTORIAL.length) this.hud.toast('Ти освоївся. Далі — море твоє: шукай місця на лоції й нові види риби.', 'good', 6000);
+      if (g.tut >= TUTORIAL.length) this.hud.toast(L('Ти освоївся. Далі — море твоє: шукай місця на лоції й нові види риби.', `You've got the hang of it. The sea is yours now: look for places on the chart and new fish species.`), 'good', 6000);
     }
     this.hud.setGoal(g.tut < TUTORIAL.length ? TUTORIAL[g.tut] : null, g.tut + 1, TUTORIAL.length);
   }
@@ -1813,12 +1817,12 @@ class Game {
     if (f.kind === 'hat') {
       const h = HAT_BY_ID[f.hat!];
       g.hat = h.id;
-      this.hud.titleCard(`${h.icon} ${h.name}`, 'знахідка · вже на тобі (змінити — в паузі)');
-      this.hud.toast(`🎩 Капелюхи: ${HATS.filter((x) => this.hatOwned(x.id)).length}/${HATS.length}`, 'good', 3500);
+      this.hud.titleCard(`${h.icon} ${h.name}`, L('знахідка · вже на тобі (змінити — в паузі)', `found · you're wearing it (change it in the pause menu)`));
+      this.hud.toast(L(`🎩 Капелюхи: ${HATS.filter((x) => this.hatOwned(x.id)).length}/${HATS.length}`, `🎩 Hats: ${HATS.filter((x) => this.hatOwned(x.id)).length}/${HATS.length}`), 'good', 3500);
     } else {
       if (f.money) g.money += f.money;
-      if (f.kind === 'bottle') this.hud.titleCard('Пляшка із запискою', f.note ?? '');
-      else this.hud.titleCard('Піратська скриня!', `старі монети · +${f.money} ₴`);
+      if (f.kind === 'bottle') this.hud.titleCard(L('Пляшка із запискою', `A bottle with a note`), f.note ?? '');
+      else this.hud.titleCard(L('Піратська скриня!', `A pirate chest!`), L(`старі монети · +${f.money} ₴`, `old coins · +${f.money} ₴`));
       this.hud.toast(`+${f.money} ₴`, 'good', 3000);
     }
     this.saveGame();
@@ -1838,12 +1842,12 @@ class Game {
       if (g.places.includes(l.id)) continue;
       if (Math.hypot(px - l.x, pz - l.z) > l.r) continue;
       g.places.push(l.id);
-      this.hud.titleCard(l.name, `відкрито · ${l.sub}`);
-      this.hud.toast(`📍 Місця: ${g.places.length}/${LANDMARKS.length}`, 'good', 3500);
+      this.hud.titleCard(l.name, L(`відкрито · ${l.sub}`, `discovered · ${l.sub}`));
+      this.hud.toast(L(`📍 Місця: ${g.places.length}/${LANDMARKS.length}`, `📍 Places: ${g.places.length}/${LANDMARKS.length}`), 'good', 3500);
       // усі острови відкрито — шапка з помпоном у подарунок
       if (!g.finds.includes('hat:beanie') && ISLANDS.every((d) => g.places.includes(d.id))) {
         g.finds.push('hat:beanie');
-        this.hud.toast('🧶 Усі острови на лоції! У гардеробі — шапка з помпоном', 'good', 5000);
+        this.hud.toast(L('🧶 Усі острови на лоції! У гардеробі — шапка з помпоном', `🧶 Every island is on the chart! A bobble hat is in your wardrobe`), 'good', 5000);
       }
       this.audio.discover();
       this.saveGame();
@@ -1851,19 +1855,19 @@ class Game {
   }
 
   private dawnCard() {
-    this.hud.titleCard(`День ${this.time.dayCount}`, 'світанок');
+    this.hud.titleCard(L(`День ${this.time.dayCount}`, `Day ${this.time.dayCount}`), L('світанок', `dawn`));
   }
   private mapRefreshT = 0;
   private lastWeather: string = 'calm';
 
   private objectiveToast(k: string): string {
     switch (k) {
-      case 'firstSale': return '🏆 Ціль: перший продаж!';
-      case 'allSpecies': return '🏆 Рибальський довідник: усі 12 видів!';
-      case 'stormReturn': return '🏆 Штормовий улов доставлений у порт!';
-      case 'maxUpgrades': return '🏆 Човен повної прокачки!';
-      case 'rich': return '🏆 Капітан північного моря: 25 000 ₴!';
-      default: return '🏆 Ціль виконано!';
+      case 'firstSale': return L('🏆 Ціль: перший продаж!', `🏆 Goal: first sale!`);
+      case 'allSpecies': return L('🏆 Рибальський довідник: усі 12 видів!', `🏆 Angler's guide: all 12 species!`);
+      case 'stormReturn': return L('🏆 Штормовий улов доставлений у порт!', `🏆 Storm catch delivered to port!`);
+      case 'maxUpgrades': return L('🏆 Човен повної прокачки!', `🏆 Fully upgraded boat!`);
+      case 'rich': return L('🏆 Капітан північного моря: 25 000 ₴!', `🏆 Captain of the North Sea: 25,000 ₴!`);
+      default: return L('🏆 Ціль виконано!', `🏆 Goal complete!`);
     }
   }
 
@@ -1891,12 +1895,12 @@ class Game {
 
     if (id === 'go-ashore') {
       this.audio.splash(0.2);
-      if (!this.coop.crewing) this.hud.toast('⚓ Яхта на якорі. Назад — E біля яхти', 'good', 3000);
+      if (!this.coop.crewing) this.hud.toast(L('⚓ Яхта на якорі. Назад — E біля яхти', `⚓ The yacht is at anchor. To get back — E by the yacht`), 'good', 3000);
       return;
     }
     if (id === 'swim-boat') {
       this.audio.splash(0.5);
-      this.hud.toast('🏊 Доплив до яхти', 'good', 1800);
+      this.hud.toast(L('🏊 Доплив до яхти', `🏊 Swam back to the yacht`), 'good', 1800);
       return;
     }
     if (id.startsWith('find:')) {
@@ -1917,7 +1921,7 @@ class Game {
 
     if (id === 'st:chart') {
       if (this.fishing.holding) {
-        this.hud.toast('Спершу постав вудку — над картою потрібні обидві руки', 'warn', 2500);
+        this.hud.toast(L('Спершу постав вудку — над картою потрібні обидві руки', `Put the rod away first — you need both hands at the chart`), 'warn', 2500);
         return;
       }
       this.setChart(true);
@@ -1947,7 +1951,7 @@ class Game {
         this.boat.hatchOpen = true;
         if (this.coop.crewing) this.coop.sendAction({ a: 'hatch', v: 1 });
         this.audio.thump(0.4);
-        if (!this.deckFish.carried) this.hud.toast('Люк трюму відкрито. Не забудь закрити — хвиля заллє трюм!', 'warn', 3000);
+        if (!this.deckFish.carried) this.hud.toast(L('Люк трюму відкрито. Не забудь закрити — хвиля заллє трюм!', `Hold hatch open. Don't forget to close it — a wave will flood the hold!`), 'warn', 3000);
         if (!this.deckFish.carried) return;
       }
       const f = this.deckFish.takeCarried();
@@ -1959,10 +1963,10 @@ class Game {
       }
       if (g.storeFish(f)) {
         this.audio.thump(0.3);
-        this.hud.toast(`🐟 ${g.speciesName(f.speciesId)} у ящику (${g.hold.length}/${g.holdCap})`, 'good', 1800);
+        this.hud.toast(L(`🐟 ${g.speciesName(f.speciesId)} у ящику (${g.hold.length}/${g.holdCap})`, `🐟 ${g.speciesName(f.speciesId)} in the box (${g.hold.length}/${g.holdCap})`), 'good', 1800);
       } else {
         this.deckFish.dropCarried(p.localX, p.localZ);
-        this.hud.toast('Ящик повний! Продай улов або прокачай трюм.', 'warn', 3000);
+        this.hud.toast(L('Ящик повний! Продай улов або прокачай трюм.', `The box is full! Sell your catch or upgrade the hold.`), 'warn', 3000);
       }
       return;
     }
@@ -1971,13 +1975,13 @@ class Game {
       if (!p.wheeling && this.coop.active) {
         const by = this.coop.wheelTakenBy();
         if (by) {
-          this.hud.toast(`Штурвал тримає ${by}`, 'warn', 2500);
+          this.hud.toast(L(`Штурвал тримає ${by}`, `${by} is at the wheel`), 'warn', 2500);
           return;
         }
         this.coop.myHelm = [this.boat.throttle, this.boat.rudder];
       }
       p.wheeling = !p.wheeling;
-      if (p.wheeling) this.hud.toast(this.chasePref ? 'Штурвал: W/S — газ, A/D — кермо, V — вид від першої особи (прибори на тумбі), E — вийти' : 'Штурвал: W/S — газ, A/D — кермо, V — вид з-за корми, E — вийти. Прибори — на тумбі перед колесом', 'warn', 4000);
+      if (p.wheeling) this.hud.toast(this.chasePref ? L('Штурвал: W/S — газ, A/D — кермо, V — вид від першої особи (прибори на тумбі), E — вийти', `Wheel: W/S — throttle, A/D — rudder, V — first-person view (instruments on the pedestal), E — leave`) : L('Штурвал: W/S — газ, A/D — кермо, V — вид з-за корми, E — вийти. Прибори — на тумбі перед колесом', `Wheel: W/S — throttle, A/D — rudder, V — stern view, E — leave. Instruments are on the pedestal in front of the wheel`), 'warn', 4000);
       return;
     }
     if (id === 'st:rod' || id.startsWith('st:holder')) {
@@ -1990,11 +1994,11 @@ class Game {
       // фізична робота біля щогли: тягнути фал / риф-шкентель займає час і сили
       if (this.stations.active?.id === 'sails') return;
       const m = this.boat.sails.mode;
-      const [label, dur, cost] = m === 0 ? ['Тягнемо фал — піднімаємо паруси…', 3.5, 4] as const
-        : m === 2 ? ['Беремо риф…', 2.5, 2] as const
-        : ['Травимо фал — спускаємо паруси…', 2.0, 1] as const;
+      const [label, dur, cost] = m === 0 ? [L('Тягнемо фал — піднімаємо паруси…', `Hauling the halyard — hoisting the sails…`), 3.5, 4] as const
+        : m === 2 ? [L('Беремо риф…', `Taking a reef…`), 2.5, 2] as const
+        : [L('Травимо фал — спускаємо паруси…', `Easing the halyard — dropping the sails…`), 2.0, 1] as const;
       if (!g.spendEnergy(cost)) {
-        this.hud.toast('Занадто втомлений, щоб тягнути фали', 'warn', 2500);
+        this.hud.toast(L('Занадто втомлений, щоб тягнути фали', `Too tired to haul the halyards`), 'warn', 2500);
         return;
       }
       this.stations.startTimed('sails', label, dur, () => this.cycleSails());
@@ -2042,7 +2046,7 @@ class Game {
     if (this.coop.crewing) this.coop.sendAction({ a: 'sails' });
     const m = this.boat.sails.cycle();
     this.audio.click();
-    const txt = m === 2 ? '⛵ Паруси підняті — повні' : m === 1 ? '⛵ Взято риф (≈60 % площі)' : '⛵ Паруси спущено';
+    const txt = m === 2 ? L('⛵ Паруси підняті — повні', `⛵ Sails up — full`) : m === 1 ? L('⛵ Взято риф (≈60 % площі)', `⛵ Reef taken (≈60 % of sail area)`) : L('⛵ Паруси спущено', `⛵ Sails dropped`);
     this.hud.toast(txt, m === 0 ? 'warn' : 'good', 2200);
   }
 
@@ -2050,7 +2054,7 @@ class Game {
     if (this.coop.isClient) {
       // час світу веде капітан — гість лише відпочиває
       this.game.addEnergy(60);
-      this.hud.toast('Подрімав годинку. Сили відновлено.', 'good', 3000);
+      this.hud.toast(L('Подрімав годинку. Сили відновлено.', `Took a nap. Energy restored.`), 'good', 3000);
       this.audio.click();
       return;
     }
@@ -2072,7 +2076,7 @@ class Game {
       this.tickTrade(delta);
       this.fade.classList.remove('on');
       this.dawnCard();
-      this.hud.toast(`Пройшло ${Math.round(delta)} год. ${inPort ? 'Виспався в хаті.' : 'Виспався на койці.'}`, 'good', 3500);
+      this.hud.toast(L(`Пройшло ${Math.round(delta)} год. ${inPort ? L('Виспався в хаті.', `Slept well in the cottage.`) : L('Виспався на койці.', `Slept well in the bunk.`)}`, `${Math.round(delta)} h passed. ${inPort ? L('Виспався в хаті.', `Slept well in the cottage.`) : L('Виспався на койці.', `Slept well in the bunk.`)}`), 'good', 3500);
       this.sleeping = false;
     }, 1100);
   }
@@ -2252,7 +2256,7 @@ class Game {
     if (this.fishing.state === 'fight') {
       const f = this.fishing.fightInfo;
       fight = {
-        name: g.speciesName(f.speciesId) + ` · ${f.kg.toFixed(f.kg < 1 ? 2 : 1).replace('.', ',')} кг`,
+        name: g.speciesName(f.speciesId) + L(` · ${f.kg.toFixed(f.kg < 1 ? 2 : 1).replace('.', L(',', '.'))} кг`, ` · ${f.kg.toFixed(f.kg < 1 ? 2 : 1).replace('.', L(',', '.'))} kg`),
         tension: f.tension,
         limit: f.limit,
         dist: f.dist,
@@ -2283,10 +2287,10 @@ class Game {
       const risk = g.insurance < 2 && (g.hold.length > 0 || this.deckFish.count > 0 || Object.values(g.upgrades).some((v) => v > g.insurance));
       const b = this.boat;
       this.hud.setInsWarn(
-        b.bilge > 2 ? `🌊 Вода в трюмі ${Math.round(b.bilge)}%` :
-        b.hatchOpen && atSea ? '⚠ Люк трюму відкрито' :
-        b.doorOpen && atSea && this.weather.intensity > 0.5 ? '⚠ Двері каюти відчинені' :
-        atSea && risk ? (g.insurance ? '⚠ Слабка страховка' : '⚠ Без страховки — ризик') : null,
+        b.bilge > 2 ? L(`🌊 Вода в трюмі ${Math.round(b.bilge)}%`, `🌊 Water in the bilge ${Math.round(b.bilge)}%`) :
+        b.hatchOpen && atSea ? L('⚠ Люк трюму відкрито', `⚠ Hold hatch open`) :
+        b.doorOpen && atSea && this.weather.intensity > 0.5 ? L('⚠ Двері каюти відчинені', `⚠ Cabin doors open`) :
+        atSea && risk ? (g.insurance ? L('⚠ Слабка страховка', `⚠ Weak insurance`) : L('⚠ Без страховки — ризик', `⚠ No insurance — risky`)) : null,
       );
     }
     this.hud.setNight(time.daylight < 0.3);
@@ -2530,7 +2534,7 @@ class Game {
     const px = this.player.mode === 'boat' ? this.boat.pos.x : this.player.head.x;
     const pz = this.player.mode === 'boat' ? this.boat.pos.z : this.player.head.z;
     const np = this.hud.navPort;
-    np.x = MOOR.x; np.z = MOOR.z; np.name = 'Шторм'; np.home = true;
+    np.x = MOOR.x; np.z = MOOR.z; np.name = L('Шторм', `Storm Harbour`); np.home = true;
     let bd = Math.hypot(px - MOOR.x, pz - MOOR.z);
     let here: string | null = bd < 80 ? 'home' : null;
     for (const p of PORT_SITES) {
@@ -2547,7 +2551,7 @@ class Game {
       // знову в уже відомій гавані — напис (перше відкриття малює checkPlaces)
       if (here && here !== 'home' && g.places.includes(here) && this.phase === 'play') {
         const p = PORT_SITE_BY_ID[here];
-        this.hud.titleCard(p.name, `гавань · пальне ${p.econ.fuel} ₴/л${p.econ.repair != null ? ' · верф' : ''}`);
+        this.hud.titleCard(p.name, L(`гавань · пальне ${p.econ.fuel} ₴/л${p.econ.repair != null ? L(' · верф', ` · shipyard`) : ''}`, `harbour · fuel ${p.econ.fuel} ₴/l${p.econ.repair != null ? L(' · верф', ` · shipyard`) : ''}`));
       }
       this.atSite = here;
     }
@@ -2577,11 +2581,11 @@ class Game {
     const [cw, ch] = this.chart.size;
     const w = this.mapView.uvToWorld(this.chart.u, this.chart.v, cw, ch);
     if (!w || this.mapView.isOnLand(w[0], w[1])) {
-      this.hud.toast('Це суша — точку ставлять на воді', 'warn', 1800);
+      this.hud.toast(L('Це суша — точку ставлять на воді', `That's land — waypoints go on water`), 'warn', 1800);
       return;
     }
     if (!this.game.addRoutePoint(w[0], w[1])) {
-      this.hud.toast('Маршрут уже на повну — прибери зайві точки (ПКМ)', 'warn', 1800);
+      this.hud.toast(L('Маршрут уже на повну — прибери зайві точки (ПКМ)', `The route is full — remove some points (RMB)`), 'warn', 1800);
       return;
     }
     this.audio.click();
@@ -2589,7 +2593,7 @@ class Game {
     this.saveGame();
     const n = this.game.route.length;
     const d = Math.hypot(w[0] - this.boat.pos.x, w[1] - this.boat.pos.z);
-    this.hud.toast(n === 1 ? `📍 Точка 1 · ${this.mapView.fmtDist(d)}. Курс — на компасі` : `📍 Точка ${n} маршруту`, 'good', 1800);
+    this.hud.toast(n === 1 ? L(`📍 Точка 1 · ${this.mapView.fmtDist(d)}. Курс — на компасі`, `📍 Waypoint 1 · ${this.mapView.fmtDist(d)}. Bearing is on the compass`) : L(`📍 Точка ${n} маршруту`, `📍 Route waypoint ${n}`), 'good', 1800);
   }
 
   /** олівець біля краю паперової карти — карта їде під ним */
@@ -2613,10 +2617,10 @@ class Game {
     if (a.state === 0) {
       const b = this.boat.localToWorld(0, 1, 4.9, this._v);
       const d = seabedDepth(b.x, b.z);
-      return d > ANCHOR_MAX_DEPTH ? `Брашпиль — тут задуглибоко (${Math.round(d)} м), якір не дістане` : `Брашпиль — віддати якір (глибина ${Math.round(d)} м)`;
+      return d > ANCHOR_MAX_DEPTH ? L(`Брашпиль — тут задуглибоко (${Math.round(d)} м), якір не дістане`, `Windlass — too deep here (${Math.round(d)} m), the anchor won't reach`) : L(`Брашпиль — віддати якір (глибина ${Math.round(d)} м)`, `Windlass — drop anchor (depth ${Math.round(d)} m)`);
     }
-    if (a.winch < 0) return 'Брашпиль — знову травити ланцюг';
-    return `Брашпиль — вибрати якір (${Math.round(a.chain)} м ланцюга)`;
+    if (a.winch < 0) return L('Брашпиль — знову травити ланцюг', `Windlass — pay out the chain again`);
+    return L(`Брашпиль — вибрати якір (${Math.round(a.chain)} м ланцюга)`, `Windlass — weigh anchor (${Math.round(a.chain)} m of chain)`);
   }
 
   private anchorToggle() {
@@ -2639,38 +2643,38 @@ class Game {
   private anchorResult(r: AnchorResult, nick?: string) {
     const a = this.boat.anchor;
     const who = nick ? `${nick}: ` : '';
-    if (r === 'drop') this.hud.toast(`⚓ ${who}якір пішов${a.depth ? ` · глибина ${Math.round(a.depth)} м` : ''}`, 'good', 2400);
-    else if (r === 'raise') this.hud.toast(`⚓ ${who}брашпиль вибирає ланцюг…`, 'good', 2000);
+    if (r === 'drop') this.hud.toast(L(`⚓ ${who}якір пішов${a.depth ? L(` · глибина ${Math.round(a.depth)} м`, ` · depth ${Math.round(a.depth)} m`) : ''}`, `⚓ ${who}anchor's down${a.depth ? L(` · глибина ${Math.round(a.depth)} м`, ` · depth ${Math.round(a.depth)} m`) : ''}`), 'good', 2400);
+    else if (r === 'raise') this.hud.toast(L(`⚓ ${who}брашпиль вибирає ланцюг…`, `⚓ ${who}the windlass is hauling the chain…`), 'good', 2000);
     else if (r === 'deep') {
       const b = this.boat.localToWorld(0, 1, 4.9, this._v);
-      this.hud.toast(`Тут задуглибоко (${Math.round(seabedDepth(b.x, b.z))} м) — якір не дістає дна. Шукай мілину біля берега чи острова`, 'warn', 3200);
-    } else if (r === 'shallow') this.hud.toast('Тут замілко — спершу відійди від берега', 'warn', 2400);
+      this.hud.toast(L(`Тут задуглибоко (${Math.round(seabedDepth(b.x, b.z))} м) — якір не дістає дна. Шукай мілину біля берега чи острова`, `Too deep here (${Math.round(seabedDepth(b.x, b.z))} m) — the anchor can't reach the bottom. Look for shallows near the shore or an island`), 'warn', 3200);
+    } else if (r === 'shallow') this.hud.toast(L('Тут замілко — спершу відійди від берега', `Too shallow here — move away from the shore first`), 'warn', 2400);
   }
 
   /** чіп «на якорі», попередження про дрейф, «якір на борту» */
   private updateAnchorHud(dt: number) {
     const a = this.boat.anchor;
-    const chain = `${Math.round(a.chain)} м ланцюга`;
+    const chain = L(`${Math.round(a.chain)} м ланцюга`, `${Math.round(a.chain)} m of chain`);
     const dragging = a.state === 2 && a.drag > 0.5;
     this.hud.setAnchorChip(
       a.state === 0 ? null :
-      dragging ? '⚓ якір повзе!' :
-      a.winch < 0 ? `⚓ вибираємо · ${chain}` :
-      a.state === 1 ? '⚓ віддаємо якір…' :
-      a.winch > 0 ? `⚓ травимо · ${chain}` :
-      `⚓ на якорі · ${chain}`,
+      dragging ? L('⚓ якір повзе!', `⚓ anchor dragging!`) :
+      a.winch < 0 ? L(`⚓ вибираємо · ${chain}`, `⚓ weighing · ${chain}`) :
+      a.state === 1 ? L('⚓ віддаємо якір…', `⚓ dropping anchor…`) :
+      a.winch > 0 ? L(`⚓ травимо · ${chain}`, `⚓ paying out · ${chain}`) :
+      L(`⚓ на якорі · ${chain}`, `⚓ at anchor · ${chain}`),
       dragging,
     );
-    if (this.anchorPrev !== 0 && a.state === 0) this.hud.toast('⚓ Якір на борту — можна йти', 'good', 2000);
+    if (this.anchorPrev !== 0 && a.state === 0) this.hud.toast(L('⚓ Якір на борту — можна йти', `⚓ Anchor aboard — you can go`), 'good', 2000);
     this.anchorPrev = a.state;
     this.anchorWarnT -= dt;
     if (dragging && this.anchorWarnT <= 0 && !this.coop.crewing) {
       this.anchorWarnT = 14;
       const b = this.boat;
       this.hud.toast(
-        Math.abs(b.throttle) > 0.3 ? '⚓ Газ проти ланцюга — якір повзе по дну. Спершу вибери якір (брашпиль на баку)' :
-        b.sails.mode > 0 ? '⚓ Паруси тягнуть яхту — якір повзе. Спусти паруси або вибери якір' :
-        '⚓ Шторм зриває якір — яхту зносить! Шукай мілину ближче до берега або вибирай якір і йди',
+        Math.abs(b.throttle) > 0.3 ? L('⚓ Газ проти ланцюга — якір повзе по дну. Спершу вибери якір (брашпиль на баку)', `⚓ Throttle against the chain — the anchor is dragging along the bottom. Weigh the anchor first (windlass on the foredeck)`) :
+        b.sails.mode > 0 ? L('⚓ Паруси тягнуть яхту — якір повзе. Спусти паруси або вибери якір', `⚓ The sails are pulling the yacht — the anchor is dragging. Drop the sails or weigh anchor`) :
+        L('⚓ Шторм зриває якір — яхту зносить! Шукай мілину ближче до берега або вибирай якір і йди', `⚓ The storm is tearing the anchor loose — the yacht is drifting! Find shallows closer to shore or weigh anchor and go`),
         'warn', 4200,
       );
     }
@@ -2690,7 +2694,7 @@ class Game {
         if (fold) this.game.tentClosed = false;
         this.saveGame();
       }
-      this.hud.toast(fold ? '⛺ Тент складено — над кокпітом лише небо й паруси' : '⛺ Тент розкладено', 'good', 2000);
+      this.hud.toast(fold ? L('⛺ Тент складено — над кокпітом лише небо й паруси', `⛺ Canvas folded — nothing but sky and sails over the cockpit`) : L('⛺ Тент розкладено', `⛺ Canvas unfolded`), 'good', 2000);
       return;
     }
     const close = !b.tentClosed;
@@ -2701,7 +2705,7 @@ class Game {
       this.game.tentClosed = close;
       this.saveGame();
     }
-    this.hud.toast(close ? '⛺ Штори опущено — кокпіт закрито від хвиль і дощу' : '⛺ Штори скручено — видно все навколо', 'good', 2000);
+    this.hud.toast(close ? L('⛺ Штори опущено — кокпіт закрито від хвиль і дощу', `⛺ Curtains down — the cockpit is closed off from waves and rain`) : L('⛺ Штори скручено — видно все навколо', `⛺ Curtains rolled up — you can see all around`), 'good', 2000);
   }
 
   /** ключ запалювання (X за штурвалом); екіпаж просить власника яхти */
@@ -2719,9 +2723,9 @@ class Game {
 
   private ignitionResult(r: 'off' | 'on' | 'stalled', nick?: string) {
     const who = nick ? `${nick}: ` : '';
-    if (r === 'off') this.hud.toast(`🔑 ${who}двигун заглушено`, 'good', 2000);
-    else if (r === 'on') this.hud.toast(`🔑 ${who}двигун запущено`, 'good', 2000);
-    else this.hud.toast('Двигун заглох — запусти його в моторному відсіку на кормі (E)', 'warn', 3000);
+    if (r === 'off') this.hud.toast(L(`🔑 ${who}двигун заглушено`, `🔑 ${who}engine stopped`), 'good', 2000);
+    else if (r === 'on') this.hud.toast(L(`🔑 ${who}двигун запущено`, `🔑 ${who}engine started`), 'good', 2000);
+    else this.hud.toast(L('Двигун заглох — запусти його в моторному відсіку на кормі (E)', `The engine stalled — restart it in the engine bay at the stern (E)`), 'warn', 3000);
   }
 
   /** автопілот: увімк./вимк. (екіпаж просить власника яхти) */
@@ -2741,7 +2745,7 @@ class Game {
     this.apPrevH = this.boat.heading;
     const wp = this.game.waypoint;
     this.hud.toast(
-      on ? (wp ? '🤖 Автопілот: веду маршрутом. Кермо (A/D) чи T — вимкнути' : '🤖 Автопілот тримає курс. Кермо (A/D) чи T — вимкнути') : `🤖 Автопілот вимкнено${why ? ' — ' + why : ''}`,
+      on ? (wp ? L('🤖 Автопілот: веду маршрутом. Кермо (A/D) чи T — вимкнути', `🤖 Autopilot: following the route. Rudder (A/D) or T — off`) : L('🤖 Автопілот тримає курс. Кермо (A/D) чи T — вимкнути', `🤖 Autopilot is holding course. Rudder (A/D) or T — off`)) : L(`🤖 Автопілот вимкнено${why ? ' — ' + why : ''}`, `🤖 Autopilot off${why ? ' — ' + why : ''}`),
       on ? 'good' : 'warn',
       2600,
     );
@@ -2759,7 +2763,7 @@ class Game {
       return;
     }
     if (steering || (this.game.upgrades.instr ?? 0) < 5) {
-      this.setAutopilot(false, steering ? 'кермо в руках' : '');
+      this.setAutopilot(false, steering ? L('кермо в руках', `hands on the wheel`) : '');
       return;
     }
     // скелі/мілина по курсу — вимкнути й пискнути
@@ -2769,7 +2773,7 @@ class Game {
       const x = b.pos.x + fx * d, z = b.pos.z + fz * d;
       const rock = this.port.rocks.some((r) => !r.kind && Math.hypot(r.x - x, r.z - z) < r.r + 4);
       if (rock || depthAt(x, z) < 3) {
-        this.setAutopilot(false, 'попереду мілина чи скеля!');
+        this.setAutopilot(false, L('попереду мілина чи скеля!', `shallows or rocks ahead!`));
         this.audio.instrBeep('shallow');
         return;
       }
@@ -2867,13 +2871,13 @@ class Game {
       const [cw, ch] = this.chart.size;
       const w = this.mapView.uvToWorld(this.chart.u, this.chart.v, cw, ch);
       const d = w ? ` (${this.mapView.fmtDist(Math.hypot(w[0] - this.boat.pos.x, w[1] - this.boat.pos.z))})` : '';
-      return { text: `Точка маршруту${d} · ПКМ — прибрати, затиснути й тягти — рухати карту (або WASD) · коліщатко — зум · E — встати`, bite: false, key: 'ЛКМ' };
+      return { text: L(`Точка маршруту${d} · ПКМ — прибрати, затиснути й тягти — рухати карту (або WASD) · коліщатко — зум · E — встати`, `Route point${d} · RMB — remove, hold and drag — move the chart (or WASD) · wheel — zoom · E — stand up`), bite: false, key: L('ЛКМ', `LMB`) };
     }
     const np = this.player.mode === 'boat' ? this.nets.prompt(this.boat) : null;
     if (np && this.fishing.state !== 'fight' && this.fishing.state !== 'bite') return { text: np, bite: false };
     // боротьба — перш за все
     if (this.fishing.state === 'fight' || this.fishing.state === 'charge') return { text: null, bite: false };
-    if (this.fishing.state === 'bite') return { text: 'Клює! Підсікай!', bite: true, key: 'ЛКМ' };
+    if (this.fishing.state === 'bite') return { text: L('Клює! Підсікай!', `Bite! Strike!`), bite: true, key: L('ЛКМ', `LMB`) };
     // волосінь у воді — підказка риболовлі важливіша за сусідню станцію (люк, ящик…)
     if (this.fishing.state === 'waiting') {
       const fp = this.fishing.prompt();
@@ -2884,8 +2888,8 @@ class Game {
     // риба на палубі / в руках
     if (this.player.mode === 'boat') {
       const near = !this.deckFish.carried && this.deckFish.nearest(this.player.localX, this.player.localZ, 1.2);
-      if (near) return { text: `Підняти: ${this.game.speciesName(near.speciesId).toLowerCase()} ${near.kg.toFixed(near.kg < 1 ? 2 : 1).replace('.', ',')} кг`, bite: false };
-      if (this.deckFish.carried && this.player.nearest?.id !== 'st:fishbox') return { text: 'Риба в руках — неси до ящика на баку', bite: false };
+      if (near) return { text: L(`Підняти: ${this.game.speciesName(near.speciesId).toLowerCase()} ${near.kg.toFixed(near.kg < 1 ? 2 : 1).replace('.', L(',', '.'))} кг`, `Pick up: ${this.game.speciesName(near.speciesId).toLowerCase()} ${near.kg.toFixed(near.kg < 1 ? 2 : 1).replace('.', L(',', '.'))} kg`), bite: false };
+      if (this.deckFish.carried && this.player.nearest?.id !== 'st:fishbox') return { text: L('Риба в руках — неси до ящика на баку', `Fish in hand — carry it to the box on the foredeck`), bite: false };
     }
     // найближча ціль
     if (this.player.nearest) {
@@ -2893,7 +2897,7 @@ class Game {
       return { text: n.label, bite: false };
     }
     const fp = this.fishing.prompt();
-    if (fp) return { text: fp, bite: false, key: 'ЛКМ' };
+    if (fp) return { text: fp, bite: false, key: L('ЛКМ', `LMB`) };
     return { text: null, bite: false };
   }
 }

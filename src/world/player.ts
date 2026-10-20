@@ -13,6 +13,7 @@ import { PORT_SITES, siteAt, siteServices } from './portSites';
 /** послуги інших гаваней (portSites.ts): id «svc:<порт>:<вид>» */
 const SITE_SVC = PORT_SITES.flatMap((p) => siteServices(p).map((s) => ({ ...s, id: `svc:${p.id}:${s.kind}` })));
 import { Islands } from './islands';
+import { L } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // Гравець: first-person на палубі / причалі / у воді.
@@ -556,13 +557,13 @@ export class Player {
         const look = spot ? (-Math.sin(this.yaw) * sx - Math.cos(this.yaw) * sz) / (Math.hypot(sx, sz) || 1) : -1;
         if (spot && (!best || bestD > 1.6 || (look > 0.55 && bestD > 0.9))) {
           this.ashoreAt = spot;
-          best = { id: 'go-ashore', label: 'Зійти на берег' };
+          best = { id: 'go-ashore', label: L('Зійти на берег', `Go ashore`) };
         }
       }
     } else if (this.mode === 'port' && this.onIsland && !siteAt(this.wx, this.wz)) {
       // на острові: повернутись на яхту (поруч — залізти, далеко — вплав)
       const dBoat = Math.hypot(this.wx - boat.pos.x, this.wz - boat.pos.z);
-      best = dBoat < 9 ? { id: 'climb-boat', label: 'Залізти на яхту' } : { id: 'swim-boat', label: `Повернутись на яхту вплав (${Math.round(dBoat)} м)` };
+      best = dBoat < 9 ? { id: 'climb-boat', label: L('Залізти на яхту', `Climb aboard the yacht`) } : { id: 'swim-boat', label: L(`Повернутись на яхту вплав (${Math.round(dBoat)} м)`, `Swim back to the yacht (${Math.round(dBoat)} m)`) };
     } else if (this.mode === 'port') {
       // послуги інших гаваней
       for (const sv of SITE_SVC) {
@@ -575,7 +576,7 @@ export class Player {
       // у чужій гавані далеко від яхти — не застрягнути
       if (!best && this.onIsland) {
         const dBoat = Math.hypot(this.wx - boat.pos.x, this.wz - boat.pos.z);
-        if (dBoat > 60) best = { id: 'swim-boat', label: `Повернутись на яхту (${Math.round(dBoat)} м)` };
+        if (dBoat > 60) best = { id: 'swim-boat', label: L(`Повернутись на яхту (${Math.round(dBoat)} м)`, `Return to the yacht (${Math.round(dBoat)} m)`) };
       }
       for (const pt of PORT_POINTS) {
         const d = Math.hypot(this.wx - pt.x, this.wz - pt.z);
@@ -587,7 +588,7 @@ export class Player {
       // залізти на човен прямо з причалу (иначе пасажир би застряг)
       const dBoat = Math.hypot(this.wx - boat.pos.x, this.wz - boat.pos.z);
       if (dBoat < 7.0 && dBoat < bestD + 2.0) {
-        best = { id: 'climb-boat', label: 'Залізти на човен' };
+        best = { id: 'climb-boat', label: L('Залізти на човен', `Climb aboard`) };
         bestD = dBoat;
       }
     } else {
@@ -596,14 +597,14 @@ export class Player {
       boat.localToWorld(0, 0, 0, bw);
       const dBoat = Math.hypot(this.wx - bw.x, this.wz - bw.z);
       if (dBoat < 6.5) {
-        best = { id: 'climb-boat', label: 'Залізти на човен' };
+        best = { id: 'climb-boat', label: L('Залізти на човен', `Climb aboard`) };
         bestD = dBoat;
       }
       const dock = this.dockNear(port);
       if (dock) {
         const dD = Math.hypot(this.wx - clamp(this.wx, dock.x0, dock.x1), this.wz - clamp(this.wz, dock.z0, dock.z1));
         if (dD < bestD + 2) {
-          best = { id: 'climb-dock', label: 'Залізти на причал' };
+          best = { id: 'climb-dock', label: L('Залізти на причал', `Climb onto the pier`) };
         }
       }
     }
@@ -613,26 +614,26 @@ export class Player {
   private stationLabel(id: string, boat: Boat): string {
     switch (id) {
       case 'wheel': {
-        if (!this.wheeling) return 'Стати за штурвал (газ W/S, кермо A/D)';
-        const ign = boat.engineOn ? ' · X — заглушити двигун' : boat.engineKilled ? ' · X — запустити двигун' : '';
-        return (boat.instrLevel >= 5 ? (boat.autopilot ? 'Вийти зі штурвала (автопілот кермує) · T — вимкнути автопілот' : 'Вийти зі штурвала · T — автопілот') : 'Вийти зі штурвала') + ign;
+        if (!this.wheeling) return L('Стати за штурвал (газ W/S, кермо A/D)', `Take the wheel (throttle W/S, rudder A/D)`);
+        const ign = boat.engineOn ? L(' · X — заглушити двигун', ` · X — stop the engine`) : boat.engineKilled ? L(' · X — запустити двигун', ` · X — start the engine`) : '';
+        return (boat.instrLevel >= 5 ? (boat.autopilot ? L('Вийти зі штурвала (автопілот кермує) · T — вимкнути автопілот', `Leave the wheel (autopilot steering) · T — autopilot off`) : L('Вийти зі штурвала · T — автопілот', `Leave the wheel · T — autopilot`)) : L('Вийти зі штурвала', `Leave the wheel`)) + ign;
       }
-      case 'sails': return boat.sails.mode === 0 ? 'Фал на щоглі — підняти паруси' : boat.sails.mode === 2 ? 'Риф-шкентель — взяти риф' : 'Фал — спустити паруси';
-      case 'rod': return this.stationText?.('rod') ?? 'Стійка з вудками';
-      case 'fishbox': return this.stationText?.('fishbox') ?? 'Рибний ящик';
-      case 'holder0': case 'holder1': case 'holder2': return this.stationText?.(id) ?? 'Стійка для вудки';
-      case 'engine': return boat.engineOn ? 'Ремонт двигуна' : 'Запустити двигун!';
-      case 'pump': return boat.bilge > 1 ? `Помпа — відкачати трюм (${Math.round(boat.bilge)}%)` : boat.deckWater > 5 ? 'Осушити палубу' : 'Помпа (сухо)';
-      case 'tent': return boat.tentFolded ? 'Тент — розкласти (козирок і біміні)' : 'Тент — скласти (відкрити небо й паруси)';
-      case 'curtain': return boat.tentClosed ? 'Штори тенту — скрутити (видно все навколо)' : 'Штори тенту — опустити (захист від хвиль і дощу)';
-      case 'door': return boat.doorOpen ? 'Двері каюти — зачинити (у шторм вода ллється в салон)' : 'Двері каюти — відчинити';
-      case 'nets': return this.stationText?.('nets') ?? 'Сітки';
-      case 'anchor': return this.stationText?.('anchor') ?? 'Брашпиль — якір';
-      case 'autopilot': return boat.autopilot ? 'Автопілот — вимкнути (кермо знову твоє)' : 'Автопілот — увімкнути (веде маршрутом або тримає курс)';
-      case 'chart': return 'Штурманський стіл — прокласти маршрут на карті';
-      case 'kitchen': return 'Кухня — сварити рибу';
-      case 'radio': return this.stationText?.('radio') ?? 'Радіо';
-      case 'bed': return 'Койка — спати';
+      case 'sails': return boat.sails.mode === 0 ? L('Фал на щоглі — підняти паруси', `Halyard at the mast — hoist the sails`) : boat.sails.mode === 2 ? L('Риф-шкентель — взяти риф', `Reefing line — take a reef`) : L('Фал — спустити паруси', `Halyard — drop the sails`);
+      case 'rod': return this.stationText?.('rod') ?? L('Стійка з вудками', `Rod rack`);
+      case 'fishbox': return this.stationText?.('fishbox') ?? L('Рибний ящик', `Fish box`);
+      case 'holder0': case 'holder1': case 'holder2': return this.stationText?.(id) ?? L('Стійка для вудки', `Rod holder`);
+      case 'engine': return boat.engineOn ? L('Ремонт двигуна', `Repair the engine`) : L('Запустити двигун!', `Start the engine!`);
+      case 'pump': return boat.bilge > 1 ? L(`Помпа — відкачати трюм (${Math.round(boat.bilge)}%)`, `Pump — empty the bilge (${Math.round(boat.bilge)}%)`) : boat.deckWater > 5 ? L('Осушити палубу', `Drain the deck`) : L('Помпа (сухо)', `Pump (dry)`);
+      case 'tent': return boat.tentFolded ? L('Тент — розкласти (козирок і біміні)', `Canvas — unfold (sprayhood and bimini)`) : L('Тент — скласти (відкрити небо й паруси)', `Canvas — fold (open up the sky and the sails)`);
+      case 'curtain': return boat.tentClosed ? L('Штори тенту — скрутити (видно все навколо)', `Tent curtains — roll up (see all around)`) : L('Штори тенту — опустити (захист від хвиль і дощу)', `Tent curtains — lower (shelter from waves and rain)`);
+      case 'door': return boat.doorOpen ? L('Двері каюти — зачинити (у шторм вода ллється в салон)', `Cabin doors — close (in a storm water pours into the saloon)`) : L('Двері каюти — відчинити', `Cabin doors — open`);
+      case 'nets': return this.stationText?.('nets') ?? L('Сітки', `Nets`);
+      case 'anchor': return this.stationText?.('anchor') ?? L('Брашпиль — якір', `Windlass — anchor`);
+      case 'autopilot': return boat.autopilot ? L('Автопілот — вимкнути (кермо знову твоє)', `Autopilot — off (the wheel is yours again)`) : L('Автопілот — увімкнути (веде маршрутом або тримає курс)', `Autopilot — on (follows the route or holds course)`);
+      case 'chart': return L('Штурманський стіл — прокласти маршрут на карті', `Chart table — plot a route on the chart`);
+      case 'kitchen': return L('Кухня — сварити рибу', `Galley — cook fish`);
+      case 'radio': return this.stationText?.('radio') ?? L('Радіо', `Radio`);
+      case 'bed': return L('Койка — спати', `Bunk — sleep`);
       default: return id;
     }
   }

@@ -6,6 +6,7 @@ import { RIG, DECK_Y, HOUSE, sheerY } from './yachtLayout';
 const SHEET_Z = 0.6;
 import { sailPerf, type SailPerf } from '../game/upgrades';
 import { SPRIT } from './upgradeParts';
+import { L } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // Вітрила: грот на гіку + стаксель на штагу (ролик-рифінг).
@@ -137,7 +138,7 @@ export class SailRig {
   luffing = false;
   overload = 0;      // 0..1+ — наскільки перевантажено
   /** події: попередження/розрив */
-  onEvent: ((msg: string, kind: 'warn' | 'bad' | 'good') => void) | null = null;
+  onEvent: ((msg: string, kind: 'warn' | 'bad' | 'good', id: number) => void) | null = null;
   /** кооп-клієнт: режим приходить від капітана — без розривів/попереджень тут */
   passive = false;
 
@@ -299,7 +300,7 @@ export class SailRig {
   }
 
   label(): string {
-    return this.mode === 0 ? 'спущені' : this.mode === 1 ? 'риф' : 'повні';
+    return this.mode === 0 ? L('спущені', `furled`) : this.mode === 1 ? L('риф', `reefed`) : L('повні', `full`);
   }
 
   /**
@@ -349,7 +350,7 @@ export class SailRig {
     this.gybeT -= dt;
     if (newSide !== this.side && this.awa < 174) {
       if (this.hoist > 0.3 && this.awa > 150 && !this.passive && this.gybeT <= 0) {
-        this.onEvent?.('Поворот фордевінд — гік перекинувся!', 'warn');
+        this.onEvent?.(sailEventText(0), 'warn', 0);
         this.gybeT = 8;
       }
       this.side = newSide;
@@ -369,14 +370,14 @@ export class SailRig {
     if (this.passive) return { fx: 0, fz: 0, torqueRoll: 0 };
     if (this.overload > 0.85 && this.warnT <= 0 && this.mode !== 0) {
       this.warnT = 12;
-      this.onEvent?.(this.mode === 2 ? 'Паруси перевантажені — йди до щогли, бери риф!' : 'Навіть риф не тримає — спускай паруси!', 'warn');
+      this.onEvent?.(sailEventText(this.mode === 2 ? 1 : 2), 'warn', this.mode === 2 ? 1 : 2);
     }
     if (this.overload > 1) {
       this.stressT += dt * (0.15 + (this.overload - 1) * 4);
       if (this.stressT > 4) {
         this.stressT = 0;
         this.mode = 0;
-        this.onEvent?.('💥 Шквал порвав парус! Паруси спущено.', 'bad');
+        this.onEvent?.(sailEventText(3), 'bad', 3);
       }
     } else {
       this.stressT = Math.max(0, this.stressT - dt * (this.overload < 0.8 ? 0.6 : 0.12));
@@ -551,8 +552,20 @@ export class SailRig {
 
   /** телеметрія для HUD */
   hudText(): string {
-    const side = this.windFromStarboard ? 'ПрБ' : 'ЛБ';
-    const state = this.mode === 0 ? 'спущені' : this.luffing ? 'полощуть (мертвий кут)' : this.gennaker > 0.5 ? `${this.label()} + генакер` : this.label();
-    return `⛵ ${state} · вітер ${this.tws.toFixed(0)} м/с, ${Math.round(this.awa)}° ${side}`;
+    const side = this.windFromStarboard ? L('ПрБ', `stbd`) : L('ЛБ', `port`);
+    const state = this.mode === 0 ? L('спущені', `furled`) : this.luffing ? L('полощуть (мертвий кут)', `luffing (in irons)`) : this.gennaker > 0.5 ? L(`${this.label()} + генакер`, `${this.label()} + gennaker`) : this.label();
+    return L(`⛵ ${state} · вітер ${this.tws.toFixed(0)} м/с, ${Math.round(this.awa)}° ${side}`, `⛵ ${state} · wind ${this.tws.toFixed(0)} m/s, ${Math.round(this.awa)}° ${side}`);
   }
+}
+
+/** події вітрил — за номером (у кооп шлемо номер, кожен читає своєю мовою) */
+const SAIL_EVENTS: Array<[string, string]> = [
+  ['Поворот фордевінд — гік перекинувся!', 'Gybe — the boom swung across!'],
+  ['Паруси перевантажені — йди до щогли, бери риф!', 'Sails overpowered — go to the mast and reef!'],
+  ['Навіть риф не тримає — спускай паруси!', "Even reefed it's too much — drop the sails!"],
+  ['💥 Шквал порвав парус! Паруси спущено.', '💥 A squall tore the sail! Sails dropped.'],
+];
+export function sailEventText(i: number): string {
+  const e = SAIL_EVENTS[i];
+  return e ? L(e[0], e[1]) : '';
 }

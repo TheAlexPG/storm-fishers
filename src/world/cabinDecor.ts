@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { DECK_Y, HOUSE, SOLE_Y, STAIR } from './yachtLayout';
+import { L } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // Затишок у салоні: книжки й банки на полицях, килимки, подушки, годинник і
@@ -267,7 +268,7 @@ export class CabinDecor {
       }
       x.font = '700 15px Manrope, sans-serif';
       x.fillStyle = '#7a2e22';
-      x.fillText('ШТОРМ', 128, 170);
+      x.fillText(L('ШТОРМ', `STORM`), 128, 170);
     });
     const clock = dial(-0.74, S + 1.2, clockFace);
     const hand = (len: number, w: number, color: number) => {
@@ -286,7 +287,7 @@ export class CabinDecor {
       x.fillRect(0, 0, 256, 256);
       x.textAlign = 'center';
       x.textBaseline = 'middle';
-      const lab = ['ЯСНО', 'ЗМІННО', 'ДОЩ', 'БУРЯ'];
+      const lab = [L('ЯСНО', `FAIR`), L('ЗМІННО', `CHANGE`), L('ДОЩ', `RAIN`), L('БУРЯ', `STORMY`)];
       for (let i = 0; i < 4; i++) {
         const a = -Math.PI * 0.75 + (i / 3) * Math.PI * 1.5 - Math.PI / 2;
         x.font = '800 17px Manrope, sans-serif';
@@ -305,7 +306,7 @@ export class CabinDecor {
       }
       x.font = '700 14px Manrope, sans-serif';
       x.fillStyle = '#7a2e22';
-      x.fillText('БАРОМЕТР', 128, 175);
+      x.fillText(L('БАРОМЕТР', `BAROMETER`), 128, 175);
     });
     const baro = dial(0.74, S + 1.2, baroFace);
     this.baroNeedle = hand(0.07, 0.006, 0xb8453a);
@@ -340,7 +341,7 @@ export class CabinDecor {
           x.font = '800 54px Unbounded, Manrope, sans-serif';
           x.textAlign = 'center';
           x.textBaseline = 'middle';
-          x.fillText('«ШТОРМ»', 256, 60);
+          x.fillText(L('«ШТОРМ»', `“STORM”`), 256, 60);
         }),
       }),
     );

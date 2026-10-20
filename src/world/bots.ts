@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { isUk, L } from '../core/i18n';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Ocean } from '../core/ocean';
 import type { Weather } from '../core/weather';
@@ -185,7 +186,7 @@ export class Bots {
       // штормове попередження: всі, хто в морі — додому
       const atSea = this.list.filter((b) => b.state === 'transit' || b.state === 'fishing' || b.state === 'leaving');
       for (const b of atSea) this.goHome(b);
-      if (atSea.length) this.chatter(atSea[0].d.name, atSea.length > 1 ? `повертаємось у порт, барометр падає — ${atSea.length} човни йдуть додому` : 'повертаюсь у порт, барометр падає');
+      if (atSea.length) this.chatter(atSea[0].d.name, atSea.length > 1 ? L(`повертаємось у порт, барометр падає — ${atSea.length} човни йдуть додому`, `heading back to port, the glass is falling — ${atSea.length} boats going home`) : L('повертаюсь у порт, барометр падає', `heading back to port, the glass is falling`));
     }
     if (!storm && this.stormMode) {
       // після шторму — виходять не всі одразу
@@ -214,7 +215,7 @@ export class Bots {
             } else if (b.state === 'transit') {
               b.state = 'fishing';
               b.timer = 120 + Math.random() * 200;
-              if (Math.random() < 0.3) this.chatter(b.d.name, 'на місці, кидаю снасті');
+              if (Math.random() < 0.3) this.chatter(b.d.name, L('на місці, кидаю снасті', `on the spot, setting my gear`));
             } else {
               b.state = 'docking';
               b.timer = 0;
@@ -263,7 +264,7 @@ export class Bots {
     b.path = [[B.x, APPROACH_Z], [B.x + Math.sign(B.x) * 6, LANE_Z]];
     b.lastD = 1e9;
     b.stuckT = 0;
-    if (Math.random() < 0.45) this.chatter(b.d.name, Math.random() < 0.5 ? 'виходжу в море, до вечора' : 'віддаю швартови, йду на лов');
+    if (Math.random() < 0.45) this.chatter(b.d.name, Math.random() < 0.5 ? L('виходжу в море, до вечора', `heading out to sea, back by evening`) : L('віддаю швартови, йду на лов', `casting off, going fishing`));
   }
 
   private goHome(b: Bot) {
@@ -398,7 +399,7 @@ export class Bots {
   private chatter(name: string, text: string) {
     if (this.chatterT > 0) return;
     this.chatterT = 35;
-    this.onChatter?.(name, text);
+    this.onChatter?.(botName(name), text);
   }
 
   /** поза на хвилі: висота й нахил за водою, легкий крен на поворотах */
@@ -483,7 +484,7 @@ export class Bots {
   // ── для карти, мінікарти, фізики ──
 
   markers(): BotMarker[] {
-    return this.list.map((b) => ({ x: b.x, z: b.z, h: b.h, name: b.d.name }));
+    return this.list.map((b) => ({ x: b.x, z: b.z, h: b.h, name: botName(b.d.name) }));
   }
 
   /** перешкоди для фізики яхти гравця (як інші яхти флотилії) */
@@ -501,7 +502,7 @@ export class Bots {
         best = b;
       }
     }
-    return best ? { name: best.d.name, d: bd, state: best.state } : null;
+    return best ? { name: botName(best.d.name), d: bd, state: best.state } : null;
   }
 
   dispose() {
@@ -647,4 +648,10 @@ function buildSails(): THREE.BufferGeometry {
   main.rotateY(0.18);
   jib.rotateY(0.25);
   return mergeGeometries([main, jib], false)!;
+}
+
+/** імена ботів — українські (вони ж ключі в новинах біржі); англійською — переклад */
+const BOT_EN: Record<string, string> = { 'Ластівка': 'Swallow', 'Стара Марта': 'Old Martha', 'Чайка': 'Seagull', 'Дельфін': 'Dolphin', 'Бриз': 'Breeze' };
+export function botName(uk: string): string {
+  return isUk() ? uk : BOT_EN[uk] ?? uk;
 }

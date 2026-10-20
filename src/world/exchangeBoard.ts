@@ -3,6 +3,7 @@ import { GROUND_Y } from './portTerrain';
 import { FISH } from '../game/fish';
 import { priceSeries } from '../ui/exchange';
 import type { GameState } from '../game/state';
+import { L } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // Табло біржі під навісом «РИБНА БІРЖА»: крейдяна дошка в дерев'яній рамі
@@ -83,10 +84,10 @@ export class ExchangeBoard {
     c.fillStyle = '#f4ead2';
     c.font = 'bold 44px Georgia, "Times New Roman", serif';
     c.textAlign = 'center';
-    c.fillText('ЦІНИ ДНЯ', W / 2, 44);
+    c.fillText(L('ЦІНИ ДНЯ', `TODAY'S PRICES`), W / 2, 44);
     c.font = 'italic 22px Georgia, serif';
     c.fillStyle = 'rgba(244,234,210,0.7)';
-    c.fillText('₴ за рибину · за добу', W / 2, 82);
+    c.fillText(L('₴ за рибину · за добу', `₴ per fish · 24 h`), W / 2, 82);
     c.strokeStyle = 'rgba(244,234,210,0.4)';
     c.lineWidth = 2;
     c.beginPath(); c.moveTo(60, 104); c.lineTo(W - 60, 104); c.stroke();
