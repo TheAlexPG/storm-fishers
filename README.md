@@ -5,7 +5,7 @@
 **A cozy 3D sailing & fishing game that runs right in your browser — alone or with friends.**
 
 Take your little yacht out of a sleepy northern harbour, chase fish schools across open water,
-outrun Beaufort‑scale storms and come home with a hold full of catch.
+explore islands, outrun Beaufort‑scale storms and come home with a hold full of catch.
 
 ### [▶ Play now — thealexpg.github.io/storm-fishers](https://thealexpg.github.io/storm-fishers/)
 
@@ -15,7 +15,34 @@ outrun Beaufort‑scale storms and come home with a hold full of catch.
 ![Co-op](https://img.shields.io/badge/co--op-WebRTC%20P2P-2e8b57)
 ![No install](https://img.shields.io/badge/install-none%20%E2%80%94%20just%20a%20browser-e2674a)
 
+<br>
+
+<img src="docs/media/hero.jpg" alt="A yacht sailing past a pine island at sunset" width="100%">
+
 </div>
+
+---
+
+## 📸 Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/media/harbour.jpg" alt="The harbour with the lighthouse, quay and NPC fishing boats"><br><sub><b>Port «Шторм»</b> — the lighthouse, the quay and the local fishing fleet</sub></td>
+    <td width="50%"><img src="docs/media/storm.jpg" alt="Yacht in a storm with rain and big waves"><br><sub><b>Storm</b> — 10–11 Beaufort out in the open sea</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/media/sunset-harbour.jpg" alt="Sailing home at sunset"><br><sub><b>Golden hour</b> — heading home with the catch</sub></td>
+    <td><img src="docs/media/night.jpg" alt="Night in the harbour with lit windows and the lighthouse beam"><br><sub><b>Night</b> — lighthouse beam, cabin lights, running lights</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/media/island-hat.jpg" alt="A glowing straw hat on a palm island beach"><br><sub><b>Islands</b> — go ashore and find hidden hats and treasure</sub></td>
+    <td><img src="docs/media/cabin-radio.jpg" alt="The cabin radio showing a three-day forecast"><br><sub><b>Cabin radio «Шторм‑М1»</b> — 3‑day forecast, market, music</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/media/exchange.jpg" alt="The fish exchange window with price charts"><br><sub><b>Fish exchange</b> — price history, demand and your hold's value</sub></td>
+    <td><img src="docs/media/chart-route.jpg" alt="Nautical chart with a multi-point route between islands"><br><sub><b>Nautical chart</b> — zoom, pan and plot a route between the islands</sub></td>
+  </tr>
+</table>
 
 ---
 
@@ -23,12 +50,15 @@ outrun Beaufort‑scale storms and come home with a hold full of catch.
 
 ### 🌊 The sea
 - **Living ocean** — Gerstner waves that grow from harbour ripples to 14‑metre swells offshore, refractive transparent water, foam, spray and rain.
-- **Weather that matters** — wind and sea state on the Beaufort scale, storms that build up and roll in, a day/night cycle with sunsets, a lighthouse and running lights.
+- **Weather that matters** — wind and sea state on the Beaufort scale and a day/night cycle with sunsets, a lighthouse and running lights.
+- **Long, readable weather cycles** — 8–14 minutes of fair weather, a front that builds for a few minutes, then a 5–8 minute storm that slowly eases. The radio warns you about 8–9 minutes before it hits, so there's time to reef and run for port.
 - **Wave slamming** — punch head‑on into big seas at full throttle and the hull takes damage; take them at an angle like a real sailor.
 
 ### ⛵ The yacht
 - **Sailing physics** — keel, sails trimmed to the apparent wind, gybes, a motor for the harbour, fuel, rudder and throttle at a real wheel.
 - **Walk the whole boat** — deck, cockpit and a cabin below with closable companionway doors (leave them open in a storm and water gets in!).
+- **A cozy cabin** — settees with cushions, rugs, bookshelves, a ship in a bottle, a swinging oil lantern, and a clock and barometer that follow the game time and the weather.
+- **Physical radio «Шторм‑М1»** — a real set with a screen and separate controls: power, five preset buttons, a tuning knob (with static between stations) and a volume knob. Aim at a control and click it, or turn it with the mouse wheel. Its screen shows a 3‑day forecast, market prices with sparklines, fish reports, a live music spectrum or typed‑out channel 16 chatter.
 - **Chart table** — lean over a paper chart in the cabin, zoom it and plot your course with a pencil.
 - **Upgrades you can see** — hull, sails, hold, rods, nets: every level physically changes the boat.
 - **Mooring & gangway** — step ashore and back aboard without climbing over the rails.
@@ -39,13 +69,20 @@ outrun Beaufort‑scale storms and come home with a hold full of catch.
 - **Commercial nets** (mid/end‑game) — set drift nets from the stern drum, mark them with buoys, come back hours later and haul the catch. Storms can tear them.
 - **12 species** across shore, mid‑water and open‑sea zones, with radio reports of where the schools are biting today.
 
+### 🏝️ Islands & treasure
+- **Five islands to explore** — a gull rock, a pine island with a ruined keeper's hut, a palm spit, a pirate cove and a shell island, each with its own props.
+- **Go ashore** — bring the boat in close, press **E** and walk the beaches and hills; the yacht holds its position while you're away, and you can always get back aboard.
+- **Hidden hats & treasure** — find an ushanka, a sou'wester, a straw hat, a pirate tricorn and a crown of shells (plus a bonus hat for discovering every island), message bottles and a pirate chest.
+- **Wardrobe** — pick your hat in the pause menu; in co‑op your friends see it too.
+
 ### 🗺️ Navigation
 - **Full‑screen nautical chart (M)** — zoom with the mouse wheel, drag to pan, plot **multi‑point routes**; the compass leads you to the next waypoint and advances automatically.
 - **Minimap, compass tape, bearing & distance chips**, your sailed track and discovered landmarks.
 
 ### 🏪 The harbour economy
-- **Fish exchange** with live prices, per‑species price charts, demand saturation (dump too much of one species and the price drops) and market events.
-- **Separate places in port** — chandlery for gear and upgrades, fuel kiosk, shipyard for repairs, harbour office for insurance, and the fish exchange for selling.
+- **A real harbour, not one magic menu** — each service has its own place on the quay: the **fish exchange** (the only place that buys fish), the **chandlery** for gear and upgrades, the **fuel kiosk**, the **shipyard** for hull repairs and the **harbour office** for insurance.
+- **Fish exchange** — a scrolling price ticker, cards for every species with sparklines and trend arrows, a big 6‑day price chart on graph paper, demand bars (sell too much of one species and its price sinks, then slowly recovers), market events, and a hold panel with your catch's projected value.
+- **Local fishing fleet** — five NPC boats («Ластівка», «Стара Марта», «Дельфін», «Чайка», «Бриз») leave port, fish the grounds and come back. When a storm is forecast they all run for the harbour. They steer around rocks, islands and you, sound their horns as they pass and chat on the radio.
 
 ### 👥 Co‑op
 - **Play with friends over the internet** — no server, no accounts: browsers connect peer‑to‑peer (WebRTC). Share a 4‑letter room code or an invite link.
@@ -64,16 +101,17 @@ outrun Beaufort‑scale storms and come home with a hold full of catch.
 |---|---|
 | **W A S D** | walk · throttle & rudder at the wheel |
 | **Mouse** | look around |
-| **E** | interact (wheel, sails, doors, shops, chart table, nets…) |
+| **E** | interact (wheel, sails, doors, shops, chart table, nets…) · go ashore / back aboard |
 | **LMB** | cast / strike · place a route point on the chart |
 | **Space** | reel in during a fight · jump |
 | **A / D** | tilt the rod while fighting |
 | **R** | reel in the line |
 | **M** | nautical chart (wheel — zoom, drag — pan, click — add route point, RMB — remove) |
+| **Radio** | aim at a button or knob · **LMB** press · **RMB** back · **wheel** turn |
 | **V** | stern chase camera / first person at the wheel |
 | **P** · **H** | photo mode · hide the interface |
 | **Enter** | co‑op chat |
-| **Esc** | pause menu (settings, co‑op, boats, save export) |
+| **Esc** | pause menu (settings, co‑op, boats, hats, save export) |
 | **F1** | show hints |
 
 ---
@@ -107,7 +145,7 @@ In a room the host keeps the world clock and weather; each boat owner simulates 
 ```
 src/
   core/    ocean, weather, time, input, audio, music
-  world/   yacht, sails, cabin, port, nets, avatars, chart table
+  world/   yacht, sails, cabin & radio, port, islands, NPC boats, nets, avatars
   game/    state & saves, fish, fishing, market, upgrades, insurance
   net/     co-op session (relay / P2P) and fleet sync
   ui/      HUD, chart (map), minimap, dialogs, exchange
