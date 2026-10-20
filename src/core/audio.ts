@@ -289,6 +289,12 @@ export class AudioEngine {
     }
   }
 
+  /** для звуків окремих модулів (камбуз): контекст і загальний вихід */
+  sfx(): { ctx: AudioContext; out: AudioNode } | null {
+    const c = this.ensure();
+    return c && this.master ? { ctx: c, out: this.master } : null;
+  }
+
   private beep(freq: number, dur: number, type: OscillatorType, vol: number) {
     const ctx = this.ensure();
     if (!ctx || !this.master) return;

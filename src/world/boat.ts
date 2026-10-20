@@ -49,7 +49,9 @@ export const STATION_POS: Record<string, { x: number; z: number; y?: number }> =
   // фали й риф-шкентелі — біля щогли на даху рубки (підходити з бічної палуби)
   sails: { x: 0, z: RIG.mastZ - 0.25, y: HOUSE.top },
   // салон у корпусі (y = підлога салону)
-  kitchen: { x: -0.4, z: 1.15, y: SOLE_Y },
+  kitchen: { x: -0.4, z: 1.2, y: SOLE_Y },
+  kettle: { x: -0.4, z: 0.84, y: SOLE_Y },
+  cookbook: { x: -0.4, z: 0.1, y: SOLE_Y },
   radio: { x: 0.4, z: 0.95, y: SOLE_Y },
   chart: { x: 0.42, z: 0.75, y: SOLE_Y },
   bed: { x: 0, z: 2.45, y: SOLE_Y },

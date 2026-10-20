@@ -416,6 +416,7 @@ export class Fishing {
     t /= eff.biteSpeed(game.upgrades.rod) * info.bite;
     if (weather.intensity > 0.6) t *= 0.75;
     if (r.perfect) t *= 0.6;
+    t *= game.kitchen.mul('biteWait'); // смажена скумбрія — «рибальське щастя»
     r.biteAt = Math.max(2.5, t);
     r.nibbleT = Math.min(r.biteAt * 0.5, rand(1.5, 4));
     r.nibble = 0;
@@ -742,7 +743,7 @@ export class Fishing {
     const sf = this.staminaMax > 0 ? this.stamina / this.staminaMax : 0;
     const heavy = 1 / (1 + Math.max(0, this.fishKg - 1) * 0.07);
     const reelSpeed = (1.0 + eff.biteSpeed(game.upgrades.rod) * 0.45) * (tired ? 1.8 : sweet ? (0.5 + 0.5 * (1 - sf)) * heavy : 0.4 * heavy);
-    if (reeling && !jumping) this.fightDist -= reelSpeed * dt * (1 - this.dragSlip);
+    if (reeling && !jumping) this.fightDist -= reelSpeed * game.kitchen.mul('reel') * dt * (1 - this.dragSlip);
     // фрикціон травить: риба забирає волосінь
     this.fightDist += this.dragSlip * 0.6 * dt;
     const run = tired ? 0.25 : this.pull !== 0 ? (1.1 * (1 - Math.max(0, counter)) * power + 0.3) * (0.4 + 0.6 * this.pullK) : 0.5 * power;
