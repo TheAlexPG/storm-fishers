@@ -10,7 +10,7 @@ import { L } from '../core/i18n';
 // мілину, а карта й мінікарта малювали їх через terrainHeight.
 // ─────────────────────────────────────────────────────────────
 
-export type IslandKind = 'gull' | 'pine' | 'palm' | 'pirate' | 'shell' | 'cypress' | 'fir' | 'refuge';
+export type IslandKind = 'gull' | 'pine' | 'palm' | 'pirate' | 'shell' | 'cypress' | 'fir' | 'refuge' | 'temple' | 'grotto' | 'keeper' | 'sandbar' | 'whaling' | 'trapper' | 'totem';
 
 export interface IslandDef {
   id: string;
@@ -48,6 +48,14 @@ const FAR_ISLANDS: IslandDef[] = [
   { id: 'isl-fir', name: L('Ялиновий острів', `Fir Island`), sub: L('темний ліс до самої води', `dark forest right down to the water`), kind: 'fir', x: -2250, z: 2250, r: 44, elong: 1.3, rot: -0.3, peak: 22, seed: 239, far: true },
   { id: 'isl-granite', name: L('Гранітні Брати', `Granite Brothers`), sub: L('голі скелі, тюлені й мох', `bare rocks, seals and moss`), kind: 'fir', x: -2300, z: 3350, r: 38, elong: 1.6, rot: 0.8, peak: 20, seed: 251, far: true },
   { id: 'isl-seal', name: L('Тюленячий острівець', `Seal Islet`), sub: L('холодно, але тюлені щасливі', `cold, but the seals are happy`), kind: 'fir', x: -3300, z: 1100, r: 30, elong: 1.3, rot: 0.2, peak: 12, seed: 263, far: true },
+  // місця біля континентів (є що знайти, як біля дому)
+  { id: 'isl-temple', name: L('Мис Посейдона', `Poseidon's Cape`), sub: L('колони старого храму над морем', `the columns of an old temple above the sea`), kind: 'temple', x: 4790, z: 1560, r: 30, elong: 1.3, rot: 0.7, peak: 12, seed: 301, far: true },
+  { id: 'isl-grotto', name: L('Грот Сирен', `Sirens' Grotto`), sub: L('арка в скелі й крихітний пляж', `a sea arch and a tiny beach`), kind: 'grotto', x: 4880, z: 3260, r: 26, elong: 1.4, rot: -0.5, peak: 16, seed: 313, far: true },
+  { id: 'isl-keeper', name: L('Маяк Санта-Луче', `Santa Luce Light`), sub: L('доглядач сушить білизну й чекає гостей', `the keeper dries his washing and waits for guests`), kind: 'keeper', x: 4050, z: 4480, r: 28, elong: 1.25, rot: 0.3, peak: 8, seed: 327, far: true },
+  { id: 'isl-sandbar', name: L('Амфорна мілина', `Amphora Shoal`), sub: L('море викидає сюди черепки з галери', `the sea washes up shards from the galley`), kind: 'sandbar', x: 2440, z: 3250, r: 24, elong: 1.9, rot: 1.2, peak: 1.6, seed: 331, far: true },
+  { id: 'isl-whaling', name: L('Китобійня на шхерах', `Skerry Whaling Station`), sub: L('порожні склади, ребра кита й іржавий котел', `empty sheds, whale ribs and a rusted boiler`), kind: 'whaling', x: -3100, z: 4240, r: 30, elong: 1.3, rot: 0.4, peak: 9, seed: 347, far: true },
+  { id: 'isl-trapper', name: L('Хижка траппера', `Trapper's Cabin`), sub: L('хутра сушаться, у грубці ще жар', `furs drying, the stove still warm`), kind: 'trapper', x: -2900, z: 1250, r: 32, elong: 1.25, rot: -0.6, peak: 14, seed: 353, far: true },
+  { id: 'isl-totem', name: L('Скеля Ворона', `Raven Rock`), sub: L('різьблений тотем дивиться на захід', `a carved totem watches the west`), kind: 'totem', x: -4760, z: 1060, r: 26, elong: 1.2, rot: 0.2, peak: 15, seed: 367, far: true },
   // притулки посеред океану: маяк і затишок від шторму
   { id: 'isl-refuge-e', name: L('Маяк Півдороги', `Halfway Light`), sub: L('притулок на шляху до Лазурового узбережжя', `a refuge on the way to the Azure Coast`), kind: 'refuge', x: 1950, z: 2150, r: 28, elong: 1.3, rot: 0.5, peak: 7, seed: 271, far: true },
   { id: 'isl-refuge-w', name: L('Вартовий маяк', `Sentinel Light`), sub: L('притулок на шляху до Північного краю', `a refuge on the way to the Northern Reach`), kind: 'refuge', x: -1950, z: 1900, r: 28, elong: 1.3, rot: -0.4, peak: 8, seed: 283, far: true },

@@ -43,6 +43,8 @@ const ZOOM_KEY = 'storm-minimap-zoom';
 const PORTS = LANDMARKS.filter((l) => l.id.startsWith('port-'));
 const CONTS = LANDMARKS.filter((l) => l.id.startsWith('cont-'));
 const REFUGES = ISLANDS.filter((d) => d.kind === 'refuge');
+/** пам'ятки в морі (не гавані, континенти, рибні місця чи острови) */
+const SIGHTS = LANDMARKS.filter((l) => !/^(port-|cont-|hot-|isl-)/.test(l.id));
 const HOME = { x: 0, z: -30, name: L('«Шторм»', `Storm Harbour`) };
 
 const FONT = 'Manrope, system-ui, sans-serif';
@@ -589,6 +591,26 @@ export class Minimap {
       c.fill();
       c.stroke();
     }
+    // пам'ятки в морі (шхуна, маяки, галера, буй…) — ромбик; відкриті — помаранчеві, ще ні — «?»
+    for (const l of SIGHTS) {
+      if (!inView(l.x, l.z)) continue;
+      const [px, pz] = toMap(l.x, l.z);
+      const found = this.places.includes(l.id);
+      c.beginPath();
+      c.moveTo(px, pz - 5); c.lineTo(px + 4.5, pz); c.lineTo(px, pz + 5); c.lineTo(px - 4.5, pz);
+      c.closePath();
+      c.fillStyle = found ? '#e2674a' : 'rgba(255,250,240,0.85)';
+      c.fill();
+      c.lineWidth = 1.1;
+      c.strokeStyle = found ? '#fffaf0' : 'rgba(42,58,70,0.6)';
+      c.stroke();
+      if (!found) {
+        c.font = `800 7px ${FONT}`;
+        c.textAlign = 'center';
+        c.fillStyle = 'rgba(42,58,70,0.8)';
+        c.fillText('?', px, pz + 2.5);
+      }
+    }
     // підписи за пріоритетом: доставка → рибні місця → стаї → гавані → райони → континенти → притулки
     const pill = `800 9px ${FONT}`;
     for (const p of ports) {
@@ -610,6 +632,11 @@ export class Minimap {
       const [px, pz] = toMap(ax, az);
       const rr = Math.max(7, SCHOOL_R * 1.1 * sc);
       label(`${L('стая', 'school')}: ${this.speciesName(r.speciesId)}`, px, pz + Math.min(rr, 30) + 10, `800 8.5px ${FONT}`, '#1d6f73', true);
+    }
+    for (const l of SIGHTS) {
+      if (!inView(l.x, l.z) || !this.places.includes(l.id)) continue;
+      const [px, pz] = toMap(l.x, l.z);
+      label(l.name, px, pz - 9, `800 8.5px ${FONT}`, '#b5502f', true);
     }
     if (!near) {
       for (const p of ports) {
