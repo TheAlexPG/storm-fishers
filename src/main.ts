@@ -12,7 +12,7 @@ import { Boat, BOAT, MOOR, MOOR_HEADING, STATION_POS } from './world/boat';
 import { moorSlotX, MOOR_SLOTS } from './net/coop';
 import { Port } from './world/port';
 import { terrainHeight } from './world/portTerrain';
-import { Player } from './world/player';
+import { Player, type Interactable } from './world/player';
 import { Sky } from './world/sky';
 import { SkyEnvironment } from './world/graphics';
 import { ParticlePool } from './world/particles';
@@ -213,6 +213,8 @@ class Game {
   private radioCtl: RadioCtl | null = null;
   private hl = new Highlighter();
   private _hv = new THREE.Vector3();
+  private _ray = new THREE.Raycaster();
+  private _c0 = new THREE.Vector2();
   private landmarks: Landmarks;
   private islands: Islands;
   /** інші гавані світу (world/ports.ts) */
@@ -968,77 +970,79 @@ class Game {
     });
   }
 
+  /** меші станції яхти: [ключ підсвітки, об'єкти] — їх підсвічуємо і в них цілиться промінь погляду */
+  private stationObjects(id: string): [string, THREE.Object3D[] | null] {
+    const near = (key: string, x: number, y: number, z: number, r: number, max: number) =>
+      this.hl.near(key, this.boat.group, this._hv.set(x, y, z), r, max, (o) => {
+        // вудки рухаються (руки/стійки) — їх додаємо окремо
+        for (let q: THREE.Object3D | null = o; q; q = q.parent) if (q.userData.rod) return true;
+        return false;
+      });
+    if (id === 'st:fishbox') return [id, [this.deckFish.hatch]];
+    if (id === 'st:autopilot') return [id + (this.boat.autopilot ? '1' : '0'), [this.instruments.apButton]];
+    if (id === 'st:nets') {
+      const key = id + (this.game.upgrades.nets ?? 0);
+      return [key, near(key, 0.6, 0.95, -4.95, 0.8, 1.4)];
+    }
+    if (id === 'st:anchor') return [id, near(id, 0, Y_DECK + 0.12, 4.1, 0.35, 0.5)];
+    if (id === 'st:tent' || id === 'st:curtain') return [id + this.boat.tentLevel, id === 'st:tent' ? this.boat.canvas.foldObjects : this.boat.canvas.curtainObjects];
+    if (id === 'st:door') return [id, [this.cabinDoor.group]];
+    if (id === 'st:rod') return [id + this.fishing.rackObjects().length, [...this.fishing.rackObjects(), ...near('rack', 0.42, Y_DECK + 0.2, 3.76, 0.2, 0.6)]];
+    if (id.startsWith('st:holder')) {
+      const h = Number(id.slice(9));
+      const m = HOLDER_MOUNTS[h].base;
+      const rod = this.fishing.holderObject(h);
+      return [id + (rod ? 'r' : ''), [...near('holder' + h + this.game.upgrades.holders, m[0], m[1] + 0.2, m[2], 0.35, 0.8), ...(rod ? [rod] : [])]];
+    }
+    if (id === 'st:wheel') return [id, near('wheel', 0, Y_DECK + 0.75, -3.38 + HELM_DZ, 0.55, 1.6)];
+    if (id === 'st:engine' || id === 'st:pump') return [id, near(id, id === 'st:engine' ? 0.62 : -0.62, Y_DECK + 0.05, -4.05, 0.3, 0.9)];
+    if (id === 'st:sails') return [id, near('sails', 0, L_HOUSE.top + 0.15, L_RIG.mastZ - 0.3, 0.6, 0.7)];
+    if (id === 'st:kitchen') return [id, near('kitchen', -0.82, Y_SOLE + 1.0, 1.25, 0.3, 0.6)];
+    if (id === 'st:kettle') return [id, [this.galley.kettle]];
+    if (id === 'st:cookbook') return [id, [this.galley.book]];
+    if (id === 'st:bed') return [id, near('bed', 0, Y_SOLE + 0.45, 3.2, 0.8, 2.2)];
+    return ['', null];
+  }
+
+  /** від першої особи станція — лише та, у яку влучає промінь із центру екрана */
+  private pickStation() {
+    const p = this.player;
+    if (p.mode !== 'boat' || p.wheeling || this.rig.mode !== 'fp') return;
+    this._ray.setFromCamera(this._c0, this.camera);
+    this._ray.far = 3.2;
+    let best: Interactable | null = null;
+    let bestD = Infinity;
+    for (const s of p.reachable) {
+      // радіо й штурманський стіл — цілком (дрібний орган радіо вибирає radio.aim)
+      const objs = s.id === 'st:radio' ? [this.radio.group] : s.id === 'st:chart' ? [this.chart.group] : this.stationObjects(s.id)[1];
+      const hit = objs && this._ray.intersectObjects(objs, true)[0];
+      if (hit && hit.distance < bestD) {
+        bestD = hit.distance;
+        best = s;
+      }
+    }
+    // зійти на берег — не станція, лишається за дальністю
+    if (best || p.nearest?.id !== 'go-ashore') p.nearest = best;
+  }
+
   /** підсвітка того, з чим зараз взаємодієш (E) */
   private updateHighlight(t: number) {
     const p = this.player;
     let key = '';
     let objs: THREE.Object3D[] | null = null;
-    const near = (id: string, x: number, y: number, z: number, r: number, max: number) =>
-      this.hl.near(id, this.boat.group, this._hv.set(x, y, z), r, max, (o) => {
-        // вудки рухаються (руки/стійки) — їх додаємо окремо
-        for (let q: THREE.Object3D | null = o; q; q = q.parent) if (q.userData.rod) return true;
-        return false;
-      });
     if (this.phase === 'play' && !this.dialogs.isOpen && !this.kitchen.active && !p.wheeling && p.mode === 'boat') {
       const fish = !this.deckFish.carried && this.deckFish.nearest(p.localX, p.localZ, 1.2);
       const id = p.nearest?.id ?? '';
       if (fish) {
         key = 'fish:' + fish.uid;
         objs = [this.deckFish.meshOf(fish)!].filter(Boolean);
-      } else if (id === 'st:fishbox') {
-        key = id;
-        objs = [this.deckFish.hatch];
-      } else if (id === 'st:autopilot') {
-        key = id + (this.boat.autopilot ? '1' : '0');
-        objs = [this.instruments.apButton];
-      } else if (id === 'st:nets') {
-        key = id + (this.game.upgrades.nets ?? 0);
-        objs = near(key, 0.6, 0.95, -4.95, 0.8, 1.4);
       } else if (id === 'st:radio') {
         // підсвічуємо лише орган, на який дивишся (вимкнене радіо — кнопку живлення)
         const o = this.radio.object(this.radioCtl ?? (this.radio.on ? 'tune' : 'power'));
         key = id + ':' + (this.radioCtl ?? (this.radio.on ? '' : 'power'));
         objs = o && (this.radioCtl || !this.radio.on) ? [o] : null;
-      } else if (id === 'st:anchor') {
-        key = id;
-        objs = near(key, 0, Y_DECK + 0.12, 4.1, 0.35, 0.5);
-      } else if (id === 'st:tent' || id === 'st:curtain') {
-        key = id + this.boat.tentLevel;
-        objs = id === 'st:tent' ? this.boat.canvas.foldObjects : this.boat.canvas.curtainObjects;
-      } else if (id === 'st:door') {
-        key = id;
-        objs = [this.cabinDoor.group];
-      } else if (id === 'st:rod') {
-        key = id + this.fishing.rackObjects().length;
-        objs = [...this.fishing.rackObjects(), ...near('rack', 0.42, Y_DECK + 0.2, 3.76, 0.2, 0.6)];
-      } else if (id.startsWith('st:holder')) {
-        const h = Number(id.slice(9));
-        const m = HOLDER_MOUNTS[h].base;
-        const rod = this.fishing.holderObject(h);
-        key = id + (rod ? 'r' : '');
-        objs = [...near('holder' + h + this.game.upgrades.holders, m[0], m[1] + 0.2, m[2], 0.35, 0.8), ...(rod ? [rod] : [])];
-      } else if (id === 'st:wheel') {
-        key = id;
-        objs = near('wheel', 0, Y_DECK + 0.75, -3.38 + HELM_DZ, 0.55, 1.6);
-      } else if (id === 'st:engine' || id === 'st:pump') {
-        const x = id === 'st:engine' ? 0.62 : -0.62;
-        key = id;
-        objs = near(id, x, Y_DECK + 0.05, -4.05, 0.3, 0.9);
-      } else if (id === 'st:sails') {
-        key = id;
-        objs = near('sails', 0, L_HOUSE.top + 0.15, L_RIG.mastZ - 0.3, 0.6, 0.7);
-      } else if (id === 'st:kitchen') {
-        key = id;
-        objs = near('kitchen', -0.82, Y_SOLE + 1.0, 1.25, 0.3, 0.6);
-      } else if (id === 'st:kettle') {
-        key = id;
-        objs = [this.galley.kettle];
-      } else if (id === 'st:cookbook') {
-        key = id;
-        objs = [this.galley.book];
-      } else if (id === 'st:bed') {
-        key = id;
-        objs = near('bed', 0, Y_SOLE + 0.45, 3.2, 0.8, 2.2);
+      } else {
+        [key, objs] = this.stationObjects(id);
       }
     }
     if (this.phase === 'play' && !this.dialogs.isOpen && p.mode === 'port' && p.nearest?.id.startsWith('shop:')) {
@@ -1556,6 +1560,7 @@ class Game {
         this.boat.rudder = this.coop.myHelm[1];
       }
       this.player.update(dt, input, this.boat, this.port, this.ocean, t);
+      this.pickStation();
       this.pickCounter();
       if (this.player.onIsland) {
         const f = this.islands.pick(this.player.wx, this.player.wz, this.game.finds) ?? this.stalls.pickHermit(this.player.wx, this.player.wz);

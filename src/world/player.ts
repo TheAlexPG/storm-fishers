@@ -100,6 +100,8 @@ export class Player {
   sheltered = false;
   /** найближча інтерактивна ціль */
   nearest: Interactable | null = null;
+  /** станції яхти в межах досяжності (з них від першої особи вибирає промінь погляду) */
+  reachable: Interactable[] = [];
   /** двері каюти зачинені (блокують трап) */
   private doorShut = false;
   /** сходня на причал (борт −1/1, 0 — немає) */
@@ -525,6 +527,7 @@ export class Player {
     const p = this.head;
     let best: Interactable | null = null;
     let bestD = 3.2;
+    this.reachable.length = 0;
 
     if (this.mode === 'boat') {
       // за штурвалом E завжди означає «вийти» — інакше найближчою виявлялась
@@ -537,6 +540,7 @@ export class Player {
         const w = boat.localToWorld(sp.x, sp.y ?? BOAT.deckY, sp.z, this._v);
         const d = Math.hypot(p.x - w.x, p.y - w.y - 0.4, p.z - w.z);
         if (d >= (STATION_REACH[id] ?? 3.2)) continue;
+        this.reachable.push({ id: 'st:' + id, label: this.stationLabel(id, boat) });
         // перевага тому, на що дивишся: станція збоку/позаду «далі» до 1.8×
         const la = LOOK_AT[id];
         const tgt = la ? boat.localToWorld(la[0], la[1], la[2], this._v2) : w;
