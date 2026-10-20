@@ -1115,8 +1115,9 @@ class Game {
         : s.id === 'st:sails' ? [...(this.stationObjects(s.id)[1] ?? []), ...this.boat.sails.pickables(), ...this.mastMesh()]
         : this.stationObjects(s.id)[1];
       if (!objs) continue;
-      // носова стійка — це самі вудки в ній; коли остання в руках, цілимось у порожні гнізда для вудок
-      if (s.id === 'st:rod') {
+      // носова стійка — це самі вудки в ній; з вудкою в руках цілимось і в гнізда (повернути її),
+      // без вудки — ні: гнізда стоять перед брашпилем і перехоплювали погляд на якір
+      if (s.id === 'st:rod' && this.fishing.holding) {
         for (const sl of RACK_SLOTS) {
           const pt = this.boat.localToWorld(sl.p[0], sl.p[1], sl.p[2], this._pickV);
           if (this._ray.ray.distanceToPoint(pt) > 0.2) continue;
