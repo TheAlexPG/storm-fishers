@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { DECK_Y, COCKPIT } from './yachtLayout';
+import { DECK_Y, HOUSE, RIG, ARCH as STERN_ARCH, hullHalfWidth, sheerY } from './yachtLayout';
 import { terrainHeight } from './portTerrain';
 import { instrHas } from '../game/upgrades';
 import type { PartKit } from './upgradeParts';
@@ -310,10 +310,12 @@ export class HelmInstruments {
     dome.position.y = 0.075;
     bin.add(dome);
 
-    // вимпели на кормових кутах даху кокпіту (видно напрям вимпельного вітру)
+    // вимпели на нижніх вантах (видно з-за штурвала напрям вимпельного вітру)
     for (const sx of [-1, 1]) {
       const pivot = new THREE.Group();
-      pivot.position.set(sx * (COCKPIT.x - 0.04), COCKPIT.roofY - 0.06, COCKPIT.z0 + 0.06);
+      const MZ = RIG.mastZ;
+      const c = new THREE.Vector3(sx * (hullHalfWidth(MZ) - 0.12), sheerY(MZ), MZ - 0.1);
+      pivot.position.copy(c).lerp(new THREE.Vector3(sx * 0.95, HOUSE.top + 4.32, MZ - 0.1), 0.3);
       this.group.add(pivot);
       const ribbon = new THREE.Mesh(
         new THREE.PlaneGeometry(0.035, 0.34).translate(0, -0.17, 0),
@@ -382,7 +384,7 @@ export class HelmInstruments {
     this.land.width = 128;
     this.land.height = 85;
 
-    // GPS-антена-грибок і обтічник радара на даху кокпіту
+    // GPS-антена-грибок на кормовій дузі й обтічник радара на щоглі (на кронштейні)
     const white = k.mat(0xf3f1ea, 0.45, 0.05);
     const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.07, 16), white);
     ant.position.y = 0.035;
@@ -391,7 +393,7 @@ export class HelmInstruments {
     const antPole = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.12), steel);
     antPole.position.y = -0.04;
     this.gpsAnt.add(ant, antTop, antPole);
-    this.gpsAnt.position.set(-0.45, COCKPIT.roofY + 0.1, COCKPIT.z0 + 0.35);
+    this.gpsAnt.position.set(-(STERN_ARCH.x - 0.12), STERN_ARCH.y + 0.12, STERN_ARCH.z1 + 0.02);
     this.group.add(this.gpsAnt);
     const rd = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.16, 28), white);
     rd.position.y = 0.16;
@@ -405,7 +407,14 @@ export class HelmInstruments {
     beam.position.y = 0.16;
     this.radomeBar = beam;
     this.radome.add(beam);
-    this.radome.position.set(0.5, COCKPIT.roofY + 0.02, COCKPIT.z0 + 0.45);
+    // кронштейн на передній стінці щогли (висота ~3.6 м над рубкою — над гіком і краспицями нижче)
+    const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.03, 0.42), steel);
+    bracket.position.set(0, -0.015, -0.12);
+    const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.42), steel);
+    strut.position.set(0, -0.2, -0.24);
+    strut.rotation.x = 0.85;
+    this.radome.add(bracket, strut);
+    this.radome.position.set(0, HOUSE.top + 3.55, RIG.mastZ + 0.3);
     this.group.add(this.radome);
 
     // ── 5: пульт автопілота на тумбі (ліворуч від газу, для правої руки) ──

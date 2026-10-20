@@ -90,7 +90,9 @@ export type BoatAction =
   | { a: 'cook'; uid: number }
   | { a: 'nets' }
   | { a: 'ap'; v: number }
-  | { a: 'ign' };
+  | { a: 'ign' }
+  | { a: 'tent'; v: number }
+  | { a: 'curtain'; v: number };
 
 export interface FriendMarker {
   x: number;
@@ -513,7 +515,7 @@ export class Coop {
       b: boat.netState(),
       oc: ocean,
       res: [r(g.fuel, 100), r(g.hull, 10)],
-      up: g.upgrades,
+      up: g.fittedUpgrades(),
       helm: this.helmOwner,
       ap: boat.autopilot ? 1 : 0,
     };
@@ -606,7 +608,7 @@ export class Coop {
       const dh = Math.atan2(Math.sin(b.b[3] - a.b[3]), Math.cos(b.b[3] - a.b[3]));
       out[3] = a.b[3] + dh * f;
       // дискретні — від новішого
-      for (const i of [11, 13, 14, 15, 17, 18, 19, 20, 23]) if (i < b.b.length) out[i] = b.b[i];
+      for (const i of [11, 13, 14, 15, 17, 18, 19, 20, 23, 25, 26]) if (i < b.b.length) out[i] = b.b[i];
     }
   }
 
