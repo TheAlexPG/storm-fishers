@@ -579,7 +579,8 @@ export class MapView {
       const calm = a.k < 0;
       const ax = Math.max(W0 + 160, Math.min(W1 - 160, a.x)), az = Math.max(H0 + 60, Math.min(H1 - 60, a.z));
       // райони-смуги (клімат континенту) — підпис над смугою; кола — над центром
-      const up = a.hh != null ? a.hh + a.r * 0.35 : a.r * 0.55;
+      // клімат континенту — під суходолом (над ним — назви гаваней)
+      const up = a.hh != null ? -(a.hh + a.r * 0.25) : a.r * 0.55;
       c.font = `700 11px ${FONT_D}`;
       c.fillStyle = calm ? 'rgba(36,120,140,0.85)' : 'rgba(70,86,104,0.85)';
       c.fillText(`${calm ? '☀' : '⚠'} ${spaced(a.name)}`, mx(ax), my(az) - up * s);
@@ -1094,7 +1095,7 @@ export class MapView {
           if (ht > 0.05) {
             col = ht < 2.2 ? SAND : ht < 14 ? mix(GRASS, GRASS2, (ht - 2.2) / 12) : ht < 45 ? mix(GRASS2, HILL, (ht - 14) / 31) : mix(HILL, ROCK, Math.min(1, (ht - 45) / 30));
             // вершини Північного краю — сніг
-            if (ht > 175) col = mix(col, [246, 248, 250], Math.min(1, (ht - 175) / 30));
+            if (ht > 205) col = mix(col, [246, 248, 250], Math.min(1, (ht - 205) / 30));
             // горизонталі кожні 10 м
             if (ht > 3 && ht % 10 < 0.9) col = mix(col, [42, 58, 70], 0.18);
           } else {

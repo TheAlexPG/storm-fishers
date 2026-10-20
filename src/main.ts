@@ -2004,7 +2004,7 @@ class Game {
 
     // пам'ятки: дзвоновий буй, відкриття місць
     const ring = this.landmarks.update(dt, t, this.ocean);
-    this.islands.update(dt, t, g.finds);
+    this.islands.update(dt, t, g.finds, this.camera.position);
     this.bellCd -= dt;
     if (ring > 0.9 && this.bellCd <= 0) {
       this.bellCd = 1.6 + Math.random() * 2;

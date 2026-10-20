@@ -43,7 +43,7 @@ export const CONTINENTS: ContinentDef[] = [
   },
   {
     id: 'cont-north', name: L('Північний край', `The Northern Reach`), sub: L('граніт, ялиці й холодний туман', `granite, firs and cold fog`), style: 'north',
-    m: LM('north'), seed: 29.3, hill: 58, peak: 270, beachW: 6, shelf: 0.22, deep: -22,
+    m: LM('north'), seed: 29.3, hill: 58, peak: 240, beachW: 6, shelf: 0.22, deep: -22,
   },
 ];
 

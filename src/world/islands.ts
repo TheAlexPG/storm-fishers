@@ -70,6 +70,7 @@ export class Islands {
   private pickups: Pickup[] = [];
   private gulls: THREE.Sprite[] = [];
   private flags: THREE.Mesh[] = [];
+  private chunks: Array<{ x: number; z: number; r: number; objs: THREE.Object3D[] }> = [];
   private _p = new THREE.Vector3();
 
   constructor(scene: THREE.Scene) {
@@ -77,8 +78,11 @@ export class Islands {
     const ground = new THREE.MeshStandardMaterial({ vertexColors: true, map: groundDetailTex(), roughness: 0.95 });
     const rockMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true });
     for (const d of ISLANDS) {
+      const start = this.group.children.length;
       this.group.add(this.terrain(d, ground));
       this.props(d, rng, rockMat);
+      // далекі острови не малюємо (сотні дрібних мешів реквізиту за серпанком)
+      this.chunks.push({ x: d.x, z: d.z, r: d.r * Math.sqrt(d.elong) * 1.4, objs: this.group.children.slice(start) });
     }
     const glowTex = sparkleTex();
     for (const f of FINDS) {
@@ -485,7 +489,13 @@ export class Islands {
   }
 
   /** кожен кадр: знахідки крутяться й мерехтять, мартини кружляють, прапор майорить */
-  update(dt: number, t: number, found: readonly string[]) {
+  update(dt: number, t: number, found: readonly string[], cam?: THREE.Vector3) {
+    if (cam) {
+      for (const c of this.chunks) {
+        const vis = Math.hypot(cam.x - c.x, cam.z - c.z) < 1500 + c.r;
+        if (c.objs[0].visible !== vis) for (const o of c.objs) o.visible = vis;
+      }
+    }
     for (const p of this.pickups) {
       const vis = !found.includes(p.def.id);
       p.obj.visible = vis;

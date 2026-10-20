@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { L } from '../core/i18n';
 import { DOCK_BY_ID } from '../game/cargo';
 import { PORT_SITE_BY_ID } from './portSites';
@@ -129,37 +130,48 @@ export class Traders {
   }
 }
 
-/** каботажник ~22 м: корпус, контейнери, рубка на кормі, щогла з краном */
+/** спільний матеріал суден: вершинні кольори, туман зі стелею */
+let SHIP_MAT: THREE.Material | null = null;
+
+/** каботажник ~22 м: корпус, контейнери, рубка на кормі, щогла з краном — один меш (вершинні кольори) */
 function shipModel(hullCol: number, trimCol: number): THREE.Group {
   const g = new THREE.Group();
-  const M = (c: number, r = 0.7) => farFog(new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: 0.05 }));
-  const add = (geo: THREE.BufferGeometry, m: THREE.Material, x: number, y: number, z: number) => {
-    const o = new THREE.Mesh(geo, m);
-    o.position.set(x, y, z);
-    o.castShadow = true;
-    g.add(o);
-    return o;
+  SHIP_MAT ??= farFog(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.65, metalness: 0.05 }));
+  const parts: THREE.BufferGeometry[] = [];
+  const add = (geo: THREE.BufferGeometry, col: number, x: number, y: number, z: number, rx = 0, ry = 0, sz = 1) => {
+    let gg = geo.index ? geo.toNonIndexed() : geo;
+    gg.deleteAttribute('uv');
+    gg.scale(1, 1, sz);
+    gg.rotateY(ry);
+    gg.rotateX(rx);
+    gg.translate(x, y, z);
+    const c = new THREE.Color(col);
+    const n = gg.attributes.position.count;
+    const a = new Float32Array(n * 3);
+    for (let k = 0; k < n; k++) { a[k * 3] = c.r; a[k * 3 + 1] = c.g; a[k * 3 + 2] = c.b; }
+    gg.setAttribute('color', new THREE.BufferAttribute(a, 3));
+    parts.push(gg);
   };
   // корпус: коробка + загострений ніс
-  add(new THREE.BoxGeometry(5.4, 3.0, 16), M(hullCol), 0, 1.2, -1);
-  const bow = add(new THREE.CylinderGeometry(0.01, 2.7, 6, 4, 1), M(hullCol), 0, 1.2, 9.5);
-  bow.rotation.set(Math.PI / 2, Math.PI / 4, 0);
-  bow.scale.set(1, 1, 0.55);
-  add(new THREE.BoxGeometry(5.5, 0.3, 21.8), M(trimCol), 0, 2.75, 0.8);
-  add(new THREE.BoxGeometry(5.42, 0.6, 16.02), M(0x1c2126), 0, 0.0, -1);
+  add(new THREE.BoxGeometry(5.4, 3.0, 16), hullCol, 0, 1.2, -1);
+  add(new THREE.CylinderGeometry(0.01, 2.7, 6, 4, 1), hullCol, 0, 1.2, 9.5, Math.PI / 2, Math.PI / 4, 0.55);
+  add(new THREE.BoxGeometry(5.5, 0.3, 21.8), trimCol, 0, 2.75, 0.8);
+  add(new THREE.BoxGeometry(5.42, 0.6, 16.02), 0x1c2126, 0, 0.0, -1);
   // контейнери
   const cols = [0xc23a2c, 0x2f6fb5, 0xe39a2d, 0x3e7d4f, 0x8d8f8a, 0xb0532e];
   let n = 0;
-  for (let z = -2; z <= 7; z += 3) for (const x of [-1.25, 1.25]) {
-    add(new THREE.BoxGeometry(2.3, 2.3, 2.8), M(cols[(n++ * 7 + Math.round(z)) % cols.length], 0.6), x, 4.05, z);
-  }
+  for (let z = -2; z <= 7; z += 3) for (const x of [-1.25, 1.25]) add(new THREE.BoxGeometry(2.3, 2.3, 2.8), cols[(n++ * 7 + Math.round(z)) % cols.length], x, 4.05, z);
   // рубка
-  add(new THREE.BoxGeometry(4.8, 4.0, 3.6), M(trimCol), 0, 4.8, -6.6);
-  add(new THREE.BoxGeometry(4.9, 0.9, 3.7), M(0x24292d, 0.3), 0, 6.1, -6.6);
-  add(new THREE.CylinderGeometry(0.45, 0.55, 2.4, 10), M(0x2a2f36), 0, 7.6, -7.8);
+  add(new THREE.BoxGeometry(4.8, 4.0, 3.6), trimCol, 0, 4.8, -6.6);
+  add(new THREE.BoxGeometry(4.9, 0.9, 3.7), 0x24292d, 0, 6.1, -6.6);
+  add(new THREE.CylinderGeometry(0.45, 0.55, 2.4, 10), 0x2a2f36, 0, 7.6, -7.8);
   // щогла й стріла крана
-  add(new THREE.CylinderGeometry(0.12, 0.15, 7, 6), M(0xd9d4c8), 0, 6.4, 5.5);
-  const boom = add(new THREE.CylinderGeometry(0.08, 0.08, 6, 6), M(0xe39a2d), 0, 5.6, 2.8);
-  boom.rotation.x = 1.0;
+  add(new THREE.CylinderGeometry(0.12, 0.15, 7, 6), 0xd9d4c8, 0, 6.4, 5.5);
+  add(new THREE.CylinderGeometry(0.08, 0.08, 6, 6), 0xe39a2d, 0, 5.6, 2.8, 1.0);
+  const merged = mergeGeometries(parts, false)!;
+  const m = new THREE.Mesh(merged, SHIP_MAT);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  g.add(m);
   return g;
 }

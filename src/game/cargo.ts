@@ -179,7 +179,7 @@ export class CargoBook {
       const local = GOODS.filter((g) => g.origin === from.origin && g.id !== 'icefish');
       const g = rng() < 0.22 ? GOODS_BY_ID.icefish : local[Math.floor(rng() * local.length)] ?? GOODS_BY_ID.tools;
       // куди: далекі гавані й інший клімат — частіше (там на товар попит)
-      const w = others.map((d) => (0.25 + routeDist(from, d) / 1000) * (d.origin !== from.origin ? 1.8 : 1));
+      const w = others.map((d) => (0.6 + Math.sqrt(routeDist(from, d) / 1000)) * (d.origin !== from.origin ? 1.4 : 1));
       let r = rng() * w.reduce((a, b) => a + b, 0), to = others[0];
       for (let i = 0; i < others.length; i++) {
         r -= w[i];

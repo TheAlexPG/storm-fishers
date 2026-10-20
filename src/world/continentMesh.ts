@@ -119,7 +119,7 @@ export class ContinentScenery {
         cc.lerp(noise2(x * 0.05, z * 0.05) > 0.5 ? P.rock : P.rockD, rockK);
         // високогір'я: Середземномор'я — світлий вапняк, Північ — сніг
         if (!med) {
-          const snowLine = 185 + (fbm(x * 0.004, z * 0.004 + 9, 3) - 0.5) * 60;
+          const snowLine = 200 + (fbm(x * 0.004, z * 0.004 + 9, 3) - 0.5) * 60;
           cc.lerp(P.snow, smoothstep(snowLine, snowLine + 25, h) * (1 - smoothstep(0.9, 1.3, sl) * 0.5));
         } else cc.lerp(P.high, smoothstep(120, 150, h) * 0.6);
         if (h < 0.4) cc.copy(P.wet).lerp(P.bed, smoothstep(0.2, -4, h));
@@ -321,11 +321,11 @@ export class ContinentScenery {
     for (const m of this.glowMats) m.emissiveIntensity = 0.4 + night * 2;
   }
 
-  /** далекі тайли лісу не малюємо (за ~2,2 км їх і так з'їдає серпанок); вогники маяків блимають */
+  /** далекі тайли лісу не малюємо (за ~1,6 км дрібні дерева однаково зливаються в серпанку); вогники маяків блимають */
   update(t: number, cam: THREE.Vector3) {
     for (const tl of this.tiles) {
       const d = Math.hypot(cam.x - tl.cx, cam.z - tl.cz);
-      const vis = d < 2200;
+      const vis = d < 1600;
       for (const m of tl.meshes) m.visible = vis;
     }
     for (const l of this.lanterns) {
