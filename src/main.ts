@@ -1052,6 +1052,16 @@ class Game {
         bx = this.homeMoorX; bz = MOOR.z; bh = MOOR_HEADING; relocated = true;
       }
     }
+    // береги змінились (рвані береги континентів): яхта зі старого сейву опинилась
+    // на суші чи на камінні — переносимо на шварт найближчої гавані
+    if (!relocated && terrainHeight(bx, bz) > -1.2) {
+      const near = PORT_SITES.reduce<{ id: string; d: number } | null>((best, p) => {
+        const d = Math.hypot(p.x - bx, p.z - bz);
+        return !best || d < best.d ? { id: p.id, d } : best;
+      }, null);
+      const b = near && near.d < Math.hypot(bx, bz) ? this.berthIn(near.id) : this.berthIn('home');
+      bx = b.x; bz = b.z; bh = b.h; relocated = true;
+    }
     this.boat.reset(bx, bz, bh);
     const an = data.anchor;
     if (!relocated && an && Number.isFinite(an.x) && Number.isFinite(an.z) && Number.isFinite(an.chain) && seabedDepth(an.x, an.z) <= ANCHOR_MAX_DEPTH + 5) this.boat.anchor.setDown(an.x, an.z, an.chain);

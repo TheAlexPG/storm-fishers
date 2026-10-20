@@ -28,6 +28,14 @@ function approach(id: string): [number, number] {
   return [p.x + d.ox * (p.pierL + 170), p.z + d.oz * (p.pierL + 170)];
 }
 
+/** маршрути торгових суден (точки — у відкритій воді, повз миси й шхери) */
+export const TRADE_ROUTES: Record<'med' | 'north' | 'cross' | 'nikos', Array<[number, number]>> = {
+  med: [approach('home'), [900, 950], [1700, 1900], [1950, 2850], approach('port-azzurro')],
+  north: [approach('home'), [-900, 950], [-1700, 1750], [-1900, 2650], approach('port-cedar')],
+  cross: [approach('port-azzurro'), [1500, 3300], [120, 3480], [-1500, 3150], approach('port-cedar')],
+  nikos: [approach('port-azzurro'), [2500, 2050], approach('port-nikos')],
+};
+
 interface Route {
   pts: Array<[number, number]>;
   /** накопичені довжини */
@@ -59,10 +67,10 @@ export class Traders {
 
   constructor(scene: THREE.Scene, glow: THREE.Texture) {
     const R = {
-      med: route([approach('home'), [900, 950], [1700, 1900], [1950, 2850], approach('port-azzurro')]),
-      north: route([approach('home'), [-900, 950], [-1700, 1750], [-1900, 2650], approach('port-cedar')]),
-      cross: route([approach('port-azzurro'), [1500, 3300], [120, 3480], [-1500, 3150], approach('port-cedar')]),
-      nikos: route([approach('port-azzurro'), [2500, 2050], approach('port-nikos')]),
+      med: route(TRADE_ROUTES.med),
+      north: route(TRADE_ROUTES.north),
+      cross: route(TRADE_ROUTES.cross),
+      nikos: route(TRADE_ROUTES.nikos),
     };
     const defs: Array<[string, Route, number, number, number]> = [
       [L('«Санта-Марія»', `“Santa Maria”`), R.med, 0, 0x8e2433, 0xf2f1ec],
