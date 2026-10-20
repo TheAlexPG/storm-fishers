@@ -138,7 +138,7 @@ export class Player {
   private tFrom = new THREE.Vector3();
   private tK = 1;
   private tDur = 1;
-  private tFall = false;
+  private tKind: 'fall' | 'climb' | 'walk' = 'climb';
   private _v = new THREE.Vector3();
   private _v2 = new THREE.Vector3();
   private _n = new THREE.Vector3();
@@ -185,14 +185,15 @@ export class Player {
     this.applyTransition();
   }
 
-  private startTransition(fall: boolean, dur: number) {
+  private startTransition(kind: 'fall' | 'climb' | 'walk', dur: number) {
     this.tFrom.copy(this.head);
     this.tK = 0;
     this.tDur = dur;
-    this.tFall = fall;
+    this.tKind = kind;
   }
 
-  /** поверх щойно обчисленої голови: виліз — спершу вгору, потім через борт; падіння — вниз, пірнути й виринути */
+  /** поверх щойно обчисленої голови: виліз — спершу вгору, потім через борт; падіння — вниз, пірнути й виринути;
+   *  сходня — рівно перейти кроками */
   private applyTransition() {
     if (this.tK >= 1) return;
     const k = this.tK;
@@ -200,8 +201,11 @@ export class Player {
     const h = this.head;
     const up = 1 - (1 - k) * (1 - k);
     const over = k * k;
-    if (this.tFall) {
+    if (this.tKind === 'fall') {
       h.set(f.x + (h.x - f.x) * up, f.y + (h.y - f.y) * over - Math.sin(k * Math.PI) * k * 0.9, f.z + (h.z - f.z) * up);
+    } else if (this.tKind === 'walk') {
+      const e = k * k * (3 - 2 * k);
+      h.set(f.x + (h.x - f.x) * e, f.y + (h.y - f.y) * e + Math.abs(Math.sin(k * Math.PI * 3)) * 0.04, f.z + (h.z - f.z) * e);
     } else {
       h.set(f.x + (h.x - f.x) * over, f.y + (h.y - f.y) * up, f.z + (h.z - f.z) * over);
     }
@@ -286,10 +290,13 @@ export class Player {
               : boat.localToWorld(ex, BOAT.deckY, ez, this._v);
             this.sternPush = 0;
             this.railPush = 0;
+            const viaGang = this.toGang;
             this.toGang = false;
             const plat = this.platformNear(world.x, world.z, port, 0.9);
             const shore = plat ? null : Islands.landingSpot(world.x, world.z, 1.6);
             if (plat) {
+              // сходнею — кілька кроків, через зазор із борту — один крок
+              this.startTransition('walk', viaGang ? 0.8 : 0.45);
               this.mode = 'port';
               this.onIsland = false;
               this.wx = clamp(world.x, plat.x0, plat.x1);
@@ -345,6 +352,7 @@ export class Player {
           const toBoatX = boat.pos.x - nx, toBoatZ = boat.pos.z - nz;
           const towards = (dx * toBoatX + dz * toBoatZ) / (Math.hypot(toBoatX, toBoatZ) || 1);
           if (Math.hypot(nx - end.x, nz - end.z) < 0.7 && towards > 0.3) {
+            this.startTransition('walk', 0.8);
             this.placeOnDeck(s * (edge - 0.45), Boat.GANG_Z);
             this.mode = 'boat';
             boarded = true;
@@ -551,7 +559,7 @@ export class Player {
     this.wz = z;
     this.wy = 0.2;
     this.inWaterT = 0;
-    this.startTransition(true, 0.7);
+    this.startTransition('fall', 0.7);
   }
 
   /** найближча інтерактивна річ у радіусі */
@@ -705,7 +713,7 @@ export class Player {
       boat.localToWorld(0, 0, 0, w);
       const local = boat.worldToLocal(this.wx, this.wy, this.wz, this._v);
       this.placeOnDeck(local.x, local.z);
-      this.startTransition(false, 0.9);
+      this.startTransition('climb', 0.9);
       this.mode = 'boat';
       this.onIsland = false;
       this.shakeX = 0;
@@ -717,7 +725,7 @@ export class Player {
       this.wx = clamp(this.wx, dock.x0 + 0.5, dock.x1 - 0.5);
       this.wz = clamp(this.wz, dock.z0 + 0.5, dock.z1 - 0.5);
       this.wy = dock.y;
-      this.startTransition(false, 0.8);
+      this.startTransition('climb', 0.8);
       this.mode = 'port';
       this.onIsland = false;
       this.shakeX = 0;
