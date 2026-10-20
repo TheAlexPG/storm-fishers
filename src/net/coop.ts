@@ -76,7 +76,7 @@ interface FleetBoat {
 }
 
 export type BoatAction =
-  | { a: 'sails' }
+  | { a: 'sails'; v?: number }
   | { a: 'engine' }
   | { a: 'repair'; v: number }
   | { a: 'fuel'; v: number }

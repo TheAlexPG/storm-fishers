@@ -974,7 +974,7 @@ export class Boat {
     return [
       r(this.pos.x), r(this.pos.y), r(this.pos.z), r(this.heading, 1e4), r(this.pitch, 1e4), r(this.roll, 1e4),
       r(this.vel.x, 100), r(this.vel.y, 100), r(this.vel.z, 100), r(this.throttle, 100), r(this.rudder, 100),
-      this.engineOn ? 1 : this.engineKilled ? 2 : 0, r(this.deckWater, 10), this.sails.mode, this.sinking ? 1 : 0,
+      this.engineOn ? 1 : this.engineKilled ? 2 : 0, r(this.deckWater, 10), this.sails.netMode, this.sinking ? 1 : 0,
       this.hatchOpen ? 1 : 0, r(this.bilge, 10), this.doorOpen ? 1 : 0,
       ...this.anchor.netState(),
       this.tentClosed ? 1 : 0, this.tentFolded ? 1 : 0,
@@ -993,7 +993,7 @@ export class Boat {
     this.engineOn = b[11] === 1;
     this.engineKilled = b[11] === 2;
     this.deckWater = b[12];
-    this.sails.mode = b[13] as 0 | 1 | 2;
+    this.sails.netMode = b[13];
     this.sinking = b[14] === 1;
     if (b.length > 16) {
       this.hatchOpen = b[15] >= 0.5;

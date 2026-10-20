@@ -16,9 +16,16 @@ import { L } from '../core/i18n';
 // паруси рвуться: треба брати риф або спускати.
 // ─────────────────────────────────────────────────────────────
 
-/** 0 — спущені, 1 — риф (≈60 %), 2 — повні */
-export type SailMode = 0 | 1 | 2;
-const AREA: Record<SailMode, number> = { 0: 0, 1: 0.6, 2: 1 };
+/** 0 — спущені, 1 — риф 1 (≈70 %), 2 — повні, 3 — риф 2 (≈40 %).
+ *  Номери 0/1/2 — як і раніше (мережа й сейви), 3 — новий глибокий риф. */
+export type SailMode = 0 | 1 | 2 | 3;
+export const SAIL_AREA: Record<SailMode, number> = { 0: 0, 1: 0.7, 2: 1, 3: 0.4 };
+const AREA = SAIL_AREA;
+/** порядок від спущених до повних — для меню */
+export const SAIL_STEPS: SailMode[] = [0, 3, 1, 2];
+export function sailModeLabel(m: SailMode): string {
+  return m === 0 ? L('спущені', `furled`) : m === 3 ? L('риф 2', `reef 2`) : m === 1 ? L('риф 1', `reef 1`) : L('повні', `full`);
+}
 const K_SAIL = 72;          // Н / (м/с)² на одиницю площі
 const HEEL_LEVER = 0.55;    // плече бокової сили (м) → момент крену
 const OVERPOWER_Q = 150;    // площа·aws² понад це — парус перевантажений
@@ -127,6 +134,8 @@ export interface SailForce {
 
 export class SailRig {
   mode: SailMode = 0;
+  /** генакер вимкнено вручну (з меню біля щогли) */
+  gennOff = false;
   /** поточна піднятість 0..1 (анімація лебідки) */
   hoist = 0;
   /** телеметрія для HUD / панелі */
@@ -300,7 +309,28 @@ export class SailRig {
   }
 
   label(): string {
-    return this.mode === 0 ? L('спущені', `furled`) : this.mode === 1 ? L('риф', `reefed`) : L('повні', `full`);
+    return this.mode === 0 ? sailModeLabel(0) : `${sailModeLabel(this.mode)} (${Math.round(AREA[this.mode] * 100)}%)`;
+  }
+
+  /** чи є генакер і чи доречний зараз (повні паруси, повний курс) */
+  get hasGenn(): boolean {
+    return this.perf.genn;
+  }
+
+  /** яку площу радимо за поточним вітром: найбільша, що не перевантажить паруси */
+  recommend(): SailMode {
+    const w = 0.5 * this.aws * this.aws + 0.5 * this.tws * this.tws;
+    for (const m of [2, 1, 3] as SailMode[]) if ((AREA[m] * w) / (OVERPOWER_Q * this.perf.over) < 0.72) return m;
+    return 0;
+  }
+
+  /** мережа: режим + прапорець генакера в одному числі */
+  get netMode(): number {
+    return this.mode | (this.gennOff ? 4 : 0);
+  }
+  set netMode(v: number) {
+    this.mode = (v & 3) as SailMode;
+    this.gennOff = (v & 4) !== 0;
   }
 
   /**
@@ -332,7 +362,7 @@ export class SailRig {
     let drive = K_SAIL * q * driveCoef(this.awa, p.noGo) * p.drive;
     let sideF = K_SAIL * q * sideCoef(this.awa, p.noGo) * Math.sign(lx || 1); // на підвітряний борт (локальний x)
     // генакер: сам розкривається на повних курсах при повних парусах, якщо не перевантажено
-    const gennWant = p.genn && this.mode === 2 && this.hoist > 0.9 && this.awa > 100 && this.overload < 0.7 ? 1 : 0;
+    const gennWant = p.genn && !this.gennOff && this.mode === 2 && this.hoist > 0.9 && this.awa > 100 && this.overload < 0.7 ? 1 : 0;
     this.gennaker = damp(this.gennaker, gennWant, gennWant ? 0.8 : 2.0, dt);
     if (this.gennaker > 0.01) {
       const gc = clamp((this.awa - 95) / 30, 0, 1) * (this.awa > 165 ? 0.8 : 1);
@@ -370,7 +400,9 @@ export class SailRig {
     if (this.passive) return { fx: 0, fz: 0, torqueRoll: 0 };
     if (this.overload > 0.85 && this.warnT <= 0 && this.mode !== 0) {
       this.warnT = 12;
-      this.onEvent?.(sailEventText(this.mode === 2 ? 1 : 2), 'warn', this.mode === 2 ? 1 : 2);
+      // повні чи риф 1 — бери (глибший) риф; риф 2 — уже лише спускати
+      const ev = this.mode === 3 ? 2 : 1;
+      this.onEvent?.(sailEventText(ev), 'warn', ev);
     }
     if (this.overload > 1) {
       this.stressT += dt * (0.15 + (this.overload - 1) * 4);
