@@ -74,7 +74,7 @@ import { OrdersChip } from './ui/buyers';
 import { BUYER_BY_ID, contractTitle, shortName, type BuyerId } from './game/buyers';
 import { describeSave } from './game/saveTransfer';
 import { Highlighter } from './world/highlight';
-import { HOLDER_MOUNTS } from './world/upgradeParts';
+import { HOLDER_MOUNTS, RACK_SLOTS } from './world/upgradeParts';
 import { DECK_Y as Y_DECK, HOUSE as L_HOUSE, RIG as L_RIG, SOLE_Y as Y_SOLE } from './world/yachtLayout';
 import { HELM_DZ } from './world/yachtModel';
 import { PLANS, applySinkToUpgrades, dailyPremium, type SinkReport } from './game/insurance';
@@ -1061,7 +1061,12 @@ class Game {
       return [id + (rod ? 'r' : ''), [...near('holder' + h + this.game.upgrades.holders, m[0], m[1] + 0.2, m[2], 0.35, 0.8), ...(rod ? [rod] : [])]];
     }
     if (id === 'st:wheel') return [id, near('wheel', 0, Y_DECK + 0.75, -3.38 + HELM_DZ, 0.55, 1.6)];
-    if (id === 'st:engine' || id === 'st:pump') return [id, near(id, id === 'st:engine' ? 0.62 : -0.62, Y_DECK + 0.05, -4.05, 0.3, 0.9)];
+    if (id === 'st:engine') return [id, near(id, 0.62, Y_DECK + 0.05, -4.05, 0.3, 0.9)];
+    // помпа: штатна рукоять + куплені помпи (раніше — «що поруч», а рукоять злилась зі статикою)
+    if (id === 'st:pump') {
+      this._pumpMeshes ??= this.boat.group.getObjectsByProperty('name', 'pump');
+      return [id + this.game.upgrades.pump, [...this._pumpMeshes, ...this.boat.partsOf('pump')]];
+    }
     if (id === 'st:sails') return [id, near('sails', 0, L_HOUSE.top + 0.15, L_RIG.mastZ - 0.3, 0.6, 0.7)];
     if (id === 'st:kitchen') return [id, near('kitchen', -0.82, Y_SOLE + 1.0, 1.25, 0.3, 0.6)];
     if (id === 'st:kettle') return [id, [this.galley.kettle]];
@@ -1071,9 +1076,9 @@ class Game {
   }
 
   private _pickBox = new THREE.Box3();
-  private _pickBox2 = new THREE.Box3();
   private _pickV = new THREE.Vector3();
   private _mast: THREE.Object3D[] | null = null;
+  private _pumpMeshes: THREE.Object3D[] | null = null;
   private mastMesh(): THREE.Object3D[] {
     if (!this._mast) {
       const m = this.boat.group.getObjectByName('mast');
@@ -1090,6 +1095,10 @@ class Game {
     this._ray.far = 3.2;
     let best: Interactable | null = null;
     let bestD = Infinity;
+    // промах «на кілька сантиметрів» — лише якщо точно не влучено ні в що (інакше спиці штурвала
+    // з запасом перехоплювали погляд на помпу за ним)
+    let near: Interactable | null = null;
+    let nearD = Infinity;
     // промінь «бачить» і приховані меші (спущений парус, складений тент) — їх не рахуємо
     const shown = (o: THREE.Object3D) => {
       for (let q: THREE.Object3D | null = o; q; q = q.parent) if (!q.visible) return false;
@@ -1104,24 +1113,40 @@ class Game {
         : s.id === 'st:sails' ? [...(this.stationObjects(s.id)[1] ?? []), ...this.boat.sails.pickables(), ...this.mastMesh()]
         : this.stationObjects(s.id)[1];
       if (!objs) continue;
-      const hit = this._ray.intersectObjects(objs, true).find((h) => shown(h.object));
-      let d = hit ? hit.distance : Infinity;
-      // дрібна станція (тонка рукоять помпи, кнопка, тримач) — рахуємо й промах на кілька сантиметрів
-      if (!hit) {
-        const box = this._pickBox.makeEmpty();
-        for (const o of objs) o.traverse((m) => {
-          if ((m as THREE.Mesh).isMesh && shown(m)) box.union(this._pickBox2.setFromObject(m));
-        });
-        if (!box.isEmpty() && box.getSize(this._pickV).length() < 0.8 && this._ray.ray.intersectBox(box.expandByScalar(0.08), this._pickV)) {
-          d = this._pickV.distanceTo(this._ray.ray.origin);
-          if (d > this._ray.far) d = Infinity;
+      // носова стійка — це самі вудки в ній; коли остання в руках, цілимось у порожні гнізда для вудок
+      if (s.id === 'st:rod') {
+        for (const sl of RACK_SLOTS) {
+          const pt = this.boat.localToWorld(sl.p[0], sl.p[1], sl.p[2], this._pickV);
+          if (this._ray.ray.distanceToPoint(pt) > 0.2) continue;
+          const dp = pt.distanceTo(this._ray.ray.origin);
+          if (dp <= this._ray.far && dp < bestD) {
+            bestD = dp;
+            best = s;
+          }
         }
       }
-      if (d < bestD) {
-        bestD = d;
-        best = s;
+      const hit = this._ray.intersectObjects(objs, true).find((h) => shown(h.object));
+      if (hit) {
+        if (hit.distance < bestD) {
+          bestD = hit.distance;
+          best = s;
+        }
+        continue;
       }
+      // дрібні деталі (тонка рукоять помпи, кнопка, тримач) — по кожному мешу окремо:
+      // спільний обрис станції з кількох речей (штатна помпа + куплена) завеликий
+      for (const o of objs) o.traverse((m) => {
+        if (!(m as THREE.Mesh).isMesh || !shown(m)) return;
+        const box = this._pickBox.setFromObject(m);
+        if (box.getSize(this._pickV).length() > 0.6 || !this._ray.ray.intersectBox(box.expandByScalar(0.08), this._pickV)) return;
+        const dm = this._pickV.distanceTo(this._ray.ray.origin);
+        if (dm <= this._ray.far && dm < nearD) {
+          nearD = dm;
+          near = s;
+        }
+      });
     }
+    best ??= near;
     // зійти на берег — не станція, лишається за дальністю
     if (best || p.nearest?.id !== 'go-ashore') p.nearest = best;
   }

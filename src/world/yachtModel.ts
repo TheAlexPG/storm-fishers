@@ -1166,9 +1166,14 @@ export class YachtBuilder {
     this.box(g, 0.6, 0.015, 0.5, 0.62, DECK_Y + 0.008, -4.05, this.mat(TEAK_DARK, 0.85), false);
     this.box(g, 0.6, 0.015, 0.5, -0.62, DECK_Y + 0.008, -4.05, this.mat(TEAK_DARK, 0.85), false);
     // ручна трюмна помпа (рукоять у коамінгу)
-    this.cyl(g, 0.05, 0.05, 0.12, -0.62, DECK_Y + 0.07, -4.05, this.mat(0x4a6b8a, 0.5, 0.4));
+    const pumpB = this.cyl(g, 0.05, 0.05, 0.12, -0.62, DECK_Y + 0.07, -4.05, this.mat(0x4a6b8a, 0.5, 0.4));
     const pumpH = this.rod(g, new THREE.Vector3(-0.62, DECK_Y + 0.12, -4.05), new THREE.Vector3(-0.45, DECK_Y + 0.45, -4.0), 0.018, steel);
     pumpH.castShadow = false;
+    // ціль погляду й підсвітки станції «помпа» — окремими мешами, не зливаємо зі статикою
+    for (const m of [pumpB, pumpH]) {
+      m.name = 'pump';
+      m.userData.merge = false;
+    }
     // кормовий прапор на флагштоку: вертикальне древко з наконечником, полотнище —
     // сітка з кольорами вершин (синій верх, жовтий низ); форму щокадру задає
     // Boat.updateFlag за вимпельним вітром
