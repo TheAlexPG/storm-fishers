@@ -457,6 +457,22 @@ export class MapView {
       c.fillStyle = INK;
       c.fill();
     }
+    // наблизили — підписати, де що в порту (біржа, крамниця, верф…)
+    if (s > 1.6) {
+      c.font = `800 ${Math.round(Math.min(13, 6 + s * 1.2))}px ${FONT}`;
+      c.textAlign = 'center';
+      for (const pt of PORT_POINTS) {
+        const txt = `${pt.icon} ${pt.name}`;
+        const tw = c.measureText(txt).width;
+        const lx = mx(pt.x), ly = my(pt.z) - 10;
+        c.fillStyle = 'rgba(255,250,240,0.9)';
+        c.beginPath();
+        c.roundRect(lx - tw / 2 - 5, ly - 11, tw + 10, 16, 8);
+        c.fill();
+        c.fillStyle = INK;
+        c.fillText(txt, lx, ly + 1);
+      }
+    }
     // маяк
     {
       const px = mx(-32);

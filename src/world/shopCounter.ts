@@ -12,7 +12,8 @@ import type { Solid } from './port';
 // На полицях стоять справжні моделі НАСТУПНОГО рівня кожного апгрейду
 // (ті самі, що прикрутяться до човна) з ціниками. Дивишся на річ — вона
 // світиться, підказка каже що це й скільки коштує; E — купити.
-// На прилавку: каса (продаж риби — біржа) і папка страхової агенції.
+// На прилавку каса — каталог крамниці (усі речі з описами). Рибу тут не
+// приймають (це на біржі), страховку оформлюють у конторі порту.
 // ─────────────────────────────────────────────────────────────
 
 const G = GROUND_Y;
@@ -162,7 +163,7 @@ export class ShopCounter {
       r.position.set(COUNTER.x1 - 0.65, ty, COUNTER.z);
       this.group.add(r);
     }
-    // папка страхової агенції + штамп
+    // папка-каталог + штамп (декор)
     {
       const f = this.folder;
       const cover = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.025, 0.4), new THREE.MeshStandardMaterial({ color: 0x2f6b3a, roughness: 0.6 }));
@@ -177,7 +178,7 @@ export class ShopCounter {
       x.fillStyle = '#2f6b3a';
       x.font = 'bold 18px sans-serif';
       x.textAlign = 'center';
-      x.fillText('СТРАХОВКА', 64, 30);
+      x.fillText('КАТАЛОГ', 64, 30);
       x.fillStyle = '#7a6a50';
       for (let i = 0; i < 7; i++) x.fillRect(16, 50 + i * 15, 96 - (i % 3) * 18, 4);
       x.strokeStyle = '#c0392b';
@@ -293,8 +294,6 @@ export class ShopCounter {
     for (const s of this.slots) test(`up:${s.id}`, s.x, s.y + 0.18, SHELF.z, 0.3);
     const rp = this.register.position;
     test('register', rp.x + 0.15, rp.y + 0.15, rp.z, 0.32);
-    const fp = this.folder.position;
-    test('insurance', fp.x, fp.y + 0.05, fp.z, 0.28);
     return best;
   }
 
@@ -307,7 +306,7 @@ export class ShopCounter {
 
   /** підказка для цілі */
   label(t: CounterTarget, up: UpgradeLevels, money: number): string {
-    if (t === 'register') return 'Каса — продати рибу (біржа)';
+    if (t === 'register') return 'Каса — каталог крамниці (усі речі з описами)';
     if (t === 'insurance') return 'Страхова агенція — поліс для човна';
     const id = t.slice(3) as UpgradeId;
     const u = UPGRADE_BY_ID[id];
