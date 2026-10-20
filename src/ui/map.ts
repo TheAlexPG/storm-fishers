@@ -8,6 +8,7 @@ import { LANDMARKS } from '../world/landmarks';
 import type { RockObstacle } from '../world/boat';
 import type { GameState } from '../game/state';
 import { SCHOOL_ANCHORS, SCHOOL_R } from '../game/fish';
+import { L, plural } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // Карта (M): повноекранна штурвальна схема акваторії.
@@ -126,7 +127,7 @@ export class MapView {
   constructor() {
     this.el = document.createElement('div');
     this.el.id = 'mapview';
-    this.el.innerHTML = `
+    this.el.innerHTML = L(`
       <div class="map-head">
         <span class="map-title">Лоція · Північне море</span>
         <span class="map-hint">ЛКМ — точка маршруту · тягни — рухати карту / точку · коліщатко — зум · ПКМ — прибрати точку · <kbd>M</kbd> закрити</span>
@@ -158,7 +159,39 @@ export class MapView {
         <span><i class="lg lg-wp"></i>маршрут (компас веде на першу точку)</span>
         <span><i class="lg lg-track"></i>пройдений шлях</span>
       </div>
-    `;
+    `, `
+      <div class="map-head">
+        <span class="map-title">Chart · North Sea</span>
+        <span class="map-hint">LMB — route point · drag — move chart / point · wheel — zoom · RMB — remove point · <kbd>M</kbd> close</span>
+        <button class="map-close">✕</button>
+      </div>
+      <div class="map-body">
+        <canvas></canvas>
+        <div class="map-tools">
+          <button data-z="in" title="Zoom in (+)">+</button>
+          <button data-z="out" title="Zoom out (−)">−</button>
+          <button data-z="boat" title="To the yacht (Home)">⌖</button>
+          <button data-z="all" title="Whole chart (0)">⤢</button>
+        </div>
+        <div class="map-route">
+          <div class="map-route-info"></div>
+          <div class="map-route-btns">
+            <button data-r="undo" title="Remove the last point (Backspace)">↶ Last</button>
+            <button data-r="clear" title="Clear the whole route">Clear route</button>
+          </div>
+        </div>
+        <div class="map-note"></div>
+      </div>
+      <div class="map-legend">
+        <span><i class="lg lg-boat"></i>yacht</span>
+        <span><i class="lg lg-bot"></i>fishermen</span>
+        <span><i class="lg lg-rock"></i>rocks</span>
+        <span><i class="lg lg-ring"></i>zones: coast up to 400 m, mid-water up to 900 m</span>
+        <span>🐟 school (from radio reports)</span>
+        <span><i class="lg lg-wp"></i>route (the compass leads to the first point)</span>
+        <span><i class="lg lg-track"></i>track sailed</span>
+      </div>
+    `);
     document.body.appendChild(this.el);
     this.canvas = this.el.querySelector('canvas')!;
     this.ctx = this.canvas.getContext('2d')!;
@@ -284,13 +317,13 @@ export class MapView {
     const [wx, wz] = this.toWorld(px, py);
     if (wx == null || wz == null) return;
     if (this.isOnLand(wx, wz)) {
-      this.note('Це суша — точку ставлять на воді');
+      this.note(L('Це суша — точку ставлять на воді', `That's land — waypoints go on water`));
       return;
     }
     const g = this.last.game;
     const idx = insert ? this.nearestLeg(g.route, this.last.bx, this.last.bz, wx, wz) : g.route.length;
     if (!g.addRoutePoint(wx, wz, idx)) {
-      this.note(`Не більше ${g.route.length} точок у маршруті`);
+      this.note(L(`Не більше ${g.route.length} точок у маршруті`, `No more than ${g.route.length} points in a route`));
       return;
     }
     this.changed();
@@ -443,14 +476,14 @@ export class MapView {
     c.fillStyle = INK_SOFT;
     c.textAlign = 'center';
     const spaced = (t: string) => t.toUpperCase().split('').join('\u2009');
-    c.fillText(spaced('узбережжя'), mx(250), my(140));
-    c.fillText(spaced('середина'), mx(0) + 650 * s, my(0) + 120 * s);
-    c.fillText(spaced('відкрите море'), mx(0), my(0) + 1000 * s > h - 20 && view.zoom < 1.01 ? h - 24 : my(0) + 1000 * s);
+    c.fillText(spaced(L('узбережжя', `coastal`)), mx(250), my(140));
+    c.fillText(spaced(L('середина', `mid-water`)), mx(0) + 650 * s, my(0) + 120 * s);
+    c.fillText(spaced(L('відкрите море', `open sea`)), mx(0), my(0) + 1000 * s > h - 20 && view.zoom < 1.01 ? h - 24 : my(0) + 1000 * s);
 
     // ── порт ──
     c.font = `700 13px ${FONT_D}`;
     c.fillStyle = INK;
-    c.fillText('Порт «Шторм»', mx(0), my(-150));
+    c.fillText(L('Порт «Шторм»', `Storm Harbour`), mx(0), my(-150));
     // точки порту
     for (const pt of PORT_POINTS) {
       c.beginPath();
@@ -605,7 +638,7 @@ export class MapView {
       c.fillText('🐟', px, pz + 6);
       c.font = `800 11.5px ${FONT}`;
       c.fillStyle = '#1d6f73';
-      c.fillText(`${game.speciesName(r.speciesId)} ×${r.boost.toFixed(1).replace(".", ",")}`, px, pz + Math.max(38, rr + 16));
+      c.fillText(`${game.speciesName(r.speciesId)} ×${r.boost.toFixed(1).replace('.', L(',', '.'))}`, px, pz + Math.max(38, rr + 16));
     }
 
     // ── маршрут: яхта → 1 → 2 …, перша точка — поточна ціль (прапор) ──
@@ -693,8 +726,12 @@ export class MapView {
             c.fillText(lab, qx, ly);
           }
         }
-        if (main) this.infoEl.innerHTML = `<b>Маршрут</b> · ${r.length} ${plural(r.length, 'точка', 'точки', 'точок')} · ${this.fmtDist(total)}` + (r.length > 1 ? ` · далі: ${this.fmtDist(total - Math.hypot(r[0].x - boatX, r[0].z - boatZ))} після №1` : '');
-      } else if (main) this.infoEl.innerHTML = '<b>Маршрут</b> · клікни по воді — перша точка';
+        if (main) {
+          const pts = `${r.length} ${plural(r.length, ['точка', 'точки', 'точок'], ['point', 'points'])}`;
+          const rest = this.fmtDist(total - Math.hypot(r[0].x - boatX, r[0].z - boatZ));
+          this.infoEl.innerHTML = L(`<b>Маршрут</b> · ${pts} · ${this.fmtDist(total)}`, `<b>Route</b> · ${pts} · ${this.fmtDist(total)}`) + (r.length > 1 ? L(` · далі: ${rest} після №1`, ` · then: ${rest} after #1`) : '');
+        }
+      } else if (main) this.infoEl.innerHTML = L('<b>Маршрут</b> · клікни по воді — перша точка', `<b>Route</b> · click on the water for the first point`);
       if (main) this.el.querySelector('.map-route')!.classList.toggle('empty', !r.length);
     }
 
@@ -772,7 +809,7 @@ export class MapView {
         c.stroke();
       }
       const ready = b.h >= 3;
-      const txt = `🛟${b.id} · ${b.h < 1 ? Math.round(b.h * 60) + ' хв' : Math.round(b.h) + ' год'}`;
+      const txt = `🛟${b.id} · ${b.h < 1 ? Math.round(b.h * 60) + L(' хв', ` min`) : Math.round(b.h) + L(' год', ` h`)}`;
       c.font = `800 11px ${FONT}`;
       c.textAlign = 'center';
       const tw = c.measureText(txt).width;
@@ -813,7 +850,7 @@ export class MapView {
         c.fillText(f.nick, px + 15, pz + 4);
       }
       if (aboard.length) {
-        const txt = `на борту: ${aboard.join(', ')}`;
+        const txt = L(`на борту: ${aboard.join(', ')}`, `aboard: ${aboard.join(', ')}`);
         c.font = `700 12px ${FONT}`;
         c.textAlign = 'center';
         const tw = c.measureText(txt).width;
@@ -870,7 +907,7 @@ export class MapView {
       c.font = `700 12px ${FONT_D}`;
       c.fillStyle = '#e2674a';
       c.textAlign = 'center';
-      c.fillText('П', cx, cy - 46);
+      c.fillText(L('П', `N`), cx, cy - 46);
     }
 
     // ── масштабна лінійка ──
@@ -1019,7 +1056,7 @@ export class MapView {
   }
 
   fmtDist(d: number): string {
-    return d >= 1000 ? (d / 1000).toFixed(1).replace('.', ',') + ' км' : Math.round(d) + ' м';
+    return d >= 1000 ? (d / 1000).toFixed(1).replace('.', L(',', '.')) + L(' км', ` km`) : Math.round(d) + L(' м', ` m`);
   }
 
   private dprOverride: number | null = null;
@@ -1100,11 +1137,4 @@ export class MapView {
     if (wx >= -24 && wx <= 24 && wz >= -40 && wz <= -18) return true; // причал
     return terrainHeight(wx, wz) > 0;
   }
-}
-
-function plural(n: number, one: string, few: string, many: string) {
-  const m10 = n % 10, m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return one;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
-  return many;
 }

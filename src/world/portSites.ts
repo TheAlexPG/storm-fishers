@@ -1,4 +1,5 @@
 import { fbm, smoothstep } from './portKit';
+import { L } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // Порти світу (чиста математика й дані — без three.js). Домашній «Шторм»
@@ -86,50 +87,51 @@ const W = { ox: -1, oz: 0 };
 
 export const PORT_SITES: PortSite[] = [
   {
-    id: 'port-kut', name: 'Рибальський Кут', sub: 'село на палях · пальне й рибна лавка', size: 'tiny', style: 'village',
+    id: 'port-kut', name: L('Рибальський Кут', `Fisher's Nook`), sub: L('село на палях · пальне й рибна лавка', `a village on stilts · fuel and a fish stall`), size: 'tiny', style: 'village',
     x: -470, z: 70, ...E, R: 34, elong: 1.4, peak: 9, seed: 61,
     plW: 30, plD: 14, plY: 1.5, pierL: 20, pierW: 3.2,
     econ: { fuel: 7, repair: null, fish: 0.95, species: { hamsa: 1.35, balyk: 1.35, leschak: 1.2, plyotka: 1.15, tunets: 0.8, akula: 0.7 } },
     svc: [
-      { kind: 'fuel', a: -3, b: 9, name: 'Бочка з пальним', icon: '⛽', label: 'Пальне в бочках (дорожче, ніж у «Шторму»)' },
-      { kind: 'exchange', a: -4, b: -8, name: 'Рибна лавка', icon: '🐟', label: 'Рибна лавка Кута — продати улов' },
+      { kind: 'fuel', a: -3, b: 9, name: L('Бочка з пальним', `Fuel barrel`), icon: '⛽', label: L('Пальне в бочках (дорожче, ніж у «Шторму»)', `Fuel from barrels (pricier than at Storm Harbour)`) },
+      { kind: 'exchange', a: -4, b: -8, name: L('Рибна лавка', `Fish stall`), icon: '🐟', label: L('Рибна лавка Кута — продати улов', `Fisher's Nook fish stall — sell your catch`) },
     ],
   },
   {
-    id: 'port-zorya', name: 'Гавань Зорі', sub: 'містечко на скелястому мисі', size: 'medium', style: 'town',
+    id: 'port-zorya', name: L('Гавань Зорі', `Dawn Harbour`), sub: L('містечко на скелястому мисі', `a little town on a rocky cape`), size: 'medium', style: 'town',
     x: 615, z: -10, ...W, R: 62, elong: 1.3, peak: 26, seed: 71,
     plW: 54, plD: 30, plY: 1.6, pierL: 32, pierW: 4,
     econ: { fuel: 6.5, repair: 1, fish: 1.0, species: { makrel: 1.3, sula: 1.3, krap: 1.3, hamsa: 0.85, balyk: 0.85 } },
     svc: [
-      { kind: 'fuel', a: -3, b: 20, name: 'Заправка', icon: '⛽', label: 'Заправка Гавані Зорі — пальне' },
-      { kind: 'yard', a: -5, b: -19, name: 'Верф', icon: '🔧', label: 'Верф Гавані Зорі — ремонт корпусу' },
-      { kind: 'exchange', a: -5, b: -4, name: 'Біржа', icon: '🐟', label: 'Біржа Гавані Зорі — продати улов' },
-      { kind: 'sleep', a: -17, b: 10, name: 'Заїжджий двір', icon: '🛏', label: 'Заїжджий двір (сон)' },
+      { kind: 'fuel', a: -3, b: 20, name: L('Заправка', `Fuel dock`), icon: '⛽', label: L('Заправка Гавані Зорі — пальне', `Dawn Harbour fuel dock — fuel`) },
+      { kind: 'yard', a: -5, b: -19, name: L('Верф', `Shipyard`), icon: '🔧', label: L('Верф Гавані Зорі — ремонт корпусу', `Dawn Harbour shipyard — hull repairs`) },
+      { kind: 'exchange', a: -5, b: -4, name: L('Біржа', `Exchange`), icon: '🐟', label: L('Біржа Гавані Зорі — продати улов', `Dawn Harbour exchange — sell your catch`) },
+      { kind: 'sleep', a: -17, b: 10, name: L('Заїжджий двір', `Coaching inn`), icon: '🛏', label: L('Заїжджий двір (сон)', `Coaching inn (sleep)`) },
     ],
   },
   {
-    id: 'port-marina', name: 'Сонячна Марина', sub: 'курорт · ресторани платять за делікатеси', size: 'large', style: 'resort',
+    id: 'port-marina', name: L('Сонячна Марина', `Sunny Marina`), sub: L('курорт · ресторани платять за делікатеси', `a resort · restaurants pay for delicacies`), size: 'large', style: 'resort',
     x: -70, z: 560, ...N, R: 58, elong: 1.5, peak: 14, seed: 83,
     plW: 64, plD: 32, plY: 1.6, pierL: 34, pierW: 4.5,
     econ: { fuel: 8, repair: 1.25, fish: 1.05, species: { forel: 1.4, krap: 1.35, tunets: 1.35, lusk: 1.2, hamsa: 0.75, balyk: 0.75 } },
     svc: [
-      { kind: 'fuel', a: -3, b: -26, name: 'Заправка', icon: '⛽', label: 'Заправка марини — пальне' },
-      { kind: 'exchange', a: -5, b: -9, name: 'Ресторанна біржа', icon: '🐟', label: 'Ресторанна біржа — продати улов (делікатеси дорожче)' },
-      { kind: 'shop', a: -5, b: 9, name: 'Яхтова крамниця', icon: '🛠', label: 'Яхтова крамниця — каталог речей' },
-      { kind: 'yard', a: -5, b: 25, name: 'Сервіс яхт', icon: '🔧', label: 'Сервіс яхт — ремонт корпусу (курортні ціни)' },
-      { kind: 'office', a: -19, b: -17, name: 'Контора марини', icon: '🛡', label: 'Контора марини — страховка' },
-      { kind: 'sleep', a: -19, b: 17, name: 'Готель «Хвиля»', icon: '🛏', label: 'Готель «Хвиля» (сон)' },
+      { kind: 'fuel', a: -3, b: -26, name: L('Заправка', `Fuel dock`), icon: '⛽', label: L('Заправка марини — пальне', `Marina fuel dock — fuel`) },
+      { kind: 'exchange', a: -5, b: -9, name: L('Ресторанна біржа', `Restaurant exchange`), icon: '🐟', label: L('Ресторанна біржа — продати улов (делікатеси дорожче)', `Restaurant exchange — sell your catch (delicacies pay more)`) },
+      { kind: 'shop', a: -5, b: 9, name: L('Яхтова крамниця', `Yacht chandlery`), icon: '🛠', label: L('Яхтова крамниця — каталог речей', `Yacht chandlery — item catalogue`) },
+      { kind: 'yard', a: -5, b: 25, name: L('Сервіс яхт', `Yacht service`), icon: '🔧', label: L('Сервіс яхт — ремонт корпусу (курортні ціни)', `Yacht service — hull repairs (resort prices)`) },
+      { kind: 'office', a: -19, b: -17, name: L('Контора марини', `Marina office`), icon: '🛡', label: L('Контора марини — страховка', `Marina office — insurance`) },
+      { kind: 'cookshop', a: -19, b: 0, name: L('Кулінарна лавка', `Cook's shop`), icon: '🍳', label: L('Кулінарна лавка — рис, лимони, трави й рецепт паельї', `Cook's shop — rice, lemons, herbs and the paella recipe`) },
+      { kind: 'sleep', a: -19, b: 17, name: L('Готель «Хвиля»', `Hotel “Wave”`), icon: '🛏', label: L('Готель «Хвиля» (сон)', `Hotel “Wave” (sleep)`) },
     ],
   },
   {
-    id: 'port-kray', name: 'Китобійня «Край світу»', sub: 'остання гавань перед відкритим океаном', size: 'outpost', style: 'whaling',
+    id: 'port-kray', name: L('Китобійня «Край світу»', `“World's End” Whaling Station`), sub: L('остання гавань перед відкритим океаном', `the last harbour before the open ocean`), size: 'outpost', style: 'whaling',
     x: 860, z: 690, ...N, R: 46, elong: 1.3, peak: 22, seed: 97,
     plW: 36, plD: 18, plY: 1.8, pierL: 30, pierW: 4,
     econ: { fuel: 11, repair: 1.6, fish: 1.0, species: { tunets: 1.6, akula: 1.7, shoraga: 1.55, lusk: 1.4, hamsa: 0.5, balyk: 0.5, leschak: 0.6, plyotka: 0.6 } },
     svc: [
-      { kind: 'fuel', a: -3, b: 12, name: 'Цистерна', icon: '⛽', label: 'Цистерна — пальне (дороге: край світу)' },
-      { kind: 'exchange', a: -5, b: -8, name: 'Скупка', icon: '🐟', label: 'Скупка китобійні — трофеї відкритого моря дорого' },
-      { kind: 'yard', a: -12, b: 4, name: 'Слип', icon: '🔧', label: 'Слип китобійні — ремонт (дорого)' },
+      { kind: 'fuel', a: -3, b: 12, name: L('Цистерна', `Fuel tank`), icon: '⛽', label: L('Цистерна — пальне (дороге: край світу)', `Fuel tank — fuel (expensive: it's the world's end)`) },
+      { kind: 'exchange', a: -5, b: -8, name: L('Скупка', `Buyer`), icon: '🐟', label: L('Скупка китобійні — трофеї відкритого моря дорого', `Whaling station buyer — open-sea trophies fetch a lot`) },
+      { kind: 'yard', a: -12, b: 4, name: L('Слип', `Slipway`), icon: '🔧', label: L('Слип китобійні — ремонт (дорого)', `Whaling station slipway — repairs (expensive)`) },
     ],
   },
 ];

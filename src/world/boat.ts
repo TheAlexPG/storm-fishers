@@ -40,6 +40,8 @@ export const MOOR = { x: 0, z: -15.9 };
 export const MOOR_HEADING = Math.PI / 2;
 /** радіус, у якому пружина шварту підхоплює човен (без газу) */
 export const MOOR_CAPTURE = 16;
+/** пришвартована яхта не опускається нижче цього стану корпусу (%) — у порту не тонуть */
+export const MOORED_HULL_FLOOR = 18;
 
 // станції (локальні координати палуби, y = deckY)
 export const STATION_POS: Record<string, { x: number; z: number; y?: number }> = {
@@ -50,7 +52,9 @@ export const STATION_POS: Record<string, { x: number; z: number; y?: number }> =
   // фали й риф-шкентелі — біля щогли на даху рубки (підходити з бічної палуби)
   sails: { x: 0, z: RIG.mastZ - 0.25, y: HOUSE.top },
   // салон у корпусі (y = підлога салону)
-  kitchen: { x: -0.4, z: 1.15, y: SOLE_Y },
+  kitchen: { x: -0.4, z: 1.2, y: SOLE_Y },
+  kettle: { x: -0.4, z: 0.84, y: SOLE_Y },
+  cookbook: { x: -0.4, z: 0.1, y: SOLE_Y },
   radio: { x: 0.4, z: 0.95, y: SOLE_Y },
   chart: { x: 0.42, z: 0.75, y: SOLE_Y },
   bed: { x: 0, z: 2.45, y: SOLE_Y },
@@ -106,6 +110,8 @@ export class Boat {
   angVel = new THREE.Vector3();
   /** зараз тримається на шварті (для HUD) */
   mooredNow = false;
+  /** стоїть біля причалу без газу (пришвартована) — не тоне */
+  atBerth = false;
   /** сходня на причал: борт (−1/1), 0 — прибрана; z — де на палубі */
   gangSide: -1 | 0 | 1 = 0;
   static readonly GANG_Z = -2.9;
@@ -145,6 +151,9 @@ export class Boat {
   private _sv2 = new THREE.Vector3();
   onEngineStall: (() => void) | null = null;
   onSunk: (() => void) | null = null;
+  /** у шварті відкачали воду з трюму насосом з причалу (раз на кілька секунд, поки качає) */
+  onDockPump: (() => void) | null = null;
+  private dockPumpT = 0;
 
   private mass = 4000;
   private inertiaPitch = 3100;
@@ -518,6 +527,8 @@ export class Boat {
     const dMz = this.pos.z - this.moor.z;
     const dMoor = Math.hypot(dMx, dMz);
     this.mooredNow = dMoor < MOOR_CAPTURE && Math.abs(this.throttle) < 0.15 && speed < 3;
+    // біля причалу без газу — навіть якщо штормовий накат на мить розігнав понад 3 м/с
+    this.atBerth = dMoor < MOOR_CAPTURE && Math.abs(this.throttle) < 0.15;
     if (this.mooredNow) {
       let fxm = -dMx * 3200 - this.vel.x * 5200;
       let fzm = -dMz * 3200 - this.vel.z * 5200;
@@ -695,6 +706,18 @@ export class Boat {
     if (this.doorOpen && weather.rain > 0.3) {
       const hood = this.tentLevel >= 1 && !this.tentFolded ? 0.2 : 1;
       this.bilge = Math.min(100, this.bilge + weather.rain * 0.15 * dt * hood);
+    }
+    // пришвартовано (будь-який причал, не якір!) — не тонемо: корпус не нижче межі,
+    // а воду з трюму поволі відкачують з причалу, щоб трюм не добивав корпус
+    game.hullFloor = this.atBerth && !this.sinking ? MOORED_HULL_FLOOR : 0;
+    if (this.atBerth && this.bilge > 0) {
+      const before = this.bilge;
+      this.bilge = Math.max(0, Math.min(95, this.bilge) - 2.5 * dt);
+      this.dockPumpT -= dt;
+      if (before > 20 && this.dockPumpT <= 0) {
+        this.dockPumpT = 25;
+        this.onDockPump?.();
+      }
     }
     if (this.bilge >= 100) game.damage(12 * dt);
 

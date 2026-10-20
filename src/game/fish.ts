@@ -1,30 +1,31 @@
 import type { FishItem, FishSpecies, ZoneId } from '../core/types';
+import { L } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // 12 видів риби, 3 зони, денні/нічні вікна.
 // ─────────────────────────────────────────────────────────────
 
 export const FISH: FishSpecies[] = [
-  { id: 'hamsa',   name: 'Шпрот',        basePrice: 9,    zones: ['shore'],        day: true,  night: false, rarity: 1.0,  minKg: 0.05, maxKg: 0.12 },
-  { id: 'balyk',  name: 'Оселедець',    basePrice: 13,   zones: ['shore'],        day: true,  night: true,  rarity: 1.0,  minKg: 0.1,  maxKg: 0.25 },
-  { id: 'leschak',name: 'Камбала',      basePrice: 16,   zones: ['shore', 'mid'], day: true,  night: true,  rarity: 1.1,  minKg: 0.2,  maxKg: 0.6 },
-  { id: 'plyotka',name: 'Пікша',        basePrice: 20,   zones: ['shore', 'mid'], day: true,  night: false, rarity: 1.0,  minKg: 0.15, maxKg: 0.45 },
-  { id: 'makrel', name: 'Скумбрія',     basePrice: 34,   zones: ['mid'],          day: true,  night: true,  rarity: 1.0,  minKg: 0.4,  maxKg: 1.2 },
-  { id: 'sula',   name: 'Сайда',        basePrice: 46,   zones: ['mid'],          day: false, night: true,  rarity: 1.1,  minKg: 0.5,  maxKg: 1.6 },
-  { id: 'krap',   name: 'Морський окунь', basePrice: 55,   zones: ['mid'],          day: true,  night: true,  rarity: 1.2,  minKg: 0.3,  maxKg: 0.9 },
-  { id: 'forel',  name: 'Лосось',       basePrice: 74,   zones: ['mid', 'open'],  day: true,  night: false, rarity: 1.3,  minKg: 1.0,  maxKg: 2.8 },
-  { id: 'lusk',   name: 'Тріска',       basePrice: 96,   zones: ['open'],         day: false, night: true,  rarity: 1.4,  minKg: 1.2,  maxKg: 3.5 },
-  { id: 'shoraga',name: 'Палтус',       basePrice: 140,  zones: ['open'],         day: false, night: true,  rarity: 1.6,  minKg: 2.0,  maxKg: 5.0 },
-  { id: 'tunets', name: 'Тунець',       basePrice: 205,  zones: ['open'],         day: true,  night: true,  rarity: 1.8,  minKg: 3.0,  maxKg: 9.0 },
-  { id: 'akula',  name: 'Акула',        basePrice: 340,  zones: ['open'],         day: false, night: true,  rarity: 2.4,  minKg: 6.0,  maxKg: 22.0 },
+  { id: 'hamsa',   name: L('Шпрот', `Sprat`),        basePrice: 9,    zones: ['shore'],        day: true,  night: false, rarity: 1.0,  minKg: 0.05, maxKg: 0.12 },
+  { id: 'balyk',  name: L('Оселедець', `Herring`),    basePrice: 13,   zones: ['shore'],        day: true,  night: true,  rarity: 1.0,  minKg: 0.1,  maxKg: 0.25 },
+  { id: 'leschak',name: L('Камбала', `Flounder`),      basePrice: 16,   zones: ['shore', 'mid'], day: true,  night: true,  rarity: 1.1,  minKg: 0.2,  maxKg: 0.6 },
+  { id: 'plyotka',name: L('Пікша', `Haddock`),        basePrice: 20,   zones: ['shore', 'mid'], day: true,  night: false, rarity: 1.0,  minKg: 0.15, maxKg: 0.45 },
+  { id: 'makrel', name: L('Скумбрія', `Mackerel`),     basePrice: 34,   zones: ['mid'],          day: true,  night: true,  rarity: 1.0,  minKg: 0.4,  maxKg: 1.2 },
+  { id: 'sula',   name: L('Сайда', `Saithe`),        basePrice: 46,   zones: ['mid'],          day: false, night: true,  rarity: 1.1,  minKg: 0.5,  maxKg: 1.6 },
+  { id: 'krap',   name: L('Морський окунь', `Redfish`), basePrice: 55,   zones: ['mid'],          day: true,  night: true,  rarity: 1.2,  minKg: 0.3,  maxKg: 0.9 },
+  { id: 'forel',  name: L('Лосось', `Salmon`),       basePrice: 74,   zones: ['mid', 'open'],  day: true,  night: false, rarity: 1.3,  minKg: 1.0,  maxKg: 2.8 },
+  { id: 'lusk',   name: L('Тріска', `Cod`),       basePrice: 96,   zones: ['open'],         day: false, night: true,  rarity: 1.4,  minKg: 1.2,  maxKg: 3.5 },
+  { id: 'shoraga',name: L('Палтус', `Halibut`),       basePrice: 140,  zones: ['open'],         day: false, night: true,  rarity: 1.6,  minKg: 2.0,  maxKg: 5.0 },
+  { id: 'tunets', name: L('Тунець', `Tuna`),       basePrice: 205,  zones: ['open'],         day: true,  night: true,  rarity: 1.8,  minKg: 3.0,  maxKg: 9.0 },
+  { id: 'akula',  name: L('Акула', `Shark`),        basePrice: 340,  zones: ['open'],         day: false, night: true,  rarity: 2.4,  minKg: 6.0,  maxKg: 22.0 },
 ];
 
 export const FISH_BY_ID: Record<string, FishSpecies> = Object.fromEntries(FISH.map((f) => [f.id, f]));
 
 export const ZONE_NAMES: Record<ZoneId, string> = {
-  shore: 'Узбережжя',
-  mid: 'Середина',
-  open: 'Відкрите море',
+  shore: L('Узбережжя', `Coastal waters`),
+  mid: L('Середина', `Mid-water`),
+  open: L('Відкрите море', `Open sea`),
 };
 
 /** де на карті стоять стаї з радіо-звітів (за зонами) — карта малює їх тут */
@@ -67,10 +68,10 @@ export function fishingSpot(x: number, z: number, reports: ReadonlyArray<{ zone:
   const wait = (0.75 + 0.95 * far) * (1 - 0.55 * heat);
   const trophy = 0.02 + 0.15 * far * cold;
   const hint =
-    heat > 0.45 ? '🐟 Тут стая — клює часто, риба дрібніша'
-    : far > 0.55 ? '🌊 Глибока вода — клює рідко · шанс на трофей ↑'
-    : far > 0.25 ? 'Відкрита вода — клює помірно, трапляються великі'
-    : 'Біля берега — клює швидко, риба невелика';
+    heat > 0.45 ? L('🐟 Тут стая — клює часто, риба дрібніша', `🐟 A school is here — quick bites, smaller fish`)
+    : far > 0.55 ? L('🌊 Глибока вода — клює рідко · шанс на трофей ↑', `🌊 Deep water — slow bites · better trophy odds ↑`)
+    : far > 0.25 ? L('Відкрита вода — клює помірно, трапляються великі', `Open water — steady bites, big ones happen`)
+    : L('Біля берега — клює швидко, риба невелика', `Near the shore — quick bites, small fish`);
   return { far, heat, wait, trophy, hint };
 }
 

@@ -7,6 +7,7 @@ import { buildCharacter, HAIRS, SKINS, type CharacterLook, type CharacterRig } f
 import { ISLANDS, ISLAND_SOLIDS, islandHeight, islandInside } from './islandShape';
 import { BUYER_BY_ID, FishTrade, MAX_CONTRACTS, type BuyerId } from '../game/buyers';
 import type { Port } from './port';
+import { L } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // Прилавки скупників: таверна, коптильня, ресторан, консервний завод
@@ -401,7 +402,7 @@ export class BuyerStalls {
   /** гравець на острові біля хижі Остапа */
   pickHermit(px: number, pz: number): { id: string; label: string } | null {
     if (Math.hypot(px - this.hermit.x, pz - this.hermit.z) > 2.6) return null;
-    return { id: 'buyer:hermit', label: `${BUYER_BY_ID.hermit.name} — продати улов, замовлення` };
+    return { id: 'buyer:hermit', label: L(`${BUYER_BY_ID.hermit.name} — продати улов, замовлення`, `${BUYER_BY_ID.hermit.name} — sell your catch, orders`) };
   }
 
   // ───────────── кадр ─────────────
@@ -466,7 +467,7 @@ export class BuyerStalls {
     x.textBaseline = 'middle';
     x.fillStyle = '#f4ead2';
     x.font = 'bold 40px Georgia, serif';
-    x.fillText(open ? 'АКЦІЇ ДНЯ' : 'ЗАЧИНЕНО', W / 2, 40);
+    x.fillText(open ? L('АКЦІЇ ДНЯ', `TODAY'S OFFERS`) : L('ЗАЧИНЕНО', `CLOSED`), W / 2, 40);
     x.strokeStyle = 'rgba(244,234,210,0.4)';
     x.lineWidth = 2;
     x.beginPath();
@@ -475,7 +476,7 @@ export class BuyerStalls {
     x.stroke();
     x.textAlign = 'left';
     let y = 104;
-    const lines = !open && b.open ? [`працюємо ${b.open[0]}:00–${b.open[1] === 24 ? '24' : b.open[1]}:00`] : promos.length ? promos.map((p) => p.text) : ['сьогодні без акцій', 'ціни — як завжди'];
+    const lines = !open && b.open ? [L(`працюємо ${b.open[0]}:00–${b.open[1] === 24 ? '24' : b.open[1]}:00`, `open ${b.open[0]}:00–${b.open[1] === 24 ? '24' : b.open[1]}:00`)] : promos.length ? promos.map((p) => p.text) : [L('сьогодні без акцій', `no offers today`), L('ціни — як завжди', `prices as usual`)];
     for (const ln of lines.slice(0, 3)) {
       x.font = '26px Georgia, serif';
       x.fillStyle = '#ffd28a';
@@ -484,7 +485,7 @@ export class BuyerStalls {
     x.textAlign = 'center';
     x.font = 'italic 24px Georgia, serif';
     x.fillStyle = 'rgba(244,234,210,0.85)';
-    x.fillText(offers ? `📜 замовлень на поставку: ${offers}` : '📜 замовлень поки нема', W / 2, H - 34);
+    x.fillText(offers ? L(`📜 замовлень на поставку: ${offers}`, `📜 delivery orders: ${offers}`) : L('📜 замовлень поки нема', `📜 no orders yet`), W / 2, H - 34);
     s.board.tex.needsUpdate = true;
   }
 

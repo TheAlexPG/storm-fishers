@@ -68,8 +68,8 @@ function onConnection(ws) {
       } else {
         const code = String(m.room ?? '').toUpperCase().trim();
         const r = rooms.get(code);
-        if (!r) return send(ws, { t: 'error', msg: `Кімнату «${code}» не знайдено` });
-        if (r.peers.size >= MAX_PEERS) return send(ws, { t: 'error', msg: 'Кімната повна (8/8)' });
+        if (!r) return send(ws, { t: 'error', msg: `#notfound:${code}` }); // клієнт перекладе
+        if (r.peers.size >= MAX_PEERS) return send(ws, { t: 'error', msg: `#full:${MAX_PEERS}` });
         room = r;
       }
       // однакові ніки — додаємо номер

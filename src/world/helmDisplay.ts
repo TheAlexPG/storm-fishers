@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { L } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // Багатофункціональний дисплей на штурвальній тумбі: курс, швидкість,
@@ -34,7 +35,7 @@ export interface HelmData {
 
 const W = 512;
 const H = 336;
-const P8 = ['П', 'ПСх', 'Сх', 'ПдСх', 'Пд', 'ПдЗх', 'Зх', 'ПнЗх'];
+const P8 = [L('П', `N`), L('ПСх', `NE`), L('Сх', `E`), L('ПдСх', `SE`), L('Пд', `S`), L('ПдЗх', `SW`), L('Зх', `W`), L('ПнЗх', `NW`)];
 
 export class HelmDisplay {
   readonly mesh: THREE.Mesh;
@@ -97,14 +98,14 @@ export class HelmDisplay {
 
     // ── ліва половина: курс / швидкість / газ ──
     const deg = ((Math.round(d.headingDeg) % 360) + 360) % 360;
-    label('КУРС', 20, 36);
+    label(L('КУРС', `HEADING`), 20, 36);
     big(`${String(deg).padStart(3, '0')}°`, 20, 84);
     big(P8[Math.round(deg / 45) % 8], 162, 84, 26, mute);
-    label('ШВИДКІСТЬ', 20, 124);
+    label(L('ШВИДКІСТЬ', `SPEED`), 20, 124);
     big(d.knots.toFixed(1), 20, 170);
-    label('вуз', 112, 170);
+    label(L('вуз', `kn`), 112, 170);
     // газ і двигун
-    label(d.engineOn ? `ДВИГУН ${Math.round(d.rpm)} об/хв` : 'ДВИГУН ЗУПИНЕНО', 20, 204);
+    label(d.engineOn ? L(`ДВИГУН ${Math.round(d.rpm)} об/хв`, `ENGINE ${Math.round(d.rpm)} rpm`) : L('ДВИГУН ЗУПИНЕНО', `ENGINE STOPPED`), 20, 204);
     if (!d.engineOn) {
       g.fillStyle = '#e74c3c';
       g.fillRect(20, 212, 220, 10);
@@ -153,15 +154,15 @@ export class HelmDisplay {
     g.fill();
     // цифри вітру
     const rx = W - 22;
-    label('ВІТЕР', rx, 36, 'right');
+    label(L('ВІТЕР', `WIND`), rx, 36, 'right');
     big(d.aws.toFixed(1), rx, 76, 34, fg, 'right');
-    label('м/с вимп.', rx, 98, 'right');
+    label(L('м/с вимп.', `m/s apparent`), rx, 98, 'right');
     big(`${Math.round(d.awa)}°`, rx, 150, 30, fg, 'right');
-    label(d.windFromStarboard ? 'ПрБ' : 'ЛБ', rx, 172, 'right');
-    label(`істин. ${d.tws.toFixed(1)}`, rx, 214, 'right');
+    label(d.windFromStarboard ? L('ПрБ', `STBD`) : L('ЛБ', `PORT`), rx, 172, 'right');
+    label(L(`істин. ${d.tws.toFixed(1)}`, `true ${d.tws.toFixed(1)}`), rx, 214, 'right');
 
     // ── низ: паруси / паливо / хвиля ──
-    label('ПАРУСИ', 20, 260);
+    label(L('ПАРУСИ', `SAILS`), 20, 260);
     const sailCol = d.sailMode === 0 ? mute : d.overload > 0.85 ? '#e74c3c' : d.luffing ? '#e0a040' : accent;
     big(d.sailLabel, 20, 292, 26, sailCol);
     // смужка навантаження
@@ -170,22 +171,22 @@ export class HelmDisplay {
     const ol = Math.min(1.2, d.overload) / 1.2;
     g.fillStyle = d.overload > 0.85 ? '#e74c3c' : d.overload > 0.6 ? '#e0a040' : accent;
     g.fillRect(20, 304, 150 * ol, 9);
-    if (d.luffing) label('у лоб вітру', 20, 330);
+    if (d.luffing) label(L('у лоб вітру', `head to wind`), 20, 330);
 
-    label('ПАЛИВО', 196, 260);
+    label(L('ПАЛИВО', `FUEL`), 196, 260);
     const fuelCol = d.fuel / Math.max(1, d.fuelMax) < 0.2 ? '#e74c3c' : fg;
-    big(`${Math.round(d.fuel)}/${d.fuelMax} л`, 196, 292, 26, fuelCol);
-    label(d.rangeKm == null ? 'запас: —' : `запас ≈ ${d.rangeKm.toFixed(1)} км`, 196, 322);
+    big(L(`${Math.round(d.fuel)}/${d.fuelMax} л`, `${Math.round(d.fuel)}/${d.fuelMax} l`), 196, 292, 26, fuelCol);
+    label(d.rangeKm == null ? L('запас: —', `range: —`) : L(`запас ≈ ${d.rangeKm.toFixed(1)} км`, `range ≈ ${d.rangeKm.toFixed(1)} km`), 196, 322);
 
     if (d.depth != null) {
       // ехолот: глибина під кілем (мілина — червоним)
       const dp = d.depth;
-      label('ГЛИБИНА', W - 22, 260, 'right');
-      big(dp > 240 ? '>250 м' : `${dp.toFixed(dp < 10 ? 1 : 0)} м`, W - 22, 292, 26, dp < 4.5 ? '#e74c3c' : fg, 'right');
-      label(`хвиля ${d.wave.toFixed(1)} м · ${d.zone}`, W - 22, 322, 'right');
+      label(L('ГЛИБИНА', `DEPTH`), W - 22, 260, 'right');
+      big(dp > 240 ? L('>250 м', `>250 m`) : L(`${dp.toFixed(dp < 10 ? 1 : 0)} м`, `${dp.toFixed(dp < 10 ? 1 : 0)} m`), W - 22, 292, 26, dp < 4.5 ? '#e74c3c' : fg, 'right');
+      label(L(`хвиля ${d.wave.toFixed(1)} м · ${d.zone}`, `wave ${d.wave.toFixed(1)} m · ${d.zone}`), W - 22, 322, 'right');
     } else {
-      label('ХВИЛЯ', W - 22, 260, 'right');
-      big(`${d.wave.toFixed(1)} м`, W - 22, 292, 26, fg, 'right');
+      label(L('ХВИЛЯ', `WAVES`), W - 22, 260, 'right');
+      big(L(`${d.wave.toFixed(1)} м`, `${d.wave.toFixed(1)} m`), W - 22, 292, 26, fg, 'right');
       label(d.zone, W - 22, 322, 'right');
     }
 
@@ -194,7 +195,7 @@ export class HelmDisplay {
       g.fillStyle = '#e74c3c';
       g.font = '700 18px -apple-system, "Segoe UI", sans-serif';
       g.textAlign = 'left';
-      g.fillText(`КОРПУС ${Math.round(d.hull)}%`, 92, 36);
+      g.fillText(L(`КОРПУС ${Math.round(d.hull)}%`, `HULL ${Math.round(d.hull)}%`), 92, 36);
     }
   }
 }

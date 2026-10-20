@@ -662,7 +662,7 @@ body.intro-mode #vignette { opacity: 0.6; }
 .chat-input:focus { border-color: var(--accent); }
 .coop-lobby { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
 .coop-field { display: flex; align-items: center; gap: 10px; font-size: 13px; }
-.coop-field span { width: 34px; color: var(--text-soft); font-weight: 700; }
+.coop-field span { min-width: 34px; flex-shrink: 0; color: var(--text-soft); font-weight: 700; }
 .coop-lobby input, .coop-link input { font: inherit; font-size: 14px; font-weight: 700; color: var(--text); background: var(--track); border: 1px solid var(--glass-brd); border-radius: 10px; padding: 8px 11px; outline: none; min-width: 0; }
 .coop-lobby input:focus, .coop-link input:focus { border-color: var(--accent); }
 .coop-lobby input::placeholder { color: var(--text-soft); font-weight: 600; }
@@ -1046,3 +1046,15 @@ body.intro-mode #vignette { opacity: 0.6; }
 .catch-card.record .cc-badge { color: var(--sea); }
 @keyframes trophyGlow { to { box-shadow: 0 0 0 3px #f2c94c, 0 0 34px rgba(242, 201, 76, 0.8); } }
 .fight-ui kbd, .cast-ui kbd { font-family: var(--font); font-weight: 800; font-size: 10.5px; color: #22303b; background: rgba(255,255,255,0.92); border: none; border-radius: 5px; padding: 0 5px; text-shadow: none; }
+
+/* перемикач мови EN | UA (інтро — у куті, пауза — над налаштуваннями) */
+.panel { position: relative; }
+.lang-switch { display: flex; align-items: center; gap: 4px; margin: 6px 0 10px; font-family: var(--font); font-size: 12.5px; font-weight: 700; color: var(--text-soft); }
+.lang-switch span { margin-right: 6px; }
+.lang-switch button {
+  cursor: pointer; font: inherit; font-weight: 800; color: var(--text);
+  background: transparent; border: 1.5px solid rgba(34, 48, 59, 0.18); border-radius: 999px; padding: 3px 11px;
+}
+.lang-switch button:hover { background: rgba(34, 48, 59, 0.07); }
+.lang-switch button.on { background: #22303b; color: #fbf6ec; border-color: transparent; }
+.lang-switch.lang-intro { position: absolute; top: 16px; right: 18px; margin: 0; z-index: 2; }
