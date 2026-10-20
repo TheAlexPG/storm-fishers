@@ -1095,6 +1095,10 @@ class Game {
     this._ray.far = 3.2;
     let best: Interactable | null = null;
     let bestD = Infinity;
+    // промах «на кілька сантиметрів» — лише якщо точно не влучено ні в що (інакше спиці штурвала
+    // з запасом перехоплювали погляд на помпу за ним)
+    let near: Interactable | null = null;
+    let nearD = Infinity;
     // промінь «бачить» і приховані меші (спущений парус, складений тент) — їх не рахуємо
     const shown = (o: THREE.Object3D) => {
       for (let q: THREE.Object3D | null = o; q; q = q.parent) if (!q.visible) return false;
@@ -1110,23 +1114,27 @@ class Game {
         : this.stationObjects(s.id)[1];
       if (!objs) continue;
       const hit = this._ray.intersectObjects(objs, true).find((h) => shown(h.object));
-      let d = hit ? hit.distance : Infinity;
-      // дрібні деталі (тонка рукоять помпи, кнопка, тримач) — рахуємо й промах на кілька сантиметрів;
-      // по кожному мешу окремо: спільний обрис станції з кількох речей (штатна помпа + куплена) завеликий
-      if (!hit) {
-        for (const o of objs) o.traverse((m) => {
-          if (!(m as THREE.Mesh).isMesh || !shown(m)) return;
-          const box = this._pickBox.setFromObject(m);
-          if (box.getSize(this._pickV).length() > 0.6 || !this._ray.ray.intersectBox(box.expandByScalar(0.08), this._pickV)) return;
-          const dm = this._pickV.distanceTo(this._ray.ray.origin);
-          if (dm <= this._ray.far) d = Math.min(d, dm);
-        });
+      if (hit) {
+        if (hit.distance < bestD) {
+          bestD = hit.distance;
+          best = s;
+        }
+        continue;
       }
-      if (d < bestD) {
-        bestD = d;
-        best = s;
-      }
+      // дрібні деталі (тонка рукоять помпи, кнопка, тримач) — по кожному мешу окремо:
+      // спільний обрис станції з кількох речей (штатна помпа + куплена) завеликий
+      for (const o of objs) o.traverse((m) => {
+        if (!(m as THREE.Mesh).isMesh || !shown(m)) return;
+        const box = this._pickBox.setFromObject(m);
+        if (box.getSize(this._pickV).length() > 0.6 || !this._ray.ray.intersectBox(box.expandByScalar(0.08), this._pickV)) return;
+        const dm = this._pickV.distanceTo(this._ray.ray.origin);
+        if (dm <= this._ray.far && dm < nearD) {
+          nearD = dm;
+          near = s;
+        }
+      });
     }
+    best ??= near;
     // зійти на берег — не станція, лишається за дальністю
     if (best || p.nearest?.id !== 'go-ashore') p.nearest = best;
   }
