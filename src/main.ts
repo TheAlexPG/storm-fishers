@@ -1838,7 +1838,7 @@ class Game {
     // слід піни за кормою
     this.foamTrail.update(dt, t, this.boat.localToWorld(0, 0, -4.9, this._v), this.boat.heading, this.boat.vel.length(), this.ocean, this.camera.position, clamp(this.time.daylight + 0.15, 0, 1), clamp(this.weather.intensity - 0.4, 0, 1));
     // нічне цвітіння медуз
-    this.jellies.update(dt, t, this.ocean, this.camera.position, 1 - this.time.daylight);
+    this.jellies.update(t, this.ocean, this.camera.position, this.time);
 
     // станції
     // відійшов від щогли — робота з фалами переривається
