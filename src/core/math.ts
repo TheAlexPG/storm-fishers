@@ -1,4 +1,5 @@
 // Математичні допоміжники (без залежностей від three, де це можливо)
+import { L } from './i18n';
 
 export const TAU = Math.PI * 2;
 
@@ -66,7 +67,7 @@ export function hash2(x: number, y: number): number {
 }
 
 export function formatMoney(v: number): string {
-  return Math.round(v).toLocaleString('uk-UA') + ' ₴';
+  return Math.round(v).toLocaleString(L('uk-UA', 'en-GB')) + ' ₴';
 }
 
 export function formatTime(hours: number): string {

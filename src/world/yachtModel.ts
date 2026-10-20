@@ -4,6 +4,7 @@ import { eff } from '../game/upgrades';
 import type { UpgradeId } from '../core/types';
 import { PART_SPECS, buildPartOnBoat } from './upgradeParts';
 import { HelmDisplay } from './helmDisplay';
+import { L } from '../core/i18n';
 import {
   HALF_LEN, HULL_LEN, DECK_Y, SOLE_Y, WATERLINE_Y, HOUSE, RIG, COCKPIT, STAIR, ARCH,
   hullHalfWidth, hullBottomY, sheerY, hullXAt,
@@ -185,7 +186,7 @@ function dialTexture(kind: 'rpm' | 'fuel' | 'speed' | 'compass'): THREE.CanvasTe
     label(32, 0, 'E', 12, '#cfe8ea');
     label(0, 32, 'S', 12, '#cfe8ea');
     label(-32, 0, 'W', 12, '#cfe8ea');
-    label(0, 44, 'курс', 9, '#7a8a94');
+    label(0, 44, L('курс', `heading`), 9, '#7a8a94');
   } else {
     const tick = (f: number, major: boolean) => {
       const a = ((135 + f * 270) * Math.PI) / 180;
@@ -204,13 +205,13 @@ function dialTexture(kind: 'rpm' | 'fuel' | 'speed' | 'compass'): THREE.CanvasTe
     };
     if (kind === 'rpm') {
       [0, 6, 12, 18, 24, 30].forEach((v, i) => num(i / 5, String(v)));
-      label(0, 40, 'об/хв ×100', 9, '#7a8a94');
+      label(0, 40, L('об/хв ×100', `rpm ×100`), 9, '#7a8a94');
     } else if (kind === 'fuel') {
       [0, 20, 40, 60, 80, 100].forEach((v, i) => num(i / 5, String(v)));
-      label(0, 40, 'літрів', 9, '#7a8a94');
+      label(0, 40, L('літрів', `litres`), 9, '#7a8a94');
     } else {
       [0, 3, 6, 9, 12].forEach((v, i) => num(i / 4, String(v)));
-      label(0, 40, 'вузли', 9, '#7a8a94');
+      label(0, 40, L('вузли', `knots`), 9, '#7a8a94');
     }
   }
   const tex = new THREE.CanvasTexture(c);
@@ -673,7 +674,7 @@ export class YachtBuilder {
       const z = -HALF_LEN - 0.006;
       const name = new THREE.Mesh(
         new THREE.PlaneGeometry(1.15, 0.29),
-        new THREE.MeshStandardMaterial({ map: nameTexture('ШТОРМ'), transparent: true, roughness: 0.4, metalness: 0.2, polygonOffset: true, polygonOffsetFactor: -2 }),
+        new THREE.MeshStandardMaterial({ map: nameTexture(L('ШТОРМ', `STORM`)), transparent: true, roughness: 0.4, metalness: 0.2, polygonOffset: true, polygonOffsetFactor: -2 }),
       );
       name.rotation.y = Math.PI;
       name.position.set(0, DECK_Y - 0.15, z);
@@ -1083,6 +1084,12 @@ export class YachtBuilder {
     guard.rotation.x = -Math.PI / 2;
     guard.rotation.z = Math.PI;
     g.add(guard);
+    // ноги поручня до підлоги кокпіту (без пульта поручень висів у повітрі);
+    // на них — грибки-основи для циферблатів лагу й вітроміра (HelmInstruments)
+    for (const sx of [-1, 1]) {
+      this.rod(g, new THREE.Vector3(sx * 0.3, DECK_Y, -2.95), new THREE.Vector3(sx * 0.3, DECK_Y + 0.92, -2.95), 0.018, steel);
+      this.cyl(g, 0.03, 0.045, 0.03, sx * 0.3, DECK_Y + 0.015, -2.95, steel, 10);
+    }
     // пульт приборів на тумбі (нахилений до стерновика)
     const pod = this.box(g, 1.36, 0.12, 0.4, 0, DECK_Y + 1.1, -2.98, dark);
     pod.rotation.x = -0.55; // верхня грань — до стерновика

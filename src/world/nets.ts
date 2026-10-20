@@ -7,6 +7,7 @@ import { FISH, makeFish, zoneFromDist } from '../game/fish';
 import { netCount, netHaulSpeed, netLength } from '../game/upgrades';
 import type { Boat } from './boat';
 import { HALF_LEN, WATERLINE_Y } from './yachtLayout';
+import { L } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // Сітки — промисловий лов (мід/енд-гейм, апгрейд «Сітки»).
@@ -152,26 +153,26 @@ export class Nets {
 
   /** напис біля барабана */
   stationLabel(level: number, boat: Boat): string {
-    if (this.mode === 'shoot' && this.shoot) return `Обрізати й поставити сітку (${Math.round(this.shoot.laid)} з ${this.shoot.max} м)`;
-    if (this.mode === 'haul' && this.haul) return `Барабан тягне сітку… ${Math.round(this.haul.prog * 100)} %`;
+    if (this.mode === 'shoot' && this.shoot) return L(`Обрізати й поставити сітку (${Math.round(this.shoot.laid)} з ${this.shoot.max} м)`, `Cut and set the net (${Math.round(this.shoot.laid)} of ${this.shoot.max} m)`);
+    if (this.mode === 'haul' && this.haul) return L(`Барабан тягне сітку… ${Math.round(this.haul.prog * 100)} %`, `The drum is hauling the net… ${Math.round(this.haul.prog * 100)} %`);
     const near = this.nearestNet(boat);
-    if (near && near.d < HAUL_REACH) return `Вибирати сітку №${near.net.id} · стоїть ${fmtH(near.net.soakH)}${near.net.soakH > SPOIL_H ? ' (риба псується!)' : ''}`;
-    if (this.nearPort(boat) && (this.gear > 3 || this.lost > 0)) return `Полагодити сітки${this.lost ? ` і замінити порвані (${this.lost})` : ''} — ${this.repairCost()} ₴`;
+    if (near && near.d < HAUL_REACH) return L(`Вибирати сітку №${near.net.id} · стоїть ${fmtH(near.net.soakH)}${near.net.soakH > SPOIL_H ? L(' (риба псується!)', ` (the fish is spoiling!)`) : ''}`, `Haul net #${near.net.id} · soaking ${fmtH(near.net.soakH)}${near.net.soakH > SPOIL_H ? L(' (риба псується!)', ` (the fish is spoiling!)`) : ''}`);
+    if (this.nearPort(boat) && (this.gear > 3 || this.lost > 0)) return L(`Полагодити сітки${this.lost ? L(` і замінити порвані (${this.lost})`, ` and replace torn ones (${this.lost})`) : ''} — ${this.repairCost()} ₴`, `Mend the nets${this.lost ? L(` і замінити порвані (${this.lost})`, ` and replace torn ones (${this.lost})`) : ''} — ${this.repairCost()} ₴`);
     const av = this.available(level);
-    if (this.nearPort(boat)) return av ? `Сітки на борту: ${av} — ставлять у морі, не біля порту` : 'Усі сітки в морі';
-    if (av) return `Поставити сітку (${av} з ${netCount(level)}) — далі йди повільно 1–5 м/с`;
-    if (this.lost) return `Сіток немає: ${this.lost} порвано — заміна в порту`;
-    return `Усі сітки в морі (${this.nets.length}) — підійди кормою до буя`;
+    if (this.nearPort(boat)) return av ? L(`Сітки на борту: ${av} — ставлять у морі, не біля порту`, `Nets aboard: ${av} — set them at sea, not by the harbour`) : L('Усі сітки в морі', `All nets are at sea`);
+    if (av) return L(`Поставити сітку (${av} з ${netCount(level)}) — далі йди повільно 1–5 м/с`, `Set a net (${av} of ${netCount(level)}) — then go slowly at 1–5 m/s`);
+    if (this.lost) return L(`Сіток немає: ${this.lost} порвано — заміна в порту`, `No nets: ${this.lost} torn — replace them in port`);
+    return L(`Усі сітки в морі (${this.nets.length}) — підійди кормою до буя`, `All nets are at sea (${this.nets.length}) — come stern-first to a buoy`);
   }
 
   /** підказка під час постановки/вибирання (поверх інших) */
   prompt(boat: Boat): string | null {
     if (this.mode === 'shoot' && this.shoot) {
       const v = Math.hypot(boat.vel.x, boat.vel.z);
-      const hint = v > 5.2 ? 'ПОВІЛЬНІШЕ — сітка заплутається!' : v < 0.6 ? 'дай хід — сітка не розмотується' : 'хід добрий';
-      return `Сітка за бортом: ${Math.round(this.shoot.laid)} / ${this.shoot.max} м · ${v.toFixed(1).replace('.', ',')} м/с — ${hint}`;
+      const hint = v > 5.2 ? L('ПОВІЛЬНІШЕ — сітка заплутається!', `SLOW DOWN — the net will tangle!`) : v < 0.6 ? L('дай хід — сітка не розмотується', `get moving — the net isn't paying out`) : L('хід добрий', `good speed`);
+      return L(`Сітка за бортом: ${Math.round(this.shoot.laid)} / ${this.shoot.max} м · ${v.toFixed(1).replace('.', L(',', '.'))} м/с — ${hint}`, `Net over the side: ${Math.round(this.shoot.laid)} / ${this.shoot.max} m · ${v.toFixed(1).replace('.', L(',', '.'))} m/s — ${hint}`);
     }
-    if (this.mode === 'haul' && this.haul) return `Вибираємо сітку №${this.haul.net.id}: ${Math.round(this.haul.prog * 100)} % · риба: ${this.haul.given}/${this.haul.fish.length}`;
+    if (this.mode === 'haul' && this.haul) return L(`Вибираємо сітку №${this.haul.net.id}: ${Math.round(this.haul.prog * 100)} % · риба: ${this.haul.given}/${this.haul.fish.length}`, `Hauling net #${this.haul.net.id}: ${Math.round(this.haul.prog * 100)} % · fish: ${this.haul.given}/${this.haul.fish.length}`);
     return null;
   }
 
@@ -191,29 +192,29 @@ export class Nets {
     if (this.nearPort(boat) && (this.gear > 3 || this.lost > 0)) {
       const cost = this.repairCost();
       if (game.money < cost) {
-        this.onEvent?.(`На ремонт сіток бракує ${cost - game.money} ₴`, 'warn');
+        this.onEvent?.(L(`На ремонт сіток бракує ${cost - game.money} ₴`, `Mending the nets needs ${cost - game.money} ₴ more`), 'warn');
         return;
       }
       game.money -= cost;
       this.gear = 0;
       this.lost = 0;
       this.onSound?.('thump', 0.4);
-      this.onEvent?.(`🧵 Сітки полагоджено (−${cost} ₴) — ловлять як нові`, 'good');
+      this.onEvent?.(L(`🧵 Сітки полагоджено (−${cost} ₴) — ловлять як нові`, `🧵 Nets mended (−${cost} ₴) — they fish like new`), 'good');
       return;
     }
     if (this.nearPort(boat)) {
-      this.onEvent?.('Сітки ставлять у морі — відійди від порту', 'warn');
+      this.onEvent?.(L('Сітки ставлять у морі — відійди від порту', `Nets are set at sea — move away from the harbour`), 'warn');
       return;
     }
     if (this.available(level) <= 0) {
-      this.onEvent?.(this.lost ? 'Вільних сіток немає — порвані заміни в порту' : 'Усі сітки вже в морі', 'warn');
+      this.onEvent?.(this.lost ? L('Вільних сіток немає — порвані заміни в порту', `No free nets — replace the torn ones in port`) : L('Усі сітки вже в морі', `All nets are already at sea`), 'warn');
       return;
     }
     const s = this.stern(boat);
     this.shoot = { x0: s.x, z0: s.z, laid: 0, max: netLength(level), dx: -Math.sin(boat.heading), dz: -Math.cos(boat.heading) };
     this.mode = 'shoot';
     this.onSound?.('splash', 0.6);
-    this.onEvent?.('🛟 Буй за бортом — сітка пішла! Стань за штурвал і йди повільно (1–5 м/с)', 'good');
+    this.onEvent?.(L('🛟 Буй за бортом — сітка пішла! Стань за штурвал і йди повільно (1–5 м/с)', `🛟 Buoy over the side — the net is going out! Take the wheel and go slowly (1–5 m/s)`), 'good');
     void weather;
   }
 
@@ -223,14 +224,14 @@ export class Nets {
     this.mode = 'idle';
     if (!sh) return;
     if (sh.laid < 8) {
-      this.onEvent?.('Замало сітки у воді — вибрали назад на борт', 'warn');
+      this.onEvent?.(L('Замало сітки у воді — вибрали назад на борт', `Too little net in the water — hauled it back aboard`), 'warn');
       return;
     }
     const net: NetSet = { id: this.freeId(), x0: sh.x0, z0: sh.z0, x1: sh.x0 + sh.dx * sh.laid, z1: sh.z0 + sh.dz * sh.laid, len: sh.laid, soakH: 0, wear: why === 'tangle' ? 35 : 0 };
     this.nets.push(net);
     this.onSound?.('splash', 0.5);
-    if (why === 'tangle') this.onEvent?.(`Сітка №${net.id} заплуталась на ходу — ловитиме гірше. Став повільніше!`, 'bad');
-    else this.onEvent?.(`🛟 Сітка №${net.id} стоїть (${Math.round(sh.laid)} м). Повертайся за кілька годин — буї на карті`, 'good');
+    if (why === 'tangle') this.onEvent?.(L(`Сітка №${net.id} заплуталась на ходу — ловитиме гірше. Став повільніше!`, `Net #${net.id} tangled under way — it'll catch less. Set it slower!`), 'bad');
+    else this.onEvent?.(L(`🛟 Сітка №${net.id} стоїть (${Math.round(sh.laid)} м). Повертайся за кілька годин — буї на карті`, `🛟 Net #${net.id} is set (${Math.round(sh.laid)} m). Come back in a few hours — buoys are on the chart`), 'good');
   }
 
   private freeId(): number {
@@ -283,7 +284,7 @@ export class Nets {
     this.haul = { net, prog: 0, dur, fish, given: 0, res: { hold: 0, deck: 0, lost: 0 }, fromStart };
     this.mode = 'haul';
     this.onSound?.('winch', 1);
-    this.onEvent?.(`⚙ Вибираємо сітку №${net.id}…`, 'good');
+    this.onEvent?.(L(`⚙ Вибираємо сітку №${net.id}…`, `⚙ Hauling net #${net.id}…`), 'good');
   }
 
   private finishHaul() {
@@ -294,11 +295,11 @@ export class Nets {
     this.nets = this.nets.filter((n) => n !== h.net);
     this.gear = Math.min(100, this.gear + 5 + h.net.wear * 0.15);
     const n = h.fish.length;
-    const parts = [`${h.res.hold} у трюм`];
-    if (h.res.deck) parts.push(`${h.res.deck} на палубі`);
-    if (h.res.lost) parts.push(`${h.res.lost} за борт — трюм повний`);
-    this.onEvent?.(n ? `🎣 Сітка №${h.net.id}: ${n} риб (${parts.join(', ')})${h.net.soakH > SPOIL_H ? ' · частина зіпсувалась' : ''}` : `Сітка №${h.net.id} порожня — постій довше або далі в морі`, n ? 'good' : 'warn');
-    if (this.gear > 40) this.onEvent?.('Сітки зносились — лагодять у порту біля барабана', 'warn');
+    const parts = [L(`${h.res.hold} у трюм`, `${h.res.hold} to the hold`)];
+    if (h.res.deck) parts.push(L(`${h.res.deck} на палубі`, `${h.res.deck} on deck`));
+    if (h.res.lost) parts.push(L(`${h.res.lost} за борт — трюм повний`, `${h.res.lost} over the side — the hold is full`));
+    this.onEvent?.(n ? L(`🎣 Сітка №${h.net.id}: ${n} риб (${parts.join(', ')})${h.net.soakH > SPOIL_H ? L(' · частина зіпсувалась', ` · some of it spoiled`) : ''}`, `🎣 Net #${h.net.id}: ${n} fish (${parts.join(', ')})${h.net.soakH > SPOIL_H ? L(' · частина зіпсувалась', ` · some of it spoiled`) : ''}`) : L(`Сітка №${h.net.id} порожня — постій довше або далі в морі`, `Net #${h.net.id} is empty — soak it longer or further out to sea`), n ? 'good' : 'warn');
+    if (this.gear > 40) this.onEvent?.(L('Сітки зносились — лагодять у порту біля барабана', `The nets are worn — mend them in port at the drum`), 'warn');
   }
 
   /** години, що пройшли поза кадрами (сон) */
@@ -318,7 +319,7 @@ export class Nets {
         if (n.wear >= 100) {
           this.nets.splice(i, 1);
           this.lost++;
-          this.onEvent?.(`🌊 Шторм порвав сітку №${n.id} — буй відірвало. Заміна в порту`, 'bad');
+          this.onEvent?.(L(`🌊 Шторм порвав сітку №${n.id} — буй відірвало. Заміна в порту`, `🌊 The storm tore net #${n.id} — the buoy broke loose. Replace it in port`), 'bad');
         }
       }
       if (this.mode === 'shoot' && this.shoot) {
@@ -456,5 +457,5 @@ export class Nets {
 }
 
 function fmtH(h: number): string {
-  return h < 1 ? `${Math.round(h * 60)} хв` : `${h.toFixed(h < 10 ? 1 : 0).replace('.', ',')} год`;
+  return h < 1 ? L(`${Math.round(h * 60)} хв`, `${Math.round(h * 60)} min`) : L(`${h.toFixed(h < 10 ? 1 : 0).replace('.', L(',', '.'))} год`, `${h.toFixed(h < 10 ? 1 : 0).replace('.', L(',', '.'))} h`);
 }

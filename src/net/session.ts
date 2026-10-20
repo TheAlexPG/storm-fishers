@@ -1,3 +1,4 @@
+import { L } from '../core/i18n';
 // ─────────────────────────────────────────────────────────────
 // З'єднання з кооп-реле (server/relay.mjs) по WebSocket.
 // Кімната за 4-літерним кодом; хост (капітан) — authority світу й човна.
@@ -52,7 +53,7 @@ export class NetSession {
         if (settled) return;
         settled = true;
         ws.close();
-        reject(new Error('Сервер не відповідає'));
+        reject(new Error(L('Сервер не відповідає', `Server is not responding`)));
       }, 6000);
       ws.onopen = () => {
         ws.send(JSON.stringify(room ? { t: 'hello', nick, room } : { t: 'hello', nick, create: true }));
@@ -61,7 +62,7 @@ export class NetSession {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        reject(new Error('Немає з\'єднання з сервером'));
+        reject(new Error(L('Немає з\'єднання з сервером', `No connection to the server`)));
       };
       ws.onclose = () => {
         const was = this.connected;
@@ -69,9 +70,9 @@ export class NetSession {
         if (!settled) {
           settled = true;
           clearTimeout(timer);
-          reject(new Error('З\'єднання закрито'));
+          reject(new Error(L('З\'єднання закрито', `Connection closed`)));
         } else if (was && !this.closedByUs) {
-          this.onClosed?.(this.isHost ? 'Зв\'язок із сервером втрачено' : 'Зв\'язок із капітаном втрачено');
+          this.onClosed?.(this.isHost ? L('Зв\'язок із сервером втрачено', `Lost connection to the server`) : L('Зв\'язок із капітаном втрачено', `Lost connection to the captain`));
         }
       };
       ws.onmessage = (ev) => {
@@ -104,7 +105,7 @@ export class NetSession {
               settled = true;
               clearTimeout(timer);
               ws.close();
-              reject(new Error(String(m.msg)));
+              reject(new Error(relayError(String(m.msg))));
             }
             break;
           case 'join': {
@@ -122,7 +123,7 @@ export class NetSession {
           case 'hostLeft':
             this.closedByUs = true; // наступний onclose — очікуваний
             this.connected = false;
-            this.onClosed?.('Капітана більше немає в грі — кімнату закрито');
+            this.onClosed?.(L('Капітана більше немає в грі — кімнату закрито', `The captain has left the game — the room is closed`));
             break;
           case 'msg':
             this.onMsg?.(m.from as number, m.d as GameMsg);
@@ -150,4 +151,13 @@ export class NetSession {
     if (id === this.id) return this.nick;
     return this.peers.get(id)?.nick ?? '???';
   }
+}
+
+/** помилки реле приходять ключами (#notfound:КОД, #full:n) — читаємо своєю мовою */
+function relayError(msg: string): string {
+  const nf = /^#notfound:(.*)$/.exec(msg);
+  if (nf) return L(`Кімнату «${nf[1]}» не знайдено`, `Room “${nf[1]}” not found`);
+  const full = /^#full:(\d+)$/.exec(msg);
+  if (full) return L(`Кімната повна (${full[1]}/${full[1]})`, `The room is full (${full[1]}/${full[1]})`);
+  return msg;
 }

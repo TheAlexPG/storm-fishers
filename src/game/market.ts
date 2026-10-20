@@ -1,4 +1,5 @@
 import { clamp, mulberry32 } from '../core/math';
+import { isUk, L } from '../core/i18n';
 import { FISH, FISH_BY_ID } from './fish';
 import type { FishItem, ZoneId } from '../core/types';
 
@@ -92,8 +93,8 @@ const CASES: Record<string, [string, string, string]> = {
   akula: ['акулу', 'акулою', 'акули'],
 };
 
-const BUYERS = ['Ресторан «Маяк» скуповує', 'Рибзавод шукає', 'Готель «Хвиля» замовив', 'Ярмарок у місті — розбирають'];
-const GLUTS = ['Ринок завалено', 'Траулер засипав ринок'];
+const BUYERS = [L('Ресторан «Маяк» скуповує', `The “Lighthouse” restaurant is buying up`), L('Рибзавод шукає', `The fish plant is looking for`), L('Готель «Хвиля» замовив', `Hotel “Wave” has ordered`), L('Ярмарок у місті — розбирають', `Town fair — everyone wants`)];
+const GLUTS = [L('Ринок завалено', `Market flooded with`), L('Траулер засипав ринок', `A trawler swamped the market with`)];
 
 export function avgKg(speciesId: string): number {
   const sp = FISH_BY_ID[speciesId];
@@ -319,9 +320,9 @@ export class FishMarket {
     const boost = rng() < 0.6;
     const pct = boost ? 30 + Math.round(rng() * 4) * 5 : 25 + Math.round(rng() * 2) * 5;
     const dur = 1 + Math.floor(rng() * 2); // 1–2 доби
-    const [acc, ins] = CASES[sp.id] ?? [sp.name, sp.name];
+    const [acc, ins] = isUk() ? CASES[sp.id] ?? [sp.name, sp.name] : [sp.name.toLowerCase(), sp.name.toLowerCase()];
     const lead = boost ? BUYERS[Math.floor(rng() * BUYERS.length)] : GLUTS[Math.floor(rng() * GLUTS.length)];
-    const days = dur === 1 ? 'до завтра' : '2 доби';
+    const days = dur === 1 ? L('до завтра', `until tomorrow`) : L('2 доби', `2 days`);
     const text = boost ? `${lead} ${acc}: +${pct}% · ${days}` : `${lead} ${ins}: −${pct}% · ${days}`;
     const ev: MarketEvent = { speciesId: sp.id, mult: boost ? 1 + pct / 100 : 1 - pct / 100, until: day + dur - 1, text };
     this.events.push(ev);

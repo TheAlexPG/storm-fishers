@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { SOLE_Y } from './yachtLayout';
 import type { ForecastDay } from '../game/forecast';
 import type { RadioContent } from '../core/radioAudio';
+import { L } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // Морський приймач «Шторм-М1» на панелі над штурманським столом.
@@ -26,15 +27,15 @@ export interface RadioStation {
 }
 
 export const RADIO_STATIONS: RadioStation[] = [
-  { id: 'weather', name: 'МЕТЕО 161.5', freq: 0.1, mode: 'weather', content: 'voice' },
-  { id: 'fish', name: 'РИБАЛЬСЬКИЙ ЗВІТ', freq: 0.28, mode: 'fish', content: 'voice' },
-  { id: 'market', name: 'БІРЖА РИБИ', freq: 0.46, mode: 'market', content: 'voice' },
-  { id: 'wave', name: 'ХВИЛЯ FM', freq: 0.64, mode: 'music', content: 'music', style: 0, songs: ['«Ой, у морі хвилі»', '«Гей, підтягуй шкот»', '«Чайка над молом»', '«Додому з уловом»'] },
-  { id: 'ch16', name: 'КАНАЛ 16', freq: 0.8, mode: 'chat', content: 'chat' },
-  { id: 'breeze', name: 'НІЧНИЙ БРИЗ', freq: 0.94, mode: 'music', content: 'music', style: 1, songs: ['«Ліхтарі на пірсі»', '«Тиха гавань»', '«Солоний джаз»'] },
+  { id: 'weather', name: L('МЕТЕО 161.5', `MET 161.5`), freq: 0.1, mode: 'weather', content: 'voice' },
+  { id: 'fish', name: L('РИБАЛЬСЬКИЙ ЗВІТ', `FISHING REPORT`), freq: 0.28, mode: 'fish', content: 'voice' },
+  { id: 'market', name: L('БІРЖА РИБИ', `FISH EXCHANGE`), freq: 0.46, mode: 'market', content: 'voice' },
+  { id: 'wave', name: L('ХВИЛЯ FM', `WAVE FM`), freq: 0.64, mode: 'music', content: 'music', style: 0, songs: [L('«Ой, у морі хвилі»', `“Oh, the Waves at Sea”`), L('«Гей, підтягуй шкот»', `“Heave, Trim the Sheet”`), L('«Чайка над молом»', `“A Gull over the Mole”`), L('«Додому з уловом»', `“Home with the Catch”`)] },
+  { id: 'ch16', name: L('КАНАЛ 16', `CHANNEL 16`), freq: 0.8, mode: 'chat', content: 'chat' },
+  { id: 'breeze', name: L('НІЧНИЙ БРИЗ', `NIGHT BREEZE`), freq: 0.94, mode: 'music', content: 'music', style: 1, songs: [L('«Ліхтарі на пірсі»', `“Lanterns on the Pier”`), L('«Тиха гавань»', `“Quiet Harbour”`), L('«Солоний джаз»', `“Salty Jazz”`)] },
 ];
 const PRESETS = ['weather', 'fish', 'market', 'wave', 'ch16'];
-const PRESET_LABEL = ['ПОГОДА', 'РИБА', 'БІРЖА', 'МУЗИКА', 'ЕФІР'];
+const PRESET_LABEL = [L('ПОГОДА', `WEATHER`), L('РИБА', `FISH`), L('БІРЖА', `MARKET`), L('МУЗИКА', `MUSIC`), L('ЕФІР', `AIR`)];
 const BAND = [156.0, 163.0];
 /** ширина «ловлі» станції на шкалі */
 const CATCH = 0.028;
@@ -238,17 +239,17 @@ export class RadioSet {
   }
 
   get mhz(): string {
-    return (BAND[0] + this.freq * (BAND[1] - BAND[0])).toFixed(2).replace('.', ',');
+    return (BAND[0] + this.freq * (BAND[1] - BAND[0])).toFixed(2).replace('.', L(',', '.'));
   }
 
   label(ctl: RadioCtl | null): string {
-    if (!ctl) return this.on ? 'Радіо — наведи погляд на кнопку чи ручку' : 'Радіо «Шторм-М1» — подивись на червону кнопку, щоб увімкнути';
-    if (ctl === 'power') return this.on ? 'Вимкнути радіо' : 'Увімкнути радіо';
-    if (ctl === 'tune') return `Настройка ${this.mhz} МГц — коліщатко: крутити · ЛКМ/ПКМ: наступна/попередня станція`;
-    if (ctl === 'vol') return `Гучність ${Math.round(this.volume * 100)}% — коліщатко · ЛКМ/ПКМ: +/−`;
+    if (!ctl) return this.on ? L('Радіо — наведи погляд на кнопку чи ручку', `Radio — aim at a button or a knob`) : L('Радіо «Шторм-М1» — подивись на червону кнопку, щоб увімкнути', `“Storm-M1” radio — look at the red button to switch it on`);
+    if (ctl === 'power') return this.on ? L('Вимкнути радіо', `Switch the radio off`) : L('Увімкнути радіо', `Switch the radio on`);
+    if (ctl === 'tune') return L(`Настройка ${this.mhz} МГц — коліщатко: крутити · ЛКМ/ПКМ: наступна/попередня станція`, `Tuning ${this.mhz} MHz — wheel: turn · LMB/RMB: next/previous station`);
+    if (ctl === 'vol') return L(`Гучність ${Math.round(this.volume * 100)}% — коліщатко · ЛКМ/ПКМ: +/−`, `Volume ${Math.round(this.volume * 100)}% — wheel · LMB/RMB: +/−`);
     const i = Number(ctl.slice(1));
     const st = RADIO_STATIONS.find((s) => s.id === PRESETS[i]);
-    return `Кнопка «${PRESET_LABEL[i]}» — ${st?.name.toLowerCase() ?? ''}${this.on ? '' : ' (радіо вимкнене)'}`;
+    return L(`Кнопка «${PRESET_LABEL[i]}» — ${st?.name.toLowerCase() ?? ''}${this.on ? '' : L(' (радіо вимкнене)', ` (radio is off)`)}`, `“${PRESET_LABEL[i]}” button — ${st?.name.toLowerCase() ?? ''}${this.on ? '' : L(' (радіо вимкнене)', ` (radio is off)`)}`);
   }
 
   /** ЛКМ/E (dir = 1) чи ПКМ (dir = −1) по органу керування */
@@ -392,10 +393,10 @@ export class RadioSet {
     x.fillStyle = AMBER;
     x.font = `800 44px ${SANS}`;
     x.textAlign = 'center';
-    x.fillText('ШТОРМ-М1', SW / 2, 170);
+    x.fillText(L('ШТОРМ-М1', `STORM-M1`), SW / 2, 170);
     x.font = `600 20px ${MONO}`;
     x.fillStyle = GREEN;
-    x.fillText('морський приймач · самоперевірка', SW / 2, 210);
+    x.fillText(L('морський приймач · самоперевірка', `marine receiver · self-test`), SW / 2, 210);
     x.strokeStyle = DIM;
     x.lineWidth = 2;
     x.strokeRect(170, 245, 300, 18);
@@ -409,11 +410,11 @@ export class RadioSet {
     x.textAlign = 'left';
     x.font = `800 24px ${SANS}`;
     x.fillStyle = AMBER;
-    x.fillText(st && signal > 0.3 ? st.name : 'ПОШУК…', 18, 33);
+    x.fillText(st && signal > 0.3 ? st.name : L('ПОШУК…', `SEARCHING…`), 18, 33);
     x.textAlign = 'right';
     x.font = `700 22px ${MONO}`;
     x.fillStyle = GREEN;
-    x.fillText(`${this.mhz} МГц`, SW - 92, 32);
+    x.fillText(L(`${this.mhz} МГц`, `${this.mhz} MHz`), SW - 92, 32);
     // сила сигналу
     for (let i = 0; i < 4; i++) {
       x.fillStyle = signal > (i + 0.5) / 4.5 ? GREEN : 'rgba(157,240,192,0.18)';
@@ -436,7 +437,7 @@ export class RadioSet {
     x.fillText(this.data?.clock ?? '', 16, SH - 10);
     x.textAlign = 'right';
     const { st } = this.tuned;
-    const hint = st?.mode === 'market' ? 'БІРЖА ще раз — наступна сторінка' : 'крути ручку — є й інші станції';
+    const hint = st?.mode === 'market' ? L('БІРЖА ще раз — наступна сторінка', `MARKET again — next page`) : L('крути ручку — є й інші станції', `turn the knob — there are other stations`);
     x.fillText(hint, SW - 16, SH - 10);
   }
 
@@ -451,10 +452,10 @@ export class RadioSet {
       x.fillRect(SW / 2 - 200, 150, 400, 96);
       x.font = `800 26px ${SANS}`;
       x.fillStyle = AMBER;
-      x.fillText('ПОШУК СИГНАЛУ', SW / 2, 190);
+      x.fillText(L('ПОШУК СИГНАЛУ', `SEARCHING FOR SIGNAL`), SW / 2, 190);
       x.font = `600 18px ${MONO}`;
       x.fillStyle = GREEN;
-      x.fillText('◂  крути ручку настройки  ▸', SW / 2, 225);
+      x.fillText(L('◂  крути ручку настройки  ▸', `◂  turn the tuning knob  ▸`), SW / 2, 225);
     }
   }
 
@@ -475,7 +476,7 @@ export class RadioSet {
     x.textAlign = 'left';
     x.font = `700 19px ${SANS}`;
     x.fillStyle = GREEN;
-    x.fillText(`Зараз: ${n.bf} б · ${n.name} · ${Math.round(n.ms)} м/с · хвиля ${n.wave.toFixed(1).replace('.', ',')} м`, 18, 82);
+    x.fillText(L(`Зараз: ${n.bf} б · ${n.name} · ${Math.round(n.ms)} м/с · хвиля ${n.wave.toFixed(1).replace('.', L(',', '.'))} м`, `Now: Bf ${n.bf} · ${n.name} · ${Math.round(n.ms)} m/s · waves ${n.wave.toFixed(1).replace('.', L(',', '.'))} m`), 18, 82);
     const cw = 196, ch = 236, y0 = 98;
     d.forecast.forEach((f, i) => {
       const x0 = 14 + i * (cw + 11);
@@ -492,7 +493,7 @@ export class RadioSet {
       weatherIcon(x, x0 + cw / 2, y0 + 82, f.state, this.t);
       x.font = `800 22px ${MONO}`;
       x.fillStyle = GREEN;
-      x.fillText(`${f.bf} б · ${Math.round(f.windMs)} м/с`, x0 + cw / 2, y0 + 146);
+      x.fillText(L(`${f.bf} б · ${Math.round(f.windMs)} м/с`, `Bf ${f.bf} · ${Math.round(f.windMs)} m/s`), x0 + cw / 2, y0 + 146);
       // стрілка вітру
       x.save();
       x.translate(x0 + cw - 26, y0 + 22);
@@ -508,20 +509,20 @@ export class RadioSet {
       x.restore();
       x.font = `600 17px ${MONO}`;
       x.fillStyle = DIM;
-      x.fillText(`хвиля ${f.waveM.toFixed(1).replace('.', ',')} м`, x0 + cw / 2, y0 + 174);
+      x.fillText(L(`хвиля ${f.waveM.toFixed(1).replace('.', L(',', '.'))} м`, `waves ${f.waveM.toFixed(1).replace('.', L(',', '.'))} m`), x0 + cw / 2, y0 + 174);
       // ризик шторму
       x.fillStyle = 'rgba(157,240,192,0.15)';
       x.fillRect(x0 + 18, y0 + 196, cw - 36, 10);
       x.fillStyle = f.storm > 60 ? '#ff6b5e' : f.storm > 25 ? AMBER : GREEN;
       x.fillRect(x0 + 18, y0 + 196, (cw - 36) * (f.storm / 100), 10);
       x.font = `700 15px ${SANS}`;
-      x.fillText(`шторм ${f.storm}%`, x0 + cw / 2, y0 + 226);
+      x.fillText(L(`шторм ${f.storm}%`, `storm ${f.storm}%`), x0 + cw / 2, y0 + 226);
     });
     if (d.stormSoon && Math.floor(this.t * 2) % 2 === 0) {
       x.textAlign = 'center';
       x.font = `800 18px ${SANS}`;
       x.fillStyle = '#ff6b5e';
-      x.fillText('⚠ ШТОРМОВЕ ПОПЕРЕДЖЕННЯ — повертайтесь у порт', SW / 2, SH - 40);
+      x.fillText(L('⚠ ШТОРМОВЕ ПОПЕРЕДЖЕННЯ — повертайтесь у порт', `⚠ STORM WARNING — return to port`), SW / 2, SH - 40);
     }
   }
 
@@ -529,11 +530,11 @@ export class RadioSet {
     x.textAlign = 'left';
     x.font = `800 21px ${SANS}`;
     x.fillStyle = GREEN;
-    x.fillText('Де клює сьогодні', 18, 84);
+    x.fillText(L('Де клює сьогодні', `Where they're biting today`), 18, 84);
     if (!d.reports.length) {
       x.font = `600 20px ${MONO}`;
       x.fillStyle = DIM;
-      x.fillText('Стаї не помічено. Слухайте завтра.', 18, 130);
+      x.fillText(L('Стаї не помічено. Слухайте завтра.', `No schools spotted. Listen again tomorrow.`), 18, 130);
     }
     d.reports.slice(0, 4).forEach((r, i) => {
       const y = 104 + i * 58;
@@ -550,7 +551,7 @@ export class RadioSet {
       x.textAlign = 'right';
       x.font = `800 26px ${MONO}`;
       x.fillStyle = GREEN;
-      x.fillText(`×${r.boost.toFixed(1).replace('.', ',')}`, SW - 30, y + 34);
+      x.fillText(`×${r.boost.toFixed(1).replace('.', L(',', '.'))}`, SW - 30, y + 34);
       x.textAlign = 'left';
     });
     if (d.tip) {
@@ -560,7 +561,7 @@ export class RadioSet {
     }
     x.font = `600 17px ${MONO}`;
     x.fillStyle = DIM;
-    x.fillText(`У трюмі: ${d.hold.count}/${d.hold.cap} · ≈ ${Math.round(d.hold.value)} ₴`, 18, SH - 42);
+    x.fillText(L(`У трюмі: ${d.hold.count}/${d.hold.cap} · ≈ ${Math.round(d.hold.value)} ₴`, `In the hold: ${d.hold.count}/${d.hold.cap} · ≈ ${Math.round(d.hold.value)} ₴`), 18, SH - 42);
   }
 
   private drawMarket(x: CanvasRenderingContext2D, d: RadioData) {
@@ -571,11 +572,11 @@ export class RadioSet {
     x.font = `700 15px ${MONO}`;
     x.fillStyle = DIM;
     x.textAlign = 'left';
-    x.fillText('ВИД', 18, 72);
-    x.fillText('₴/КГ СВІЖ.', 228, 72);
-    x.fillText('ІСТОРІЯ', 330, 72);
+    x.fillText(L('ВИД', `SPECIES`), 18, 72);
+    x.fillText(L('₴/КГ СВІЖ.', `₴/KG FRESH`), 228, 72);
+    x.fillText(L('ІСТОРІЯ', `HISTORY`), 330, 72);
     x.textAlign = 'right';
-    x.fillText(`стор. ${pg + 1}/${pages}`, SW - 18, 72);
+    x.fillText(L(`стор. ${pg + 1}/${pages}`, `page ${pg + 1}/${pages}`), SW - 18, 72);
     rows.forEach((r, i) => {
       const y = 82 + i * 50;
       if (i % 2 === 0) {
@@ -603,7 +604,7 @@ export class RadioSet {
       }
       x.font = `800 22px ${MONO}`;
       x.fillStyle = col;
-      x.fillText(r.price.toFixed(r.price < 100 ? 1 : 0).replace('.', ','), 228, y + 30);
+      x.fillText(r.price.toFixed(r.price < 100 ? 1 : 0).replace('.', L(',', '.')), 228, y + 30);
       // спарклайн
       if (h.length > 1) {
         const lo = Math.min(...h), hi = Math.max(...h);
@@ -640,7 +641,7 @@ export class RadioSet {
       x.fillText(`${up ? '▲' : down ? '▼' : '■'}${Math.abs(Math.round(ch * 100))}%`, SW - 18, y + 30);
     });
     // бігучий рядок подій
-    const tick = d.events.length ? d.events.join('   ·   ') : 'Ринок спокійний. Продавайте різну рибу — ціна одного виду падає від надлишку.';
+    const tick = d.events.length ? d.events.join('   ·   ') : L('Ринок спокійний. Продавайте різну рибу — ціна одного виду падає від надлишку.', `The market is calm. Sell a mix of fish — one species gets cheaper when there's a glut.`);
     x.font = `700 17px ${SANS}`;
     const w = x.measureText(tick).width + 80;
     const off = (this.t * 70) % w;
@@ -656,7 +657,7 @@ export class RadioSet {
     x.textAlign = 'center';
     x.font = `600 18px ${MONO}`;
     x.fillStyle = DIM;
-    x.fillText('♪ зараз в ефірі ♪', SW / 2, 92);
+    x.fillText(L('♪ зараз в ефірі ♪', `♪ on air now ♪`), SW / 2, 92);
     x.font = `800 30px ${SANS}`;
     x.fillStyle = AMBER;
     x.fillText(song, SW / 2, 132);
@@ -694,7 +695,7 @@ export class RadioSet {
     if (!lines.length) {
       x.font = `600 20px ${MONO}`;
       x.fillStyle = DIM;
-      x.fillText('· · · тиша в ефірі · · ·', 18, 120);
+      x.fillText(L('· · · тиша в ефірі · · ·', `· · · silence on air · · ·`), 18, 120);
     }
     lines.forEach((l, i) => {
       const y = 84 + i * 56;
@@ -723,20 +724,20 @@ export class RadioSet {
       if (this.chatLog.length > 12) this.chatLog.shift();
       return;
     }
-    const who = ['«Чайка-2»', '«Ластівка»', '«Буревісник»', '«Дельфін»', 'Портова служба', '«Стара Марта»', '«Кит»'];
+    const who = [L('«Чайка-2»', `“Seagull-2”`), L('«Ластівка»', `“Swallow”`), L('«Буревісник»', `“Petrel”`), L('«Дельфін»', `“Dolphin”`), L('Портова служба', `Harbour control`), L('«Стара Марта»', `“Old Martha”`), L('«Кит»', `“Whale”`)];
     const w = who[Math.floor(Math.random() * who.length)];
     const pool: string[] = [
-      'Бачу туман на заході, зменшую хід, прийом.',
-      'Хто біля маяка — у вас клює? Прийом.',
-      'Повертаюсь із уловом, ставте чайник.',
-      'Чайки сідають на воду — буде тиша.',
-      'Перевірте ходові вогні, вечоріє.',
-      'Помітив дельфінів на сході. Гарний знак!',
-      'Хтось загубив червоний кранець біля пірсу.',
+      L('Бачу туман на заході, зменшую хід, прийом.', `Fog to the west, slowing down, over.`),
+      L('Хто біля маяка — у вас клює? Прийом.', `Anyone by the lighthouse — are they biting? Over.`),
+      L('Повертаюсь із уловом, ставте чайник.', `Coming back with a catch, put the kettle on.`),
+      L('Чайки сідають на воду — буде тиша.', `Gulls settling on the water — calm ahead.`),
+      L('Перевірте ходові вогні, вечоріє.', `Check your running lights, it's getting dark.`),
+      L('Помітив дельфінів на сході. Гарний знак!', `Spotted dolphins to the east. Good sign!`),
+      L('Хтось загубив червоний кранець біля пірсу.', `Someone lost a red fender by the pier.`),
     ];
-    if (d?.reports[0]) pool.push(`${d.reports[0].zone}: ${d.reports[0].name.toLowerCase()} іде косяком, поспішайте!`);
-    if (d?.stormSoon) pool.push('Барометр падає. Усім суднам — до порту!', 'Хвиля росте, беру риф і йду додому.');
-    if (w === 'Портова служба') pool.push(`Вітер ${d?.now.bf ?? 3} балів. Причал вільний, швартуйтесь лівим бортом.`);
+    if (d?.reports[0]) pool.push(L(`${d.reports[0].zone}: ${d.reports[0].name.toLowerCase()} іде косяком, поспішайте!`, `${d.reports[0].zone}: ${d.reports[0].name.toLowerCase()} running in schools, hurry!`));
+    if (d?.stormSoon) pool.push(L('Барометр падає. Усім суднам — до порту!', `The glass is falling. All vessels — back to port!`), L('Хвиля росте, беру риф і йду додому.', `The sea is building, taking a reef and heading home.`));
+    if (w === L('Портова служба', `Harbour control`)) pool.push(L(`Вітер ${d?.now.bf ?? 3} балів. Причал вільний, швартуйтесь лівим бортом.`, `Wind force ${d?.now.bf ?? 3}. The berth is free, moor port side to.`));
     this.chatLog.push({ who: w, text: pool[Math.floor(Math.random() * pool.length)], at: this.t });
     if (this.chatLog.length > 12) this.chatLog.shift();
   }
@@ -774,9 +775,9 @@ export class RadioSet {
     x.font = '800 15px Manrope, sans-serif';
     PRESET_LABEL.forEach((l, i) => x.fillText(l, px(0.07 + i * 0.062), py(0.012)));
     x.font = '700 14px Manrope, sans-serif';
-    x.fillText('ЖИВЛ.', px(0.075), py(-0.118));
-    x.fillText('ГУЧНІСТЬ', px(0.19), py(-0.136));
-    x.fillText('НАСТРОЙКА', px(0.335), py(-0.143));
+    x.fillText(L('ЖИВЛ.', `PWR`), px(0.075), py(-0.118));
+    x.fillText(L('ГУЧНІСТЬ', `VOLUME`), px(0.19), py(-0.136));
+    x.fillText(L('НАСТРОЙКА', `TUNING`), px(0.335), py(-0.143));
     // шкала гучності
     for (let i = 0; i <= 10; i++) {
       const a = -2.3 + (i / 10) * 4.6 - Math.PI / 2;
@@ -785,10 +786,10 @@ export class RadioSet {
     x.font = '800 18px Unbounded, Manrope, sans-serif';
     x.textAlign = 'left';
     x.fillStyle = '#7a2e22';
-    x.fillText('ШТОРМ-М1', 30, 312);
+    x.fillText(L('ШТОРМ-М1', `STORM-M1`), 30, 312);
     x.font = '600 13px Manrope, sans-serif';
     x.fillStyle = '#4a3622';
-    x.fillText('морський приймач · УКХ 156–163 МГц', 150, 312);
+    x.fillText(L('морський приймач · УКХ 156–163 МГц', `marine receiver · VHF 156–163 MHz`), 150, 312);
     const t = new THREE.CanvasTexture(c);
     t.colorSpace = THREE.SRGBColorSpace;
     t.anisotropy = 4;

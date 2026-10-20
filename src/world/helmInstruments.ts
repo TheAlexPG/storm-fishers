@@ -3,12 +3,14 @@ import { DECK_Y, HOUSE, RIG, ARCH as STERN_ARCH, hullHalfWidth, sheerY } from '.
 import { terrainHeight } from './portTerrain';
 import { instrHas } from '../game/upgrades';
 import type { PartKit } from './upgradeParts';
+import { L } from '../core/i18n';
 
 // ─────────────────────────────────────────────────────────────
 // Прилади штурвала (апгрейд «Прилади», 0–5): від латунного компаса
 // до радара й автопілота. Усе фізично стоїть на тумбі/даху кокпіту:
-//  0 — компас у бінаклі (картка завжди на північ) + вимпели на даху;
-//  1 — лаг, тахометр, паливо (стрілки yachtModel) + латунний барометр;
+//  0 — великий компас у бінаклі з розміткою, лаг і стрілочний вітромір на ногах
+//      поручня тумби, чашковий анемометр із флюгером на щоглі, вимпели на вантах;
+//  1 — пульт: тахометр, паливо (стрілки yachtModel), лаг переїжджає на пульт + барометр;
 //  2 — багатофункціональний дисплей (вітер, цифри) + глибина з сигналом мілини;
 //  3 — арка над пультом і GPS-картплотер (карта, маршрут), грибок антени на даху;
 //  4 — екран ехолота-рибошукача (дно, «дуги» риби);
@@ -53,7 +55,7 @@ const SCREEN_TILT = 0.2;
 const SCREEN_Q = new THREE.Quaternion().setFromEuler(new THREE.Euler(SCREEN_TILT, Math.PI, 0));
 
 const FONT = '-apple-system, "Segoe UI", sans-serif';
-const P8 = ['П', 'ПнСх', 'Сх', 'ПдСх', 'Пд', 'ПдЗх', 'Зх', 'ПнЗх'];
+const P8 = [L('П', `N`), L('ПнСх', `NE`), L('Сх', `E`), L('ПдСх', `SE`), L('Пд', `S`), L('ПдЗх', `SW`), L('Зх', `W`), L('ПнЗх', `NW`)];
 
 export function compass8(deg: number): string {
   return P8[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
@@ -64,7 +66,7 @@ export function bearingDeg(fx: number, fz: number, tx: number, tz: number): numb
   return b < 0 ? b + 360 : b;
 }
 function fmtDist(d: number): string {
-  return d >= 1000 ? (d / 1000).toFixed(1).replace('.', ',') + ' км' : Math.round(d) + ' м';
+  return d >= 1000 ? (d / 1000).toFixed(1).replace('.', L(',', '.')) + L(' км', ` km`) : Math.round(d) + L(' м', ` m`);
 }
 /**
  * висота дна для приладів: як terrainHeight, але перед набережною рельєф —
@@ -138,44 +140,123 @@ function canvasTex(w: number, h: number, draw: (g: CanvasRenderingContext2D) => 
 // ── циферблати ──
 
 function compassCardTex(): THREE.CanvasTexture {
-  return canvasTex(256, 256, (g) => {
-    const C = 128;
+  return canvasTex(512, 512, (g) => {
+    const C = 256;
     g.fillStyle = '#f3ead2';
-    g.beginPath(); g.arc(C, C, 126, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.arc(C, C, 252, 0, Math.PI * 2); g.fill();
     g.strokeStyle = '#2a2a2a';
+    // розмітка: кожні 5°, довші — 15° і 45°
     for (let d = 0; d < 360; d += 5) {
       const a = (d * Math.PI) / 180;
-      const L = d % 45 === 0 ? 22 : d % 15 === 0 ? 14 : 8;
-      g.lineWidth = d % 45 === 0 ? 3 : 1.4;
+      const L = d % 45 === 0 ? 40 : d % 15 === 0 ? 26 : 14;
+      g.lineWidth = d % 45 === 0 ? 5 : d % 15 === 0 ? 3 : 2;
       g.beginPath();
-      g.moveTo(C + Math.sin(a) * (120 - L), C - Math.cos(a) * (120 - L));
-      g.lineTo(C + Math.sin(a) * 120, C - Math.cos(a) * 120);
+      g.moveTo(C + Math.sin(a) * (244 - L), C - Math.cos(a) * (244 - L));
+      g.lineTo(C + Math.sin(a) * 244, C - Math.cos(a) * 244);
       g.stroke();
+    }
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    // числа градусів кожні 30° (окрім сторін світу)
+    g.font = `800 26px ${FONT}`;
+    g.fillStyle = '#2a3a46';
+    for (let d = 30; d < 360; d += 30) {
+      if (d % 90 === 0) continue;
+      const a = (d * Math.PI) / 180;
+      g.save();
+      g.translate(C + Math.sin(a) * 182, C - Math.cos(a) * 182);
+      g.rotate(a);
+      g.fillText(String(d), 0, 0);
+      g.restore();
     }
     // роза
     for (let i = 0; i < 8; i++) {
       const a = (i * Math.PI) / 4;
-      const L = i % 2 === 0 ? 82 : 50;
+      const L = i % 2 === 0 ? 140 : 84;
       for (const s of [-1, 1]) {
         g.beginPath();
         g.moveTo(C, C);
         g.lineTo(C + Math.sin(a) * L, C - Math.cos(a) * L);
-        g.lineTo(C + Math.sin(a + s * 0.22) * 18, C - Math.cos(a + s * 0.22) * 18);
+        g.lineTo(C + Math.sin(a + s * 0.22) * 30, C - Math.cos(a + s * 0.22) * 30);
         g.closePath();
         g.fillStyle = i === 0 ? (s < 0 ? '#c0392b' : '#e2674a') : s < 0 ? '#2a3a46' : '#8b97a0';
         g.fill();
       }
     }
-    g.font = `800 30px ${FONT}`;
+    // сторони світу — великі, «П» червона
+    const big = (t: string, d: number, col: string) => {
+      const a = (d * Math.PI) / 180;
+      g.save();
+      g.translate(C + Math.sin(a) * 182, C - Math.cos(a) * 182);
+      g.rotate(a);
+      g.font = `900 52px ${FONT}`;
+      g.fillStyle = col;
+      g.fillText(t, 0, 0);
+      g.restore();
+    };
+    big(L('П', 'N'), 0, '#c0392b');
+    big(L('Сх', 'E'), 90, '#2a3a46');
+    big(L('Пд', 'S'), 180, '#2a3a46');
+    big(L('Зх', 'W'), 270, '#2a3a46');
+  });
+}
+
+/** вітромір: силует яхти, кут вимпельного вітру (червона стрілка) і сила (мала шкала) */
+function windFaceTex(): THREE.CanvasTexture {
+  return canvasTex(256, 256, (g) => {
+    const C = 128;
+    g.fillStyle = '#10171d';
+    g.beginPath(); g.arc(C, C, 126, 0, Math.PI * 2); g.fill();
+    // лівий борт — червоний сектор, правий — зелений (верх — ніс; правий борт — праворуч)
+    for (const [s, col] of [[-1, 'rgba(208,52,44,0.9)'], [1, 'rgba(46,170,96,0.9)']] as const) {
+      g.strokeStyle = col;
+      g.lineWidth = 10;
+      g.beginPath();
+      const a0 = -Math.PI / 2 + s * 0.35, a1 = -Math.PI / 2 + s * (Math.PI / 3);
+      g.arc(C, C, 112, Math.min(a0, a1), Math.max(a0, a1));
+      g.stroke();
+    }
+    g.strokeStyle = '#e8eef2';
+    for (let d = 0; d < 360; d += 10) {
+      const a = (d * Math.PI) / 180;
+      const major = d % 30 === 0;
+      g.lineWidth = major ? 3 : 1.4;
+      g.beginPath();
+      g.moveTo(C + Math.sin(a) * (major ? 96 : 104), C - Math.cos(a) * (major ? 96 : 104));
+      g.lineTo(C + Math.sin(a) * 116, C - Math.cos(a) * 116);
+      g.stroke();
+    }
+    g.font = `700 15px ${FONT}`;
+    g.fillStyle = '#e8eef2';
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.fillStyle = '#c0392b';
-    g.fillText('П', C, C - 96);
-    g.fillStyle = '#2a3a46';
-    g.font = `800 22px ${FONT}`;
-    g.fillText('Сх', C + 96, C);
-    g.fillText('Пд', C, C + 96);
-    g.fillText('Зх', C - 96, C);
+    for (const d of [30, 60, 90, 120, 150]) {
+      for (const s of [-1, 1]) {
+        const a = (s * d * Math.PI) / 180;
+        g.fillText(String(d), C + Math.sin(a) * 80, C - Math.cos(a) * 80);
+      }
+    }
+    // силует яхти (ніс угору)
+    g.fillStyle = '#5f7686';
+    g.beginPath();
+    g.moveTo(C, C - 46);
+    g.quadraticCurveTo(C + 22, C - 10, C + 16, C + 30);
+    g.lineTo(C - 16, C + 30);
+    g.quadraticCurveTo(C - 22, C - 10, C, C - 46);
+    g.fill();
+    // мала шкала сили вітру 0..25 м/с унизу
+    g.strokeStyle = '#ffd36b';
+    g.lineWidth = 2.5;
+    g.beginPath();
+    g.arc(C, C + 62, 30, Math.PI * 1.1, Math.PI * 1.9);
+    g.stroke();
+    g.font = `700 11px ${FONT}`;
+    g.fillStyle = '#e8eef2';
+    g.fillText('0', C - 34, C + 60);
+    g.fillText('25', C + 36, C + 60);
+    g.font = `800 12px ${FONT}`;
+    g.fillStyle = '#ffd36b';
+    g.fillText(L('ВІТЕР · м/с', `WIND · m/s`), C, C + 90);
   });
 }
 
@@ -214,14 +295,14 @@ function baroFaceTex(): THREE.CanvasTexture {
       g.fillText(t, 0, 0);
       g.restore();
     };
-    word(972, 'ШТОРМ', '#b23a2e');
-    word(992, 'ДОЩ', '#5a6b78');
-    word(1012, 'ЗМІННО', '#3a2f22');
-    word(1036, 'ЯСНО', '#a07a1c');
+    word(972, L('ШТОРМ', `STORM`), '#b23a2e');
+    word(992, L('ДОЩ', `RAIN`), '#5a6b78');
+    word(1012, L('ЗМІННО', `CHANGE`), '#3a2f22');
+    word(1036, L('ЯСНО', `FAIR`), '#a07a1c');
     g.font = `600 12px ${FONT}`;
     g.fillStyle = '#6b5d48';
     g.textAlign = 'center';
-    g.fillText('гПа', C, C + 52);
+    g.fillText(L('гПа', `hPa`), C, C + 52);
   });
 }
 
@@ -242,6 +323,20 @@ export class HelmInstruments {
   private card = new THREE.Group();
   private binnacle = new THREE.Group();
   private binTop = new THREE.Vector3();
+  private cardMat!: THREE.MeshBasicMaterial;
+  private binLampMat!: THREE.MeshBasicMaterial;
+  /** 0: лаг і вітромір — на ногах поручня тумби (пульта ще немає) */
+  private speedHome: { p: THREE.Vector3; q: THREE.Quaternion } | null = null;
+  private postBases = new THREE.Group();
+  private windDial = new THREE.Group();
+  private windNeedle = new THREE.Group();
+  private windSpeedNeedle = new THREE.Group();
+  /** чашковий анемометр і флюгер на кронштейні щогли — видно з-за штурвала */
+  private anemo = new THREE.Group();
+  private anemoCups = new THREE.Group();
+  private anemoVane = new THREE.Group();
+  private windAwa = 0;
+  private windAws = 0;
   private baro = new THREE.Group();
   private baroNeedle = new THREE.Group();
   private baroSet = new THREE.Group();
@@ -293,8 +388,10 @@ export class HelmInstruments {
     ring.rotation.x = Math.PI / 2;
     ring.position.y = 0.075;
     bin.add(ring);
-    this.card.position.y = 0.072;
-    const cardMesh = new THREE.Mesh(new THREE.CircleGeometry(0.084, 40), new THREE.MeshBasicMaterial({ map: compassCardTex() }));
+    // над кришкою чаші (верх циліндра — 0.075), інакше латунь закривала картку
+    this.card.position.y = 0.079;
+    this.cardMat = new THREE.MeshBasicMaterial({ map: compassCardTex() });
+    const cardMesh = new THREE.Mesh(new THREE.CircleGeometry(0.084, 48), this.cardMat);
     cardMesh.rotation.x = -Math.PI / 2;
     // «П» картки (верх текстури) — на локальну −Z картки
     this.card.add(cardMesh);
@@ -309,6 +406,36 @@ export class HelmInstruments {
     );
     dome.position.y = 0.075;
     bin.add(dome);
+    // лампа бінакля: уночі картку підсвічує м'яке червоне світло
+    this.binLampMat = new THREE.MeshBasicMaterial({ color: 0xff5a3c, transparent: true, opacity: 0 });
+    const binLamp = new THREE.Mesh(new THREE.TorusGeometry(0.086, 0.006, 6, 28), this.binLampMat);
+    binLamp.rotation.x = Math.PI / 2;
+    binLamp.position.y = 0.08;
+    bin.add(binLamp);
+
+    // ── 0: лаг (праворуч) і стрілочний вітромір (ліворуч) на ногах поручня тумби ──
+    helm.add(this.postBases);
+    for (const sx of [-1, 1]) {
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.03, 0.07, 18), k.mat(0x1f2328, 0.5, 0.4));
+      base.position.set(sx * 0.3, DECK_Y + 0.955, -2.95);
+      this.postBases.add(base);
+    }
+    this.windDial.position.set(0.3, DECK_Y + 1.0, -2.95);
+    this.windDial.quaternion.copy(FACE_Q);
+    helm.add(this.windDial);
+    this.windDial.add(new THREE.Mesh(new THREE.TorusGeometry(0.105, 0.012, 6, 24), k.mat(0xc9ced3, 0.25, 0.9)));
+    const wf = new THREE.Mesh(new THREE.CircleGeometry(0.1, 36), new THREE.MeshBasicMaterial({ map: windFaceTex() }));
+    wf.position.z = 0.002;
+    this.windDial.add(wf);
+    this.windSpeedNeedle = needle(0xffd36b, 0.03, 0.005);
+    this.windSpeedNeedle.position.set(0, -0.0484, 0.006);
+    this.windDial.add(this.windSpeedNeedle);
+    this.windNeedle = needle(0xff4a3a, 0.095, 0.009);
+    this.windNeedle.position.z = 0.008;
+    this.windDial.add(this.windNeedle);
+    const wcap = new THREE.Mesh(new THREE.CircleGeometry(0.012, 12), new THREE.MeshBasicMaterial({ color: 0x111417 }));
+    wcap.position.z = 0.012;
+    this.windDial.add(wcap);
 
     // вимпели на нижніх вантах (видно з-за штурвала напрям вимпельного вітру)
     for (const sx of [-1, 1]) {
@@ -323,6 +450,51 @@ export class HelmInstruments {
       );
       pivot.add(ribbon);
       this.telltales.push({ pivot, ribbon, phase: sx * 1.7 });
+    }
+
+    // чашковий анемометр + флюгер на кронштейні щогли (над гіком): крутиться з вітром
+    {
+      const steelA = k.mat(0xc9ced3, 0.25, 0.9);
+      const blackA = k.mat(0x1c2126, 0.5, 0.3);
+      // над гіком (≈1.3 м), збоку щогли — від штурвала видно, як крутяться чашки
+      this.anemo.position.set(0.66, HOUSE.top + 2.95, RIG.mastZ + 0.1);
+      this.group.add(this.anemo);
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.42), steelA);
+      arm.rotation.z = Math.PI / 2;
+      arm.position.x = -0.21;
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.32), steelA);
+      post.position.y = 0.16;
+      this.anemo.add(arm, post);
+      // чашки — на хрестовині, що крутиться
+      this.anemoCups.position.y = 0.2;
+      this.anemo.add(this.anemoCups);
+      for (let i = 0; i < 3; i++) {
+        const a = (i / 3) * Math.PI * 2;
+        const spoke = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.15), steelA);
+        spoke.rotation.set(0, -a, Math.PI / 2);
+        spoke.position.set(Math.cos(a) * 0.075, 0, Math.sin(a) * 0.075);
+        // відкритий бік чашки — по дотичній (ловить вітер з одного боку)
+        const cupWrap = new THREE.Group();
+        cupWrap.position.set(Math.cos(a) * 0.15, 0, Math.sin(a) * 0.15);
+        cupWrap.rotation.y = -a;
+        const cm = new THREE.Mesh(new THREE.SphereGeometry(0.042, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), blackA);
+        cm.rotation.x = Math.PI / 2;
+        cupWrap.add(cm);
+        this.anemoCups.add(spoke, cupWrap);
+      }
+      this.anemoCups.add(new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.04, 10), steelA));
+      // флюгер вище: стрілка дивиться туди, звідки дме вимпельний вітер
+      this.anemoVane.position.y = 0.32;
+      this.anemo.add(this.anemoVane);
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.36), steelA);
+      shaft.rotation.x = Math.PI / 2;
+      const tipV = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.08, 8), k.mat(0xd0342c, 0.5, 0.1));
+      tipV.rotation.x = Math.PI / 2;
+      tipV.position.z = 0.2;
+      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.09, 0.12), k.mat(0xf2c12e, 0.5, 0.1));
+      fin.position.z = -0.17;
+      this.anemoVane.add(shaft, tipV, fin, new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.05, 8), steelA));
+      this.anemo.scale.setScalar(1.6);
     }
 
     // ── 1: латунний барометр у крайньому правому гнізді пульта ──
@@ -431,7 +603,7 @@ export class HelmInstruments {
         g.font = `800 22px ${FONT}`;
         g.textAlign = 'center';
         g.textBaseline = 'middle';
-        g.fillText('АВТОПІЛОТ', 64, 21);
+        g.fillText(L('АВТОПІЛОТ', `AUTOPILOT`), 64, 21);
       }), toneMapped: false }),
     );
     apScreen.position.set(0, 0.025, -0.026);
@@ -455,13 +627,32 @@ export class HelmInstruments {
     };
     // стара цифрова «компасна» шкала — замінена бінаклем і барометром
     show('compass', false);
-    // 0: пульта ще немає — компас стоїть просто на тумбі
+    // 0: пульта ще немає — великий компас стоїть просто на тумбі,
+    //    лаг і вітромір — на ногах поручня
     show('pod', f.gauges);
-    if (f.gauges) this.binnacle.position.copy(this.binTop);
-    else this.binnacle.position.set(0, DECK_Y + 1.02, -3.0);
+    if (f.gauges) {
+      this.binnacle.position.copy(this.binTop);
+      this.binnacle.scale.setScalar(1);
+    } else {
+      this.binnacle.position.set(0, DECK_Y + 1.02, -3.0);
+      this.binnacle.scale.setScalar(1.45);
+    }
     show('rpm', f.gauges);
     show('fuel', f.gauges);
-    show('speed', f.gauges);
+    show('speed', true);
+    const sd = this.parts.speed?.[0];
+    if (sd) {
+      this.speedHome ??= { p: sd.position.clone(), q: sd.quaternion.clone() };
+      if (f.gauges) {
+        sd.position.copy(this.speedHome.p);
+        sd.quaternion.copy(this.speedHome.q);
+      } else {
+        sd.position.set(-0.3, DECK_Y + 1.0, -2.95);
+        sd.quaternion.copy(FACE_Q);
+      }
+    }
+    this.postBases.visible = !f.gauges;
+    this.windDial.visible = !f.gauges;
     show('mfd', f.depth);
     this.baro.visible = f.gauges;
     this.arch.visible = f.gps;
@@ -491,6 +682,24 @@ export class HelmInstruments {
       // нахил від вертикалі до горизонталі вздовж вітру
       tt.ribbon.rotation.x = -(0.15 + k * 1.3) + flap;
     }
+    // вітромір (0) і анемометр із флюгером (завжди): згладжений вимпельний вітер
+    const awaSigned = (f.fromStarboard ? 1 : -1) * f.awa;
+    this.windAwa += (awaSigned - this.windAwa) * Math.min(1, dt * 3);
+    this.windAws += (f.aws - this.windAws) * Math.min(1, dt * 2);
+    if (this.windDial.visible) {
+      // верх шкали — ніс; правий борт — праворуч від стерновика (локальний +x)
+      this.windNeedle.rotation.z = -(this.windAwa * Math.PI) / 180;
+      this.windSpeedNeedle.rotation.z = Math.PI * 0.4 - Math.min(1, this.windAws / 25) * Math.PI * 0.8;
+    }
+    this.anemoCups.rotation.y -= dt * (0.4 + this.windAws * 1.5);
+    {
+      // звідки дме: ніс — +Z, правий борт — −X
+      const ar = (this.windAwa * Math.PI) / 180;
+      this.anemoVane.rotation.y = Math.atan2(-Math.sin(ar), Math.cos(ar));
+    }
+    // уночі — червона лампа бінакля
+    this.binLampMat.opacity = f.night ? 0.9 : 0;
+    this.cardMat.color.setRGB(1, f.night ? 0.62 : 1, f.night ? 0.55 : 1);
     // барометр: стрілка — тиск; латунна «встановлювана» — повільно доганяє (видно тренд)
     this.baroHpa += (f.hpa - this.baroHpa) * Math.min(1, dt * 0.5);
     this.baroRef += (this.baroHpa - this.baroRef) * Math.min(1, dt / 50);
@@ -653,7 +862,7 @@ export class HelmInstruments {
     g.textBaseline = 'middle';
     g.fillStyle = '#e9f6ff';
     g.textAlign = 'left';
-    g.fillText(`SOG ${kn.toFixed(1)} вуз`, 10, 18);
+    g.fillText(L(`SOG ${kn.toFixed(1)} вуз`, `SOG ${kn.toFixed(1)} kn`), 10, 18);
     g.textAlign = 'right';
     g.fillText(`COG ${String(Math.round(cog) % 360).padStart(3, '0')}°`, W - 10, 18);
     g.textAlign = 'left';
@@ -663,15 +872,15 @@ export class HelmInstruments {
       const b = bearingDeg(f.x, f.z, r[0].x, r[0].z);
       const eta = f.speed > 0.4 ? Math.round(d / f.speed / 60) : null;
       g.fillStyle = '#ff9eea';
-      g.fillText(`→ №1 ${String(Math.round(b) % 360).padStart(3, '0')}° · ${fmtDist(d)}${eta != null ? ` · ${eta < 1 ? '<1' : eta} хв` : ''}`, 10, H - 17);
+      g.fillText(`→ №1 ${String(Math.round(b) % 360).padStart(3, '0')}° · ${fmtDist(d)}${eta != null ? L(` · ${eta < 1 ? '<1' : eta} хв`, ` · ${eta < 1 ? '<1' : eta} min`) : ''}`, 10, H - 17);
     } else {
       g.fillStyle = '#8fb0c4';
-      g.fillText('маршруту немає — постав точки на карті (M)', 10, H - 17);
+      g.fillText(L('маршруту немає — постав точки на карті (M)', `no route — set waypoints on the chart (M)`), 10, H - 17);
     }
     if (f.autopilot) {
       g.textAlign = 'right';
       g.fillStyle = '#48e07a';
-      g.fillText('АВТО', W - 10, H - 17);
+      g.fillText(L('АВТО', `AUTO`), W - 10, H - 17);
     }
     // рамка-світіння
     g.strokeStyle = '#0e1e2a';
@@ -736,17 +945,17 @@ export class HelmInstruments {
     g.textBaseline = 'middle';
     g.textAlign = 'left';
     g.fillStyle = d < 4.5 ? '#ff5a4a' : '#eaf6ff';
-    g.fillText(d > 240 ? '>250 м' : `${d.toFixed(d < 10 ? 1 : 0).replace('.', ',')} м`, 8, 21);
+    g.fillText(d > 240 ? L('>250 м', `>250 m`) : L(`${d.toFixed(d < 10 ? 1 : 0).replace('.', L(',', '.'))} м`, `${d.toFixed(d < 10 ? 1 : 0).replace('.', L(',', '.'))} m`), 8, 21);
     g.font = `700 14px ${FONT}`;
     g.textAlign = 'right';
-    const lvl = f.fish > 0.62 ? ['густо', '#48e07a'] : f.fish > 0.32 ? ['помірно', '#ffd34d'] : ['рідко', '#8fb0c4'];
+    const lvl = f.fish > 0.62 ? [L('густо', `dense`), '#48e07a'] : f.fish > 0.32 ? [L('помірно', `moderate`), '#ffd34d'] : [L('рідко', `sparse`), '#8fb0c4'];
     g.fillStyle = lvl[1];
-    g.fillText(`риба: ${lvl[0]}`, W - 8, 13);
+    g.fillText(L(`риба: ${lvl[0]}`, `fish: ${lvl[0]}`), W - 8, 13);
     g.fillStyle = '#8fb0c4';
     if (f.school) {
       const sd = Math.hypot(f.school.x - f.x, f.school.z - f.z);
-      g.fillText(sd < 60 ? `зграя: тут!` : `зграя ${compass8(bearingDeg(f.x, f.z, f.school.x, f.school.z))} · ${fmtDist(sd)}`, W - 8, 30);
-    } else g.fillText('зграй поблизу немає', W - 8, 30);
+      g.fillText(sd < 60 ? L(`зграя: тут!`, `school: right here!`) : L(`зграя ${compass8(bearingDeg(f.x, f.z, f.school.x, f.school.z))} · ${fmtDist(sd)}`, `school ${compass8(bearingDeg(f.x, f.z, f.school.x, f.school.z))} · ${fmtDist(sd)}`), W - 8, 30);
+    } else g.fillText(L('зграй поблизу немає', `no schools nearby`), W - 8, 30);
     // шкала глибин
     g.fillStyle = 'rgba(234,246,255,0.55)';
     g.font = `600 11px ${FONT}`;
@@ -875,9 +1084,9 @@ export class HelmInstruments {
     g.font = `700 12px ${FONT}`;
     g.fillStyle = '#7dff9a';
     g.textAlign = 'left';
-    g.fillText('400 м', 6, 14);
+    g.fillText(L('400 м', `400 m`), 6, 14);
     g.textAlign = 'right';
-    g.fillText('курс ↑', W - 6, 14);
+    g.fillText(L('курс ↑', `heading ↑`), W - 6, 14);
     s.done(f.night);
   }
 }
@@ -927,13 +1136,13 @@ export function instrShelfModel(lvl: number, k: PartKit): THREE.Object3D {
       c.fillRect(0, 0, 256, 168);
       c.fillStyle = '#7a94a0';
       c.font = `600 16px ${FONT}`;
-      c.fillText('ГЛИБИНА', 14, 30);
+      c.fillText(L('ГЛИБИНА', `DEPTH`), 14, 30);
       c.fillStyle = '#e8f4f6';
       c.font = `800 54px ${FONT}`;
       c.fillText('12,4', 14, 92);
       c.fillStyle = '#37c6b5';
       c.font = `700 20px ${FONT}`;
-      c.fillText('м   вітер 7,2 м/с', 14, 140);
+      c.fillText(L('м   вітер 7,2 м/с', `m   wind 7.2 m/s`), 14, 140);
     });
     s.position.set(0, y, 0.026);
     g.add(s);

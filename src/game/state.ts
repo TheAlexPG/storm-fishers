@@ -1,6 +1,8 @@
 import { clamp, mulberry32 } from '../core/math';
 import { FISH, FISH_BY_ID, fishSellPrice, zoneFromDist } from './fish';
+import { isUk, L, plural } from '../core/i18n';
 import { avgKg, FishMarket, PortMarket, glutUnits, speciesGen, type MarketCtx, type MarketEvent, type MarketSave } from './market';
+import { Kitchen, type KitchenSave } from './cooking';
 import { BUYER_BY_ID, contractNeed, fitsContract, FishTrade, type BuyerId, type Contract, type TradeSave } from './buyers';
 import { PORT_SITES, PORT_SITE_BY_ID, type PortSite } from '../world/portSites';
 import { defaultUpgrades, eff, UPGRADES, MAX_LEVEL, upgradeCost, upgradeLock } from './upgrades';
@@ -66,6 +68,8 @@ export class GameState {
   market = new FishMarket();
   /** скупники риби: репутація, попит, замовлення (game/buyers.ts) */
   trade = new FishTrade();
+  /** камбуз: комора, рецепти, страви, бафи від їжі й чаю (game/cooking.ts) */
+  kitchen = new Kitchen();
   /** абсолютний ігровий час (день × 24 + година) — оновлює Game щокадру */
   clockH = 32;
   /** порт, де зараз послуги (біржа, пальне, верф): 'home' — «Шторм» (portSites.ts) */
@@ -110,7 +114,7 @@ export class GameState {
 
   /** назва порту послуг */
   get venueName(): string {
-    return PORT_SITE_BY_ID[this.portId]?.name ?? 'Шторм';
+    return PORT_SITE_BY_ID[this.portId]?.name ?? L('Шторм', `Storm Harbour`);
   }
 
   /** ціна пального тут, ₴/л */
@@ -165,14 +169,19 @@ export class GameState {
     return true;
   }
 
+  /** нижня межа корпусу: біля причалу (пришвартовано) яхта не тоне — див. Boat.update */
+  hullFloor = 0;
+
   damage(amount: number) {
-    this.hull = clamp(this.hull - amount, 0, this.maxHull);
+    if (this.hull <= this.hullFloor) return;
+    this.hull = clamp(this.hull - amount, this.hullFloor, this.maxHull);
   }
   repair(amount: number) {
     this.hull = clamp(this.hull + amount, 0, this.maxHull);
   }
 
   spendEnergy(e: number): boolean {
+    e *= this.kitchen.mul('energyCost'); // чай / юшка — зігрівся, працюєш легше
     if (this.energy < e) return false;
     this.energy = clamp(this.energy - e, 0, 100);
     return true;
@@ -368,12 +377,11 @@ export class GameState {
     const kg = got.reduce((a, [id, u]) => a + u * avgKg(id), 0);
     if (kg < 3) return null;
     const [top] = got[0];
-    const more = got.length > 1 ? ` і ще ${got.length - 1} ${got.length - 1 === 1 ? 'вид' : got.length - 1 < 5 ? 'види' : 'видів'}` : '';
     const drop = this.market.demand(top) < 0.97;
-    const verb = /[ая]$/.test(who) ? 'здала' : 'здав'; // «Чайка» здала, «Дельфін» здав
-    const text = `${verb} ${Math.round(kg)} кг риби — найбільше ${speciesGen(top)}${more}${drop ? ` · ціна на ${speciesGen(top)} падає` : ''}`;
+    // текст складається мовою читача (кооп-гість може мати іншу мову): «@u|кг|вид|ще видів|падає»
+    const text = `@u|${Math.round(kg)}|${top}|${got.length - 1}|${drop ? 1 : 0}`;
     this.market.pushNews({ h: this.clockH, who, text });
-    return text;
+    return newsText(text, who);
   }
 
   /** кооп: компактний знімок запасів усіх бірж + новини (від капітана кімнати) */
@@ -522,6 +530,7 @@ export class GameState {
       priceMult: this.priceMult,
       market: this.market.serialize(),
       trade: this.trade.serialize(),
+      kitchen: this.kitchen.save(),
       portMarkets: Object.fromEntries(Object.entries(this.portMarkets).map(([id, m]) => [id, { stock: m.serialize().stock, hist: m.hist }])),
       port: this.portId,
       stats: this.stats,
@@ -626,6 +635,7 @@ export class GameState {
     if (!this.market.hist[FISH[0].id]?.length) this.market.sample(this.priceMult);
     this.market.backfill(this.priceMult, this.priceWeek);
     this.trade.load(data.trade as Partial<TradeSave> | undefined);
+    this.kitchen.load(data.kitchen as Partial<KitchenSave> | undefined);
     const ok = (p: unknown): p is { x: number; z: number } => !!p && Number.isFinite((p as { x: number }).x) && Number.isFinite((p as { z: number }).z);
     this.route = [];
     if (Array.isArray(data.route)) this.route = data.route.filter(ok).slice(0, GameState.ROUTE_MAX).map((p) => ({ x: p.x, z: p.z }));
@@ -663,9 +673,9 @@ export class GameState {
 
   get priceTrendText(): string {
     const avg = Object.values(this.priceMult).reduce((a, b) => a + b, 0) / FISH.length;
-    if (avg > 1.05) return 'ціни високі';
-    if (avg < 0.95) return 'ціни низькі';
-    return 'ціни звичайні';
+    if (avg > 1.05) return L('ціни високі', `prices are high`);
+    if (avg < 0.95) return L('ціни низькі', `prices are low`);
+    return L('ціни звичайні', `prices are normal`);
   }
 
   speciesName(id: string): string {
@@ -685,4 +695,19 @@ function makePortMarket(home: FishMarket, site: PortSite): PortMarket {
     PORT_SCALE[site.size] ?? 1,
     (id) => (FISH_BY_ID[id]?.zones.includes(zone) ? 1.15 : 0.9),
   );
+}
+
+/** новина біржі мовою гравця (старі сейви — готовий український текст) */
+export function newsText(text: string, who: string): string {
+  if (!text.startsWith('@u|')) return text;
+  const [, kgS, top, moreS, dropS] = text.split('|');
+  const kg = Number(kgS) || 0, more = Number(moreS) || 0, drop = dropS === '1';
+  if (isUk()) {
+    const verb = /[ая]$/.test(who) ? 'здала' : 'здав'; // «Чайка» здала, «Дельфін» здав
+    const m = more > 0 ? ` і ще ${more} ${plural(more, ['вид', 'види', 'видів'], ['', ''])}` : '';
+    return `${verb} ${kg} кг риби — найбільше ${speciesGen(top)}${m}${drop ? ` · ціна на ${speciesGen(top)} падає` : ''}`;
+  }
+  const name = (FISH_BY_ID[top]?.name ?? top).toLowerCase();
+  const m = more > 0 ? ` and ${more} more species` : '';
+  return `unloaded ${kg} kg of fish — mostly ${name}${m}${drop ? ` · ${name} price is falling` : ''}`;
 }

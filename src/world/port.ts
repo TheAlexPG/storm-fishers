@@ -4,6 +4,7 @@ import { mulberry32 } from '../core/math';
 import type { RockObstacle } from './boat';
 import { Batch, T, boxGeo, cylGeo, gableBodyGeo, roofSlabGeo } from './portKit';
 import { GROUND_Y, addIslands, addSeaRocks, buildTerrain, buildTrees, terrainHeight, type TreeSpot } from './portTerrain';
+import { L } from '../core/i18n';
 import {
   beamTex,
   cobbleTex,
@@ -47,17 +48,17 @@ export interface PortPoint {
 export const PORT_POINTS: PortPoint[] = [
   // кожне місце — лише свої послуги: рибу продають на біржі, речі — у крамниці,
   // пальне — на заправці, корпус — на верфі, поліс — у конторі порту
-  { id: 'shop', x: -10, z: -44.5, label: 'Крамниця спорядження — каталог речей', name: 'Крамниця', icon: '🛠' },
-  { id: 'fuel', x: 8.5, z: -43, label: 'Заправка — пальне', name: 'Заправка', icon: '⛽' },
-  { id: 'repair', x: 14, z: -49.5, label: 'Верф — ремонт корпусу', name: 'Верф', icon: '🔧' },
-  { id: 'market', x: 34, z: -45.2, label: 'Рибна біржа — продати улов', name: 'Біржа', icon: '🐟' },
-  { id: 'office', x: 47, z: -47.6, label: 'Контора порту — страховка', name: 'Контора', icon: '🛡' },
-  { id: 'house', x: -2, z: -58.5, label: 'Хата (сон)', name: 'Хата', icon: '🏠' },
+  { id: 'shop', x: -10, z: -44.5, label: L('Крамниця спорядження — каталог речей', `Chandlery — item catalogue`), name: L('Крамниця', `Chandlery`), icon: '🛠' },
+  { id: 'fuel', x: 8.5, z: -43, label: L('Заправка — пальне', `Fuel dock — fuel`), name: L('Заправка', `Fuel dock`), icon: '⛽' },
+  { id: 'repair', x: 14, z: -49.5, label: L('Верф — ремонт корпусу', `Shipyard — hull repairs`), name: L('Верф', `Shipyard`), icon: '🔧' },
+  { id: 'market', x: 34, z: -45.2, label: L('Рибна біржа — продати улов', `Fish exchange — sell your catch`), name: L('Біржа', `Exchange`), icon: '🐟' },
+  { id: 'office', x: 47, z: -47.6, label: L('Контора порту — страховка', `Harbour office — insurance`), name: L('Контора', `Office`), icon: '🛡' },
+  { id: 'house', x: -2, z: -58.5, label: L('Хата (сон)', `Cottage (sleep)`), name: L('Хата', `Cottage`), icon: '🏠' },
   // скупники риби (game/buyers.ts, world/buyerStalls.ts): свої ціни, акції й замовлення
-  { id: 'tavern', x: -21, z: -46.1, label: 'Таверна «Ситий баклан» — дрібна свіжа риба, замовлення', name: 'Таверна', icon: '🍲' },
-  { id: 'smoke', x: 24.4, z: -46.1, label: 'Коптильня Гната — жирна риба оптом, замовлення', name: 'Коптильня', icon: '🔥' },
-  { id: 'chef', x: 29.6, z: -52.3, label: 'Ресторан «Маяк» — велика делікатесна риба, замовлення', name: 'Ресторан', icon: '🍽' },
-  { id: 'cannery', x: 55.2, z: -46.1, label: 'Консервний завод — будь-яка риба, без насичення', name: 'Завод', icon: '🥫' },
+  { id: 'tavern', x: -21, z: -46.1, label: L('Таверна «Ситий баклан» — дрібна свіжа риба, замовлення', `“Fat Cormorant” tavern — small fresh fish, orders`), name: L('Таверна', `Tavern`), icon: '🍲' },
+  { id: 'smoke', x: 24.4, z: -46.1, label: L('Коптильня Гната — жирна риба оптом, замовлення', `Hnat's Smokehouse — oily fish in bulk, orders`), name: L('Коптильня', `Smokehouse`), icon: '🔥' },
+  { id: 'chef', x: 29.6, z: -52.3, label: L('Ресторан «Маяк» — велика делікатесна риба, замовлення', `“Lighthouse” restaurant — big delicacy fish, orders`), name: L('Ресторан', `Restaurant`), icon: '🍽' },
+  { id: 'cannery', x: 55.2, z: -46.1, label: L('Консервний завод — будь-яка риба, без насичення', `Cannery — any fish, never saturates`), name: L('Завод', `Cannery`), icon: '🥫' },
 ];
 
 const DECK_Y = 1.1;
@@ -839,7 +840,7 @@ export class Port {
       this.bench(-16.2, G, -47.6, 0);
       this.planter(-6.2, -48.0);
     }
-    this.sign('СПОРЯДЖЕННЯ', -10.1, G + 3.95, -48.42, 3.4, '#1f4f7c');
+    this.sign(L('СПОРЯДЖЕННЯ', `CHANDLERY`), -10.1, G + 3.95, -48.42, 3.4, '#1f4f7c');
 
     // ── заправка: червоний кіоск + навіс з колонками ──
     this.house({
@@ -847,7 +848,7 @@ export class Port {
       wall: M.sidingRed, wallTile: 2, roof: M.metalGrey, trim: true, door: 1.3, doorMat: M.whitePaint,
       front: [-1.0], back: [0], shutter: null, lit: 1,
     });
-    this.sign('ПАЛЬНЕ', 5.4, G + 3.15, -45.92, 2.2, '#8a2020');
+    this.sign(L('ПАЛЬНЕ', `FUEL`), 5.4, G + 3.15, -45.92, 2.2, '#8a2020');
     // навіс
     for (const [px, pz] of [[7.2, -42.6], [11.2, -42.6], [7.2, -45.4], [11.2, -45.4]]) {
       this.cy(M.whitePaint, 0.1, 0.1, 3.4, px, G + 1.7, pz, 8);
@@ -880,7 +881,7 @@ export class Port {
     this.bx(M.trim, 3.6, 3.3, 0.08, 14, G + 0.35 + 1.6, -50.96);
     this.bx(M.iron, 3.2, 3.0, 0.1, 14, G + 0.35 + 1.5, -50.92, 0, 1, 1);
     for (let i = 0; i < 10; i++) this.bx(M.metalGrey, 3.15, 0.04, 0.03, 14, G + 0.55 + i * 0.3, -50.86, 0, 1, 1);
-    this.sign('ВЕРФ', 14, G + 0.35 + 3.45, -50.88, 3.6, '#3a4048');
+    this.sign(L('ВЕРФ', `SHIPYARD`), 14, G + 0.35 + 3.45, -50.88, 3.6, '#3a4048');
     {
       const lp = new THREE.Vector3(16.6, G + 3.4, -50.6);
       this.bx(M.iron, 0.5, 0.08, 0.4, lp.x, lp.y + 0.08, lp.z);
@@ -905,7 +906,7 @@ export class Port {
       front: [-1.75, 1.75], back: [0], sideWin: true, shutter: M.shutterBlue, chimney: [1.6, -1.0], lit: 1,
     });
     if (hut.chimney) this.smokeOrigin.copy(hut.chimney);
-    this.sign('ХАТА', -2, G + 0.35 + 2.75, -59.32, 1.6, '#3f5e3a');
+    this.sign(L('ХАТА', `COTTAGE`), -2, G + 0.35 + 2.75, -59.32, 1.6, '#3f5e3a');
     // паркан-штахетник із хвірткою
     this.picketFence(-5.8, -56.6, -2.9, -56.6);
     this.picketFence(-1.1, -56.6, 1.8, -56.6);
@@ -1124,10 +1125,10 @@ export class Port {
       const X = 34, Z = -48.5;
       for (const sx of [-3.6, 0, 3.6]) for (const sz of [-2.1, 2.1]) this.cy(M.woodDark, 0.12, 0.14, 3.3, X + sx, G + 1.65, Z + sz, 8);
       const a = Math.atan2(1.4, 2.5);
-      const L = Math.hypot(2.5, 1.4) + 0.5;
-      const slab = roofSlabGeo(L, 0.14, 8.6, 2).rotateY(-Math.PI / 2);
+      const Ln = Math.hypot(2.5, 1.4) + 0.5;
+      const slab = roofSlabGeo(Ln, 0.14, 8.6, 2).rotateY(-Math.PI / 2);
       for (const s of [1, -1]) {
-        this.add(slab, M.roofRed, T(X, G + 3.3 + 1.4 - Math.sin(a) * L / 2 + 0.1, Z + s * Math.cos(a) * L / 2, 0, s * a));
+        this.add(slab, M.roofRed, T(X, G + 3.3 + 1.4 - Math.sin(a) * Ln / 2 + 0.1, Z + s * Math.cos(a) * Ln / 2, 0, s * a));
       }
       this.bx(M.roofRed, 8.6, 0.16, 0.3, X, G + 4.78, Z);
       this.bx(M.woodDark, 7.6, 0.2, 0.2, X, G + 3.3, Z + 2.1);
@@ -1137,7 +1138,7 @@ export class Port {
         for (const dx of [-0.85, 0.85]) this.bx(M.woodDark, 0.08, 0.9, 0.9, X + sx - 0.5 + dx, G + 0.45, Z + 0.6);
         this.fishBoxes(X + sx - 0.9, G + 0.94, Z + 0.6, 0);
       }
-      this.sign('РИБНА БІРЖА', X, G + 3.0, Z + 2.25, 3.2, '#2a5a6e');
+      this.sign(L('РИБНА БІРЖА', `FISH EXCHANGE`), X, G + 3.0, Z + 2.25, 3.2, '#2a5a6e');
       const lp = new THREE.Vector3(X, G + 3.1, Z);
       this.bx(M.lampGlass, 0.3, 0.3, 0.3, lp.x, lp.y, lp.z, 0, 1, 1, false);
       this.glow(lp.x, lp.y, lp.z, 2.4);
@@ -1149,7 +1150,7 @@ export class Port {
       x: 47, z: -52, w: 7, d: 6, h: 5.2, rh: 2.2, wall: M.sidingBlue, wallTile: 2, roof: M.roofDark,
       trim: true, door: 0, doorMat: M.whitePaint, front: [-2.2, 0, 2.2], back: [-2, 2], sideWin: true, chimney: [2.2, -1.4],
     });
-    this.sign('КОНТОРА ПОРТУ', 47, G + 0.35 + 3.0, -48.92, 3.4, '#1f3f5c');
+    this.sign(L('КОНТОРА ПОРТУ', `HARBOUR OFFICE`), 47, G + 0.35 + 3.0, -48.92, 3.4, '#1f3f5c');
     this.flagpole(24.5, -45.3);
 
     // ліхтарі набережної і вулиць

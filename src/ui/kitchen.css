@@ -1,0 +1,152 @@
+/* ── камбуз: міні-гра (HUD), книга рецептів, лавки ── */
+
+#kitchen-mg {
+  position: fixed; left: 50%; bottom: 120px; transform: translateX(-50%);
+  width: 440px; z-index: 12; display: none; pointer-events: none;
+  font-family: var(--font, Manrope, sans-serif); color: #fff;
+}
+#kitchen-mg.show { display: block; animation: kmIn 0.25s ease; }
+@keyframes kmIn { from { opacity: 0; transform: translate(-50%, 10px); } }
+#kitchen-mg .km-title {
+  text-align: center; font-family: var(--font-display, Unbounded, sans-serif); font-weight: 600; font-size: 16px;
+  margin-bottom: 8px; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.55);
+}
+#kitchen-mg canvas {
+  width: 420px; height: 100px; display: block; margin: 0 auto;
+  background: rgba(12, 24, 34, 0.46); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  border-radius: 18px; box-shadow: 0 8px 26px rgba(0, 0, 0, 0.25);
+}
+#kitchen-mg .km-msg {
+  height: 22px; margin-top: 6px; text-align: center; font-weight: 800; font-size: 14px; color: #ffd36b;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6); opacity: 0; transition: opacity 0.2s;
+}
+#kitchen-mg .km-msg.on { opacity: 1; }
+#kitchen-mg .km-hint {
+  margin: 2px auto 0; max-width: 430px; text-align: center; font-size: 12.5px; font-weight: 700; line-height: 1.4;
+  color: rgba(255, 255, 255, 0.92); text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+}
+
+/* бафи від їжі й чаю — кружечки під трюмом */
+#buff-chips { position: fixed; right: 16px; top: 288px; z-index: 11; display: flex; gap: 6px; pointer-events: auto; }
+#buff-chips .bf {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 44px; height: 44px; border-radius: 14px; overflow: hidden;
+  background: rgba(250, 246, 238, 0.9); box-shadow: 0 4px 14px rgba(20, 30, 40, 0.2); font-family: var(--font, Manrope, sans-serif);
+}
+#buff-chips .bf i { font-style: normal; font-size: 18px; line-height: 1; }
+#buff-chips .bf b { font-size: 10px; color: #22303b; }
+#buff-chips .bf em { position: absolute; left: 0; bottom: 0; height: 3px; background: #24878c; }
+
+/* книга рецептів: розворот на дерев'яному столі */
+#kitchen-panel .kp { width: min(1040px, 96vw); max-height: 92vh; display: flex; }
+.kb {
+  width: 100%; display: flex; flex-direction: column; color: #3a2a1c;
+  background: #6b4426 radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.06), transparent 50%);
+  border-radius: 22px; padding: 14px 16px 12px; box-shadow: 0 24px 80px rgba(10, 20, 30, 0.45), inset 0 0 0 3px #4a2e18;
+  font-family: var(--font, Manrope, sans-serif);
+}
+.kb-tabs { display: flex; gap: 6px; align-items: center; margin-bottom: 10px; }
+.kb-tab {
+  border: 0; cursor: pointer; padding: 7px 14px; border-radius: 12px 12px 4px 4px; font: 800 13px var(--font, Manrope, sans-serif);
+  background: #e9dcc0; color: #6b4426; opacity: 0.75; transition: all 0.15s;
+}
+.kb-tab.on { opacity: 1; background: #fbf4e2; transform: translateY(2px); box-shadow: 0 -2px 0 #c9862e inset; }
+.kb-shop-title { color: #fbf4e2; font-family: var(--font-display, Unbounded, sans-serif); font-weight: 600; font-size: 16px; }
+.kb-x { margin-left: auto; border: 0; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; background: rgba(255, 255, 255, 0.15); color: #fbf4e2; font-size: 15px; }
+.kb-x:hover { background: rgba(226, 103, 74, 0.6); }
+.kb-spread { display: grid; grid-template-columns: 1fr 14px 1fr; min-height: 0; flex: 1; perspective: 1600px; }
+.kb-page {
+  background: #fbf4e2; padding: 20px 24px; overflow-y: auto; max-height: calc(92vh - 130px); min-height: 440px;
+  background-image: repeating-linear-gradient(transparent 0 27px, rgba(36, 135, 140, 0.08) 27px 28px);
+}
+.kb-page.left { border-radius: 14px 4px 4px 14px; box-shadow: inset -18px 0 24px -16px rgba(80, 50, 20, 0.35); }
+.kb-page.right { border-radius: 4px 14px 14px 4px; box-shadow: inset 18px 0 24px -16px rgba(80, 50, 20, 0.35); transform-origin: left center; animation: kbFlip0 0.45s ease; }
+.kb-page.right.flip-1 { animation-name: kbFlip1; }
+@keyframes kbFlip0 { from { transform: rotateY(-70deg); opacity: 0.2; } }
+@keyframes kbFlip1 { from { transform: rotateY(-70deg); opacity: 0.2; } }
+.kb-gutter { background: linear-gradient(90deg, #d8c79f, #f3e8cc 45%, #d8c79f); }
+.kb-h { font-family: Georgia, 'Times New Roman', serif; font-size: 24px; margin: 0 0 12px; color: #8e2f25; letter-spacing: 0.5px; }
+.kb-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.kb-list li {
+  display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 10px; cursor: pointer;
+  font-family: Georgia, serif; font-size: 16px; border-bottom: 1px dashed rgba(107, 68, 38, 0.2);
+}
+.kb-list li span { font-size: 20px; width: 26px; text-align: center; }
+.kb-list li em { margin-left: auto; font-style: normal; color: #24878c; font-weight: 800; }
+.kb-list li.unk { color: rgba(58, 42, 28, 0.45); }
+.kb-list li:hover { background: rgba(201, 134, 46, 0.12); }
+.kb-list li.sel { background: rgba(201, 134, 46, 0.24); }
+.kb-dish { display: flex; align-items: center; gap: 14px; }
+.kb-big { font-size: 54px; line-height: 1; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.15)); }
+.kb-dish h3, .kb-unknown h3, .kb-page h3 { font-family: Georgia, serif; font-size: 22px; margin: 6px 0; color: #3a2a1c; }
+.kb-prem { font: 800 10px var(--font, Manrope, sans-serif); text-transform: uppercase; letter-spacing: 1px; color: #8a5a17; background: rgba(227, 163, 58, 0.25); padding: 2px 7px; border-radius: 6px; vertical-align: middle; }
+.kb-blurb { font-family: Georgia, serif; font-style: italic; font-size: 14.5px; line-height: 1.55; color: #5a4430; }
+.kb-page h4 { margin: 14px 0 6px; font-size: 11px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: #8e2f25; }
+.kb-ing { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 14px; font-weight: 600; }
+.kb-ing li.ok::before { content: '✓ '; color: #24878c; font-weight: 800; }
+.kb-ing li.no { color: #b04a35; }
+.kb-ing li.no::before { content: '✗ '; font-weight: 800; }
+.kb-ing small { color: rgba(58, 42, 28, 0.55); }
+.kb-steps { font-weight: 700; color: #6b4426; }
+.kb-buff { display: inline-block; margin: 3px 4px 0 0; padding: 3px 8px; border-radius: 8px; background: rgba(36, 135, 140, 0.12); color: #1d6f73; font-size: 12px; font-weight: 800; }
+.kb-cook { margin-top: 16px; width: 100%; }
+.kb-unknown { text-align: center; padding-top: 60px; }
+.kb-note { color: rgba(58, 42, 28, 0.65); font-size: 13.5px; font-weight: 600; }
+.kb-pantry { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.kb-pantry li { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: rgba(255, 255, 255, 0.6); font-weight: 700; font-size: 13.5px; }
+.kb-pantry li span { font-size: 20px; }
+.kb-pantry li b { margin-left: auto; font-family: var(--font-display, Unbounded, sans-serif); color: #8e2f25; }
+.kb-dishes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.kb-dishes li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 12px; background: rgba(255, 255, 255, 0.65); }
+.kb-dishes li span { font-size: 28px; }
+.kb-dishes li div { display: flex; flex-direction: column; flex: 1; }
+.kb-dishes li small { color: #8a5a17; font-weight: 700; }
+.kb-dishes li .btn { margin-left: auto; }
+.kb-bufflist { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; font-size: 14px; line-height: 1.45; }
+.kb-exp { margin-top: 16px; padding: 12px; border-radius: 12px; background: rgba(36, 135, 140, 0.08); border: 1.5px dashed rgba(36, 135, 140, 0.35); }
+.kb-exp h4 { margin-top: 0; }
+.kb-exp p { margin: 0 0 8px; font-size: 12.5px; font-weight: 600; color: #5a4430; }
+.kb-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.kb-chips label { display: flex; align-items: center; gap: 3px; padding: 4px 8px; border-radius: 10px; background: #fff; font-size: 18px; cursor: pointer; }
+.kb-chips label.off { opacity: 0.35; cursor: default; }
+.kb-chips input { accent-color: #24878c; }
+.kb-foot { margin-top: 10px; text-align: center; font-size: 12px; font-weight: 600; color: rgba(251, 244, 226, 0.8); }
+
+/* лавки: комора, рецепти, продаж страв */
+.kshop-strip {
+  flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 10px 0 0;
+  padding: 8px 10px 8px 16px; border-radius: 14px; background: #fbf4e2; box-shadow: inset 0 0 0 1.5px rgba(201, 134, 46, 0.35);
+  font-size: 13.5px; font-weight: 600; color: #3a2a1c;
+}
+.kshop-strip b { color: #8e2f25; }
+#kitchen-panel.nested { z-index: 55; }
+.kshop { margin: 14px 0 6px; padding: 14px 16px; border-radius: 18px; background: #fbf4e2; box-shadow: inset 0 0 0 1.5px rgba(201, 134, 46, 0.35); color: #3a2a1c; }
+.kb.shopwin .kshop { margin: 0; }
+.ks-head { font-family: Georgia, serif; font-size: 18px; font-weight: 700; color: #8e2f25; margin-bottom: 10px; }
+.ks-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.ks-col h4 { margin: 0 0 8px; font-size: 11px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: #6b4426; }
+.ks-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+.ks-item {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; border-radius: 12px; border: 0; cursor: pointer;
+  background: #fff; box-shadow: 0 1px 0 rgba(34, 48, 59, 0.08); font-family: var(--font, Manrope, sans-serif); color: #3a2a1c;
+}
+.ks-item span { font-size: 22px; }
+.ks-item b { font-size: 12px; }
+.ks-item small { font-size: 10.5px; font-weight: 700; color: #8a5a17; }
+.ks-item:hover:not([disabled]), .ks-rec:hover:not([disabled]) { background: #fff3d6; }
+.ks-item[disabled], .ks-rec[disabled] { opacity: 0.45; cursor: default; }
+.ks-rec {
+  display: flex; align-items: center; gap: 6px; width: 100%; margin-bottom: 6px; padding: 9px 12px; border-radius: 12px; border: 0; cursor: pointer;
+  background: #fff; font: 700 13.5px var(--font, Manrope, sans-serif); color: #3a2a1c; text-align: left;
+}
+.ks-rec b { margin-left: auto; color: #8a5a17; }
+.ks-rec.known { background: transparent; box-shadow: inset 0 0 0 1px rgba(36, 135, 140, 0.25); cursor: default; }
+.ks-rec small { margin-left: auto; color: #1d6f73; font-weight: 800; }
+
+@media (max-width: 760px) {
+  .kb-spread { grid-template-columns: 1fr; }
+  .kb-gutter { display: none; }
+  .kb-page { min-height: 0; max-height: none; }
+  #kitchen-mg { width: 92vw; }
+  #kitchen-mg canvas { width: 92vw; height: auto; }
+}
