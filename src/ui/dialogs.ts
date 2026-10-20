@@ -59,6 +59,16 @@ export interface HatsPause {
   onPick: (id: string) => void;
 }
 
+/** вибір, скільки тенту стоїть на яхті (0 — знято повністю) */
+const TENT_FIT: Array<[string, string]> = [
+  ['☀️', 'Знято — відкритий кокпіт'],
+  ['⛺', 'Лише козирок'],
+  ['⛱', 'Козирок + біміні'],
+  ['🪟', '+ штори'],
+  ['🛋', '+ подушки й гірлянда'],
+  ['⛈', 'Штормовий (усе)'],
+];
+
 export class Dialogs {
   private overlay: HTMLElement;
   private panel: HTMLElement;
@@ -283,7 +293,7 @@ export class Dialogs {
 
   // ── ПАУЗА ──
 
-  pause(opts: { onResume: () => void; onReset: () => void; onBeforeExport?: () => void; settings: Settings; onSettings: (s: Settings) => void; playTime: number; places?: Array<{ name: string; found: boolean }>; coop?: CoopPause; hats?: HatsPause; game?: GameState }) {
+  pause(opts: { onResume: () => void; onReset: () => void; onBeforeExport?: () => void; settings: Settings; onSettings: (s: Settings) => void; playTime: number; places?: Array<{ name: string; found: boolean }>; coop?: CoopPause; hats?: HatsPause; tent?: { owned: number; fit: number; onPick: (l: number) => void }; game?: GameState }) {
     this.escAllowed = false;
     this.show(`
       <h1>Пауза</h1>
@@ -310,6 +320,10 @@ export class Dialogs {
       <h2>Місця · ${opts.places.filter((p) => p.found).length}/${opts.places.length}</h2>
       <div class="places">${opts.places.map((p) => `<span class="place${p.found ? ' found' : ''}">${p.found ? esc(p.name) : '???'}</span>`).join('')}</div>` : ''}
       ${opts.game ? `<h2>Замовлення · ${opts.game.trade.active.length}/3</h2>${ordersHtml(opts.game)}` : ''}
+      ${opts.tent && opts.tent.owned > 0 ? `
+      <h2>Тент на яхті</h2>
+      <p class="sub">Знімай частину або весь — куплене лишається, повернеш будь-коли. Скласти/розкласти на ходу — E біля лівого обруча біміні.</p>
+      <div class="hats">${TENT_FIT.slice(0, opts.tent.owned + 1).map((t, l) => `<button class="hat${l === opts.tent!.fit ? ' on' : ''}" data-tent="${l}"><span class="hat-ico">${t[0]}</span><span class="hat-name">${t[1]}</span></button>`).join('')}</div>` : ''}
       ${opts.hats ? `
       <h2>Капелюхи · ${opts.hats.list.filter((h) => h.owned).length}/${opts.hats.list.length}</h2>
       <p class="sub">Знахідки з островів — зійди на берег і шукай, що блищить. Вибраний капелюх видно з-за корми й друзям.</p>
@@ -356,6 +370,16 @@ export class Dialogs {
       this.panel.querySelector('[data-act="leave"]')!.addEventListener('click', () => {
         this.close();
         c.onLeave();
+      });
+    }
+    if (opts.tent) {
+      const tn = opts.tent;
+      this.panel.querySelectorAll<HTMLButtonElement>('[data-tent]').forEach((b) => {
+        b.addEventListener('click', () => {
+          tn.onPick(Number(b.dataset.tent));
+          this.panel.querySelectorAll('[data-tent]').forEach((o) => o.classList.toggle('on', o === b));
+          this.audio.click();
+        });
       });
     }
     if (opts.hats) {

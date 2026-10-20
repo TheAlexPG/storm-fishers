@@ -530,6 +530,7 @@ class Game {
       this.coop.sendEvent('stall');
     };
     this.boat.onSunk = () => this.handleSunk();
+    this.boat.onDockPump = () => this.hud.toast('⚓ У порту воду з трюму відкачують з причалу — пришвартована яхта не потоне (на якорі — може!)', 'good', 3500);
     this.player.onStep = (surf, run) => this.audio.step(surf, run);
 
     // звук стартує з першого жесту (політика автоплею) — музика грає вже в заставці
@@ -777,6 +778,13 @@ class Game {
       case 'door':
         this.boat.doorOpen = act.v === 1;
         break;
+      case 'tent':
+        this.game.tentFolded = act.v === 1;
+        if (act.v === 1) this.game.tentClosed = false;
+        break;
+      case 'curtain':
+        this.game.tentClosed = act.v === 1 && !this.game.tentFolded;
+        break;
       case 'anchor':
         this.anchorResult(this.boat.anchor.toggle(this.boat), nick);
         break;
@@ -805,6 +813,10 @@ class Game {
         if (id in g.upgrades && g.upgrades[id] < 5) {
           g.upgrades[id]++;
           if (id === 'hull') g.hull = Math.min(g.maxHull, g.hull + 40);
+          if (id === 'tent') {
+            g.tentFit = null;
+            g.tentFolded = false;
+          }
           this.syncUpgrades();
           this.hud.toast(`🛠 ${nick}: нова прокачка човна`, 'good');
         }
@@ -916,7 +928,7 @@ class Game {
   }
 
   private syncUpgrades() {
-    this.boat.applyUpgrades(this.game.upgrades, this.time.daylight);
+    this.boat.applyUpgrades(this.game.fittedUpgrades(), this.time.daylight);
     this.fishing.setOwned(this.game.upgrades.holders ?? 0);
     this.hl.invalidate();
   }
@@ -979,6 +991,9 @@ class Game {
       } else if (id === 'st:anchor') {
         key = id;
         objs = near(key, 0, Y_DECK + 0.12, 4.1, 0.35, 0.5);
+      } else if (id === 'st:tent' || id === 'st:curtain') {
+        key = id + this.boat.tentLevel;
+        objs = id === 'st:tent' ? this.boat.canvas.foldObjects : this.boat.canvas.curtainObjects;
       } else if (id === 'st:door') {
         key = id;
         objs = [this.cabinDoor.group];
@@ -1182,6 +1197,18 @@ class Game {
             },
           }
         : undefined,
+      tent: this.coop.crewing
+        ? undefined
+        : {
+            owned: this.game.upgrades.tent ?? 0,
+            fit: this.game.fittedUpgrades().tent,
+            onPick: (l) => {
+              const owned = this.game.upgrades.tent ?? 0;
+              this.game.tentFit = l >= owned ? null : l;
+              this.syncUpgrades();
+              this.saveGame();
+            },
+          },
       hats: {
         list: HATS.map((h) => ({ id: h.id, name: h.name, icon: h.icon, owned: this.hatOwned(h.id), hint: h.hint })),
         current: this.game.hat,
@@ -1979,6 +2006,11 @@ class Game {
       return;
     }
 
+    if (id === 'st:tent' || id === 'st:curtain') {
+      this.tentToggle(id === 'st:tent' ? 'tent' : 'curtain');
+      return;
+    }
+
     if (id === 'st:door') {
       this.boat.doorOpen = !this.boat.doorOpen;
       if (this.coop.crewing) this.coop.sendAction({ a: 'door', v: this.boat.doorOpen ? 1 : 0 });
@@ -2181,8 +2213,13 @@ class Game {
     // каюта: тепле світло вночі та у шторм
     this.boat.setInteriorLight(time.daylight, this.weather.intensity);
 
-    // апгрейди-світло
-    this.boat.applyUpgrades(g.upgrades, time.daylight);
+    // апгрейди-світло (тент — як встановлено: його можна зняти)
+    this.boat.applyUpgrades(g.fittedUpgrades(), time.daylight);
+    if (!this.coop.crewing) {
+      // тент: стан — у сейві власника; екіпаж бачить зі знімка
+      this.boat.tentFolded = g.tentFolded;
+      this.boat.tentClosed = g.tentClosed;
+    }
 
     // камера: від першої особи / з-за корми (V за штурвалом) / обліт у заставці
     const head = this.player.head;
@@ -2723,6 +2760,34 @@ class Game {
         'warn', 4200,
       );
     }
+  }
+
+  /** тент: скласти/розкласти або опустити/скрутити штори (екіпаж — через власника) */
+  private tentToggle(what: 'tent' | 'curtain') {
+    const b = this.boat;
+    this.audio.thump(0.3);
+    if (what === 'tent') {
+      const fold = !b.tentFolded;
+      if (this.coop.crewing) {
+        this.coop.sendAction({ a: 'tent', v: fold ? 1 : 0 });
+        b.tentFolded = fold;
+      } else {
+        this.game.tentFolded = fold;
+        if (fold) this.game.tentClosed = false;
+        this.saveGame();
+      }
+      this.hud.toast(fold ? '⛺ Тент складено — над кокпітом лише небо й паруси' : '⛺ Тент розкладено', 'good', 2000);
+      return;
+    }
+    const close = !b.tentClosed;
+    if (this.coop.crewing) {
+      this.coop.sendAction({ a: 'curtain', v: close ? 1 : 0 });
+      b.tentClosed = close;
+    } else {
+      this.game.tentClosed = close;
+      this.saveGame();
+    }
+    this.hud.toast(close ? '⛺ Штори опущено — кокпіт закрито від хвиль і дощу' : '⛺ Штори скручено — видно все навколо', 'good', 2000);
   }
 
   /** ключ запалювання (X за штурвалом); екіпаж просить власника яхти */

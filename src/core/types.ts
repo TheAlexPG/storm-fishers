@@ -41,7 +41,8 @@ export type UpgradeId =
   | 'holders'
   | 'sails'
   | 'nets'
-  | 'instr';
+  | 'instr'
+  | 'tent';
 
 export type UpgradeLevels = Record<UpgradeId, number>;
 
@@ -128,6 +129,10 @@ export interface SaveData {
   records?: Record<string, number>;
   /** яхта стоїть на якорі (точка на дні й витравлений ланцюг) */
   anchor?: { x: number; z: number; chain: number };
+  /** тент: встановлений рівень (≤ купленого; null — усе куплене), складений, штори опущені */
+  tentFit?: number | null;
+  tentFolded?: boolean;
+  tentClosed?: boolean;
 }
 
 export interface PlayerStats {

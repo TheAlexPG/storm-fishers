@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { clamp, damp } from '../core/math';
 import { Input } from '../core/input';
 import { Boat, BOAT, STATION_POS } from './boat';
-import { DECK_COLLIDERS, COCKPIT, STAIR, SALOON, SOLE_Y, HALF_LEN, deckLimitX, stairY, type Box2 } from './yachtLayout';
+import { DECK_COLLIDERS, COCKPIT, TENT, HOUSE, STAIR, SALOON, SOLE_Y, HALF_LEN, deckLimitX, stairY, type Box2 } from './yachtLayout';
 import { Port, PORT_POINTS, type Platform } from './port';
 import { Ocean } from '../core/ocean';
 import type { GameState } from '../game/state';
@@ -42,6 +42,9 @@ const LOOK_AT: Record<string, [number, number, number]> = {
   nets: [0.6, 1.0, -4.95],
   anchor: [0, 1.2, 4.12],
   autopilot: [-0.22, 1.95, -3.57],
+  // тент: лівий обруч біміні (скласти) і правий рулон штори
+  tent: [-1.02, 2.5, -2.95],
+  curtain: [1.06, 2.95, -3.5],
 };
 /** дрібні органи: вибираються лише точним поглядом (cos кута до точки LOOK_AT), щоб не перебивати сусідів */
 const LOOK_ONLY: Record<string, number> = { autopilot: 0.985 };
@@ -52,6 +55,15 @@ const STATION_REACH: Record<string, number> = { sails: 1.7, door: 2.4, nets: 2.4
 const DECK_COLLIDERS_SHUT: Box2[] = [...DECK_COLLIDERS, { x0: -STAIR.x, x1: STAIR.x, z0: STAIR.zTop - 0.07, z1: STAIR.zTop + 0.3 }];
 const BOTH_STATIONS = new Set(['door']);
 const PLAYER_R = 0.22; // радіус тіла для колізій
+
+/** чи точка палуби під тентом: біміні над штурвалом, опущені штори — весь кокпіт, козирок — біля трапа */
+function boatShelter(boat: Boat, x: number, z: number): boolean {
+  if (boat.tentFolded || boat.tentLevel < 1) return false;
+  const inCockpit = Math.abs(x) <= COCKPIT.x && z >= COCKPIT.z0 && z <= COCKPIT.z1;
+  if (boat.tentK > 0.5 && inCockpit) return true;
+  if (boat.tentLevel >= 2 && Math.abs(x) <= COCKPIT.x + 0.05 && z >= TENT.bz0 - 0.1 && z <= TENT.bz1) return true;
+  return Math.abs(x) <= 0.7 && z >= HOUSE.z0 - 0.45 && z <= HOUSE.z0;
+}
 
 /** рівень на яхті: палуба / трап компаньйона / салон у корпусі */
 export type DeckLevel = 'deck' | 'stairs' | 'below';
@@ -83,7 +95,7 @@ export class Player {
   private sternPush = 0;
   /** куди сходимо за борт: 0 — корма, ±1 — борт */
   private exitSide = 0;
-  /** під дахом: каюта або критий кокпіт (hardtop) — захист від негоди */
+  /** під дахом: каюта або кокпіт під тентом — захист від негоди */
   sheltered = false;
   /** найближча інтерактивна ціль */
   nearest: Interactable | null = null;
@@ -269,10 +281,8 @@ export class Player {
       this.syncHead(boat);
       // у салоні? (внизу або вже на трапі нижче рівня палуби)
       this.inCabin = this.level === 'below' || (this.level === 'stairs' && this.floorY < BOAT.deckY - 0.7);
-      // під дахом: салон, трап або кокпіт під hardtop — укриття в негоду
-      this.sheltered =
-        this.level !== 'deck' ||
-        (Math.abs(this.localX) <= COCKPIT.x && this.localZ >= COCKPIT.z0 && this.localZ <= COCKPIT.z1);
+      // під дахом: салон, трап або кокпіт під тентом (біміні / опущені штори) — укриття в негоду
+      this.sheltered = this.level !== 'deck' || boatShelter(boat, this.localX, this.localZ);
     } else if (this.mode === 'port') {
       const speed = running ? RUN : WALK;
       if (inF || inL) {
@@ -617,6 +627,8 @@ export class Player {
       case 'holder0': case 'holder1': case 'holder2': return this.stationText?.(id) ?? 'Стійка для вудки';
       case 'engine': return boat.engineOn ? 'Ремонт двигуна' : 'Запустити двигун!';
       case 'pump': return boat.bilge > 1 ? `Помпа — відкачати трюм (${Math.round(boat.bilge)}%)` : boat.deckWater > 5 ? 'Осушити палубу' : 'Помпа (сухо)';
+      case 'tent': return boat.tentFolded ? 'Тент — розкласти (козирок і біміні)' : 'Тент — скласти (відкрити небо й паруси)';
+      case 'curtain': return boat.tentClosed ? 'Штори тенту — скрутити (видно все навколо)' : 'Штори тенту — опустити (захист від хвиль і дощу)';
       case 'door': return boat.doorOpen ? 'Двері каюти — зачинити (у шторм вода ллється в салон)' : 'Двері каюти — відчинити';
       case 'nets': return this.stationText?.('nets') ?? 'Сітки';
       case 'anchor': return this.stationText?.('anchor') ?? 'Брашпиль — якір';
