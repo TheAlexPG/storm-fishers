@@ -435,14 +435,17 @@ export class KitchenUI {
     const k = this.h.game.kitchen;
     const pour = Math.max(0, 1 - m.spilled * 0.18) * (m.mug >= 0.75 && m.mug <= 0.97 ? 1 : 0.8);
     let q = Math.max(0, Math.min(1, m.tempScore * 0.35 + m.steepScore * 0.4 + pour * 0.25));
+    // ідеальний — саме заварювання (окріп, настій, не розлив), добавки не рахуються
+    const perfect = q >= 0.9;
     if (m.extras.length) q = Math.min(1, q + 0.06 * m.extras.length);
     this.h.game.addEnergy(10 + 22 * q);
     k.addBuff('warm', 180 + 360 * q);
     if (m.extras.includes('lemon')) k.addBuff('luck', 90 + 150 * q);
     if (m.extras.includes('herbs')) k.addBuff('hearty', 120 + 180 * q);
+    if (perfect) k.addBuff('fortune', 300);
     k.teas++;
     const name = m.extras.includes('lemon') ? L('Чай з лимоном', 'Lemon tea') : m.extras.includes('herbs') ? L('Трав\'яний чай', 'Herbal tea') : m.extras.includes('sugar') ? L('Солодкий чай', 'Sweet tea') : L('Чорний чай', 'Black tea');
-    this.h.toast(`☕ ${name} ${qualityStars(q)} · ${L('зігрівся', 'warmed up')}${m.extras.includes('lemon') ? ' · 🍀' : ''}`, 'good', 3500);
+    this.h.toast(`☕ ${name} ${qualityStars(q)} · ${L('зігрівся', 'warmed up')}${m.extras.includes('lemon') ? ' · 🍀' : ''}${perfect ? L(' · ✨ ідеальний! Капітанський фарт', ' · ✨ perfect! Skipper\'s fortune') : ''}`, 'good', perfect ? 5000 : 3500);
     this.h.galley.setMug(0);
     this.h.galley.showHandMug(this.h.camera, 4.5);
     this.end();
