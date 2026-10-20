@@ -700,15 +700,15 @@ body.intro-mode #vignette { opacity: 0.6; }
 .coop-chip { font-size: 12.5px; font-weight: 700; padding: 4px 10px; border-radius: 20px; background: #fff; border-left: 4px solid var(--c); }
 
 /* ── великі написи (зона, світанок) ── */
-.title-card { position: absolute; top: 38%; left: 0; right: 0; text-align: center; color: #fff; opacity: 0; pointer-events: none; text-shadow: 0 3px 24px rgba(10, 20, 30, 0.45); }
+.title-card { position: absolute; top: 60%; left: 0; right: 0; padding: 0 max(24px, 14vw); text-align: center; color: #fff; opacity: 0; pointer-events: none; text-shadow: 0 3px 24px rgba(10, 20, 30, 0.45); }
 .title-card.show { animation: titleCard 5.2s ease forwards; }
 .tc-title { font-family: var(--font-display); font-weight: 700; font-size: 46px; letter-spacing: 3px; }
-.tc-sub { font-weight: 800; font-size: 13px; letter-spacing: 5px; text-transform: uppercase; margin-top: 8px; opacity: 0.85; }
+.tc-sub { font-weight: 800; font-size: 13px; letter-spacing: 3px; line-height: 1.7; text-transform: uppercase; margin: 8px auto 0; max-width: 760px; text-wrap: balance; opacity: 0.85; }
 @keyframes titleCard {
-  0% { opacity: 0; transform: translateY(10px); letter-spacing: 1px; }
+  0% { opacity: 0; transform: translateY(10px); }
   15% { opacity: 1; transform: none; }
   75% { opacity: 1; }
-  100% { opacity: 0; letter-spacing: 6px; }
+  100% { opacity: 0; }
 }
 
 /* ── листівка улову ── */
