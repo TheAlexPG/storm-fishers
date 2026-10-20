@@ -1004,6 +1004,15 @@ class Game {
     return ['', null];
   }
 
+  private _mast: THREE.Object3D[] | null = null;
+  private mastMesh(): THREE.Object3D[] {
+    if (!this._mast) {
+      const m = this.boat.group.getObjectByName('mast');
+      this._mast = m ? [m] : [];
+    }
+    return this._mast;
+  }
+
   /** від першої особи станція — лише та, у яку влучає промінь із центру екрана */
   private pickStation() {
     const p = this.player;
@@ -1012,10 +1021,20 @@ class Game {
     this._ray.far = 3.2;
     let best: Interactable | null = null;
     let bestD = Infinity;
+    // промінь «бачить» і приховані меші (спущений парус, складений тент) — їх не рахуємо
+    const shown = (o: THREE.Object3D) => {
+      for (let q: THREE.Object3D | null = o; q; q = q.parent) if (!q.visible) return false;
+      return true;
+    };
     for (const s of p.reachable) {
-      // радіо й штурманський стіл — цілком (дрібний орган радіо вибирає radio.aim)
-      const objs = s.id === 'st:radio' ? [this.radio.group] : s.id === 'st:chart' ? [this.chart.group] : this.stationObjects(s.id)[1];
-      const hit = objs && this._ray.intersectObjects(objs, true)[0];
+      // радіо й штурманський стіл — цілком (дрібний орган радіо вибирає radio.aim);
+      // паруси — ще й щогла, гік і самі паруси, а не лише фали біля щогли
+      const objs =
+        s.id === 'st:radio' ? [this.radio.group]
+        : s.id === 'st:chart' ? [this.chart.group]
+        : s.id === 'st:sails' ? [...(this.stationObjects(s.id)[1] ?? []), ...this.boat.sails.pickables(), ...this.mastMesh()]
+        : this.stationObjects(s.id)[1];
+      const hit = objs && this._ray.intersectObjects(objs, true).find((h) => shown(h.object));
       if (hit && hit.distance < bestD) {
         bestD = hit.distance;
         best = s;
