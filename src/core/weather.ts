@@ -235,9 +235,9 @@ export class Weather {
     return this.stormEta;
   }
 
-  /** сила вітру 0..1 (трохи нижча за інтенсивність) */
+  /** сила вітру 0..1 (трохи нижча за інтенсивність); у штиль лишається морський бриз ~5 м/с — під парусами завжди можна піти */
   get wind(): number {
-    return clamp(this.intensity * 0.9, 0, 1.5);
+    return clamp(Math.max(0.2, this.intensity * 0.9), 0, 1.5);
   }
 
   /** справжній вітер біля гравця, м/с (дзеркало trueWindSpeed у sails) */

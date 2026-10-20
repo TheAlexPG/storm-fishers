@@ -535,7 +535,7 @@ export class Boat {
     this.atBerth = dMoor < MOOR_CAPTURE && Math.abs(this.throttle) < 0.15 && !underSail;
     // відштовхнутись від причалу: під парусами біля берега на малому ходу — м'який поштовх
     // від суші й розворот носа з вітру, щоб паруси взяли вітер, а не притискали до стінки
-    if (underSail && this.landAt && speed < 1.6 && dMoor < MOOR_CAPTURE * 1.5) {
+    if (underSail && this.landAt && speed < 1.2 && dMoor < MOOR_CAPTURE) {
       let ax = 0, az = 0;
       for (let i = 0; i < 12; i++) {
         const a = (i / 12) * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
@@ -543,13 +543,14 @@ export class Boat {
       }
       const al = Math.hypot(ax, az);
       if (al > 1e-3) {
-        const k = 2600 * (1 - speed / 1.6);
+        const k = 2600 * (1 - speed / 1.2);
         this._f.x += (ax / al) * k;
         this._f.z += (az / al) * k;
         // ніс — у бік від суші (туди, куди штовхаємо), поки не набрали ходу
         const want = Math.atan2(ax, az);
         const e = wrapAngle(this.heading - want);
-        if (Math.abs(e) < Math.PI * 0.85) this._t.y += (-e * 9000 - this.angVel.y * 20000) * (1 - speed / 1.6);
+        // гравець кермує сам — не заважаємо
+        if (Math.abs(this.rudder) < 0.1 && Math.abs(e) < Math.PI * 0.85) this._t.y += (-e * 9000 - this.angVel.y * 20000) * (1 - speed / 1.2);
       }
     }
     if (this.mooredNow) {
