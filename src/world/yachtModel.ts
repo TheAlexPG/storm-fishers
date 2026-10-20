@@ -1143,7 +1143,7 @@ export class YachtBuilder {
         const needle = new THREE.Group();
         needle.position.z = 0.006;
         dial.add(needle);
-        needle.add(new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.15, 0.006).translate(0, 0.06, 0), new THREE.MeshBasicMaterial({ color: 0xe74c3c })));
+        needle.add(new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.1, 0.006).translate(0, 0.035, 0), new THREE.MeshBasicMaterial({ color: 0xe74c3c })));
         if (kind === 'rpm') this.refs.needleRpm = needle;
         else if (kind === 'fuel') this.refs.needleFuel = needle;
         else this.refs.needleSpeed = needle;

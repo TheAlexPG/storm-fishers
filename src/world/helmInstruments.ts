@@ -416,11 +416,12 @@ export class HelmInstruments {
     // ── 0: лаг (праворуч) і стрілочний вітромір (ліворуч) на ногах поручня тумби ──
     helm.add(this.postBases);
     for (const sx of [-1, 1]) {
-      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.03, 0.07, 18), k.mat(0x1f2328, 0.5, 0.4));
-      base.position.set(sx * 0.3, DECK_Y + 0.955, -2.95);
+      // низька підставка під циферблатом: верх (0.985) нижче за нижній край нахиленої шкали (≈1.005)
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.03, 0.07, 18), k.mat(0x1f2328, 0.5, 0.4));
+      base.position.set(sx * 0.3, DECK_Y + 0.95, -2.95);
       this.postBases.add(base);
     }
-    this.windDial.position.set(0.3, DECK_Y + 1.0, -2.95);
+    this.windDial.position.set(0.3, DECK_Y + 1.07, -2.95);
     this.windDial.quaternion.copy(FACE_Q);
     helm.add(this.windDial);
     this.windDial.add(new THREE.Mesh(new THREE.TorusGeometry(0.105, 0.012, 6, 24), k.mat(0xc9ced3, 0.25, 0.9)));
@@ -647,7 +648,7 @@ export class HelmInstruments {
         sd.position.copy(this.speedHome.p);
         sd.quaternion.copy(this.speedHome.q);
       } else {
-        sd.position.set(-0.3, DECK_Y + 1.0, -2.95);
+        sd.position.set(-0.3, DECK_Y + 1.07, -2.95);
         sd.quaternion.copy(FACE_Q);
       }
     }
