@@ -212,10 +212,8 @@ uniform float uIntensity;
 uniform vec2 uGroupPh;
 varying vec3 vWorldPos;
 varying vec2 vBase;
-varying float vCrest;
 varying float vLocalI;
-varying float vJac;
-varying float vTrail;
+varying float vDamp;
 
 float groupMod(vec2 p) {
   float a = sin(dot(p, vec2(0.8, 0.6)) * ${GROUP_K1.toFixed(4)} + uGroupPh.x);
@@ -236,7 +234,6 @@ void main() {
   vec2 p = wp.xz;
   float step = ${RING_B.toFixed(4)} * (length(position.xz) + ${RING_A.toFixed(1)});
   vec3 disp = vec3(0.0);
-  float hn = 0.0, ampSum = 0.0;
   // на мілині хвилі слабшають (дзеркало Ocean.shoreDamp)
   float damp = 1.0;
   vec2 suv = (p - uShoreRect.xy) * uShoreRect.zw;
@@ -249,7 +246,6 @@ void main() {
   vLocalI = li;
   float gChop = gain(li), gSwell = swellGain(li);
   float gm = groupMod(p);
-  float jac = 0.0, trail = 0.0, trailW = 0.0;
   for (int i = 0; i < NW; i++) {
     // хвиля, коротша за 3 кроки сітки, не малюється геометрією (лише нормалями)
     float lod = clamp((uWaveLen[i] / step - 3.0) / 3.0, 0.0, 1.0);
@@ -261,21 +257,8 @@ void main() {
     float hq = uWaveQ[i] * ${CHOP.toFixed(1)} * (sw > 0.5 ? 1.0 : 1.0 + 0.8 * smoothstep(0.6, 1.4, li)) * A;
     float hx = hq * c;
     disp += vec3(hx * D.x, A * s, hx * D.y);
-    // стиск Герстнера (1 − якобіан): найбільший на гострому гребені — там барашки
-    jac += hq * uWaveK[i] * s;
-    // слід за гребенем (позаду, куди хвиля вже пройшла) — смуги залишкової піни
-    float st = A * uWaveK[i];
-    trail += st * sin(ph + 0.9);
-    trailW += st;
-    float Af = uWaveAmp[i] * (sw > 0.5 ? gSwell : gChop * gm) * damp;
-    hn += Af * s;
-    ampSum += Af * Af;
   }
-  // гребінь: висота в «сигмах» суми хвиль (RMS), стиснута в −1..1 — западини й гребені
-  // розходяться по всій шкалі, а не тиснуться біля середини
-  vCrest = clamp(hn / max(sqrt(ampSum * 0.5), 1e-3) * 0.5, -1.0, 1.0);
-  vJac = jac;
-  vTrail = trail / max(trailW, 1e-4);
+  vDamp = damp;
   vBase = p;
   vec3 world = vec3(p.x, wp.y, p.y) + disp;
   vWorldPos = world;
@@ -323,10 +306,8 @@ uniform float uRefrScale;
 uniform vec2 uGroupPh;
 varying vec3 vWorldPos;
 varying vec2 vBase;
-varying float vCrest;
 varying float vLocalI;
-varying float vJac;
-varying float vTrail;
+varying float vDamp;
 
 float groupModF(vec2 p) {
   float a = sin(dot(p, vec2(0.8, 0.6)) * ${GROUP_K1.toFixed(4)} + uGroupPh.x);
@@ -405,6 +386,12 @@ float fbm(vec2 p){
   return v;
 }
 
+// поріг зі згладжуванням на ширину пікселя: чіткий мальований край без «сходинок»
+float aaStep(float e0, float e1, float x) {
+  float w = fwidth(x) * 0.75;
+  return smoothstep(e0 - w, e1 + w, x);
+}
+
 // комірки (Ворона): F2 − F1 → тонкі перетинки між «бульбашками» піни
 vec2 hash2(vec2 p) {
   p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
@@ -437,10 +424,26 @@ void main() {
   vec2 slope = vec2(0.0);
   float kept = 0.0, total = 0.0;
   float gmF = groupModF(vBase);
+  // гребінь, стиск Герстнера (барашки) і слід за гребенем — у кожному пікселі, а не
+  // по вершинах: вдалині трикутники сітки великі, і межі піни йшли по їхніх ребрах
+  float hnP = 0.0, a2P = 0.0, jacP = 0.0, trP = 0.0, trW = 0.0;
+  float chopM = 1.0 + 0.8 * smoothstep(0.6, 1.4, vLocalI);
   for (int i = 0; i < NW; i++) {
     float w = clamp(uWaveLen[i] / (fp * 8.0) - 1.0, 0.0, 1.0);
     vec2 D = uWaveDir[i];
     float ph = uWaveK[i] * dot(D, vBase) + uWavePh[i];
+    {
+      float swv = uWaveSwell[i];
+      float Aw = uWaveAmp[i] * (swv > 0.5 ? swellGainF(vLocalI) : chopGainF(vLocalI) * gmF) * vDamp;
+      float sn = sin(ph);
+      hnP += Aw * sn;
+      a2P += Aw * Aw;
+      float hq = uWaveQ[i] * ${CHOP.toFixed(1)} * (swv > 0.5 ? 1.0 : chopM) * Aw;
+      jacP += hq * uWaveK[i] * sn * w;
+      float st = Aw * uWaveK[i] * w;
+      trP += st * sin(ph + 0.9);
+      trW += st;
+    }
     float sl = uWaveAmp[i] * (uWaveSwell[i] > 0.5 ? swellGainF(vLocalI) : chopGainF(vLocalI) * gmF) * uWaveK[i];
     slope += D * (sl * cos(ph) * w);
     kept += sl * sl * w;
@@ -494,7 +497,9 @@ void main() {
   // посередині, бірюза на гребенях; тонкі гребені просвічують (SSS) зеленкувато ──
   vec3 L = normalize(uSunDir);
   float sunI = 0.3 + 0.7 * uSunStrength;
-  float hr = clamp(vCrest * 0.5 + 0.5, 0.0, 1.0);               // 0 западина … 1 гребінь
+  float crestP = clamp(hnP / max(sqrt(a2P * 0.5), 1e-3) * 0.5, -1.0, 1.0);
+  float hr = clamp(crestP * 0.5 + 0.5, 0.0, 1.0);               // 0 западина … 1 гребінь
+  float trailP = trP / max(trW, 1e-4);
   vec3 cTrough = vec3(0.015, 0.11, 0.24);
   vec3 cMid    = vec3(0.03, 0.26, 0.45);
   vec3 cCrest  = vec3(0.06, 0.46, 0.55);
@@ -534,7 +539,8 @@ void main() {
     float above = 0.0;
     if (viewDist(texture2D(uRefrDepth, uv2).r) < wD + 0.05) {
       uv2 = uv;
-      if (viewDist(texture2D(uRefrDepth, uv).r) < wD + 0.05) above = 1.0;
+      // м'яко, а не так/ні — інакше на кромці берега й корпусу драбинка пікселів
+      above = 1.0 - smoothstep(wD - 0.25, wD + 0.12, viewDist(texture2D(uRefrDepth, uv).r));
     }
     vec3 refr = texture2D(uRefr, uv2).rgb;
     #ifdef TONE_MAPPING
@@ -588,8 +594,8 @@ void main() {
     // поріг стиску: у вітер — рідкі барашки, у шторм гребені біліють частіше (але не суцільно)
     float jT = 0.1 + 0.16 * (1.0 - capOn) - 0.02 * stormF;
     // гребені й великих, і дрібних хвиль (якобіан ловить обидва; висота — лише великі)
-    float crestF = smoothstep(jT, jT + 0.2, vJac) * smoothstep(0.42, 0.75, hr);
-    float trailF = smoothstep(0.6, 0.95, vTrail) * smoothstep(0.25, 0.7, hr) * (0.25 + 0.75 * stormF);
+    float crestF = aaStep(jT, jT + 0.2, jacP) * smoothstep(0.42, 0.75, hr);
+    float trailF = smoothstep(0.6, 0.95, trailP) * smoothstep(0.25, 0.7, hr) * (0.25 + 0.75 * stormF);
     float amount = max(crestF, trailF * 0.55) * capOn;
     if (amount > 0.01) {
       // бульбашки: комірки, витягнуті за вітром і повільно знесені
@@ -599,11 +605,11 @@ void main() {
       float web = cells((fq + warp) * 2.4);
       float n = fbm(q * vec2(0.8, 2.0) - vec2(uTime * 0.3, 0.0));
       float a = amount + (n - 0.5) * 0.5 + (web - 0.35) * 0.3;
-      float solid = smoothstep(0.5, 0.62, a) * (0.78 + 0.22 * smoothstep(0.1, 0.5, web));
+      float solid = aaStep(0.5, 0.62, a) * (0.78 + 0.22 * smoothstep(0.1, 0.5, web));
       // тонкі мереживні нитки довкола плями
-      float lace = (1.0 - smoothstep(0.04, 0.12, web)) * smoothstep(0.2, 0.45, a) * 0.8;
+      float lace = (1.0 - aaStep(0.04, 0.12, web)) * aaStep(0.2, 0.45, a) * 0.8;
       float foam = clamp(max(solid, lace), 0.0, 1.0);
-      foam = smoothstep(0.35, 0.6, foam);                            // мальований чіткий край
+      foam = aaStep(0.35, 0.6, foam);                            // мальований чіткий край
       foam *= 1.0 - 0.55 * smoothstep(0.06, 0.3, fp);               // вдалині — м'якше, без мерехтіння
       // біла піна з ледь бірюзовою тінню в западинах бульбашок; у шторм не сіріє (своє світло)
       vec3 fcol = mix(vec3(0.78, 0.93, 0.95), vec3(1.0), smoothstep(0.15, 0.6, web) * 0.7 + 0.3) * clamp(0.12 + 0.88 * max(uSunStrength, dot(uSkyColor, vec3(0.3, 0.59, 0.11)) * 1.15), 0.0, 1.0) + uSkyColor * 0.06;
@@ -675,6 +681,8 @@ void main() {
   float fogF = 1.0 - exp(-dist * dist * uFogDensity * uFogDensity);
   col = mix(col, uFogColor, clamp(fogF, 0.0, 1.0));
 
+  // ледь помітний дизеринг: плавні градієнти глибини й неба без смуг (8 біт на канал)
+  col += (hash(gl_FragCoord.xy + fract(uTime) * 61.0) - 0.5) / 255.0;
   gl_FragColor = vec4(col, 1.0);
 }
 `;
@@ -905,7 +913,9 @@ export class Ocean {
     renderer.getDrawingBufferSize(this._size);
     // роздільність: повна до ~1600 px завширшки, далі пропорційно менша (прохід легкий —
     // лише підводні речі, — а половинна давала «сходинки» на краях паль і корпусу)
-    const sc = Math.min(1, 1600 / Math.max(1, this._size.x));
+    // повна роздільність буфера (на ретині раніше — ледь не половина: «сходинки» біля
+    // корпусу й берега); обмеження лише для дуже широких екранів
+    const sc = Math.min(1, 2560 / Math.max(1, this._size.x));
     this.refrScale = sc;
     const w = Math.max(1, Math.floor(this._size.x * sc)), h = Math.max(1, Math.floor(this._size.y * sc));
     if (!this.refrRT) {
