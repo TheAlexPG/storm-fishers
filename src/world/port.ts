@@ -35,7 +35,7 @@ export interface Platform {
 }
 
 export interface PortPoint {
-  id: 'shop' | 'fuel' | 'repair' | 'house' | 'market' | 'office';
+  id: 'shop' | 'fuel' | 'repair' | 'house' | 'market' | 'office' | 'tavern' | 'smoke' | 'chef' | 'cannery';
   x: number;
   z: number;
   label: string;
@@ -53,6 +53,11 @@ export const PORT_POINTS: PortPoint[] = [
   { id: 'market', x: 34, z: -45.2, label: 'Рибна біржа — продати улов', name: 'Біржа', icon: '🐟' },
   { id: 'office', x: 47, z: -47.6, label: 'Контора порту — страховка', name: 'Контора', icon: '🛡' },
   { id: 'house', x: -2, z: -58.5, label: 'Хата (сон)', name: 'Хата', icon: '🏠' },
+  // скупники риби (game/buyers.ts, world/buyerStalls.ts): свої ціни, акції й замовлення
+  { id: 'tavern', x: -21, z: -46.1, label: 'Таверна «Ситий баклан» — дрібна свіжа риба, замовлення', name: 'Таверна', icon: '🍲' },
+  { id: 'smoke', x: 24.4, z: -46.1, label: 'Коптильня Гната — жирна риба оптом, замовлення', name: 'Коптильня', icon: '🔥' },
+  { id: 'chef', x: 29.6, z: -52.3, label: 'Ресторан «Маяк» — велика делікатесна риба, замовлення', name: 'Ресторан', icon: '🍽' },
+  { id: 'cannery', x: 55.2, z: -46.1, label: 'Консервний завод — будь-яка риба, без насичення', name: 'Завод', icon: '🥫' },
 ];
 
 const DECK_Y = 1.1;

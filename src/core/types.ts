@@ -109,6 +109,8 @@ export interface SaveData {
   boatHeading: number;
   totalPlayTime: number;
   waypoint: { x: number; z: number } | null;
+  /** скупники: репутація, попит, замовлення (game/buyers.ts TradeSave) */
+  trade?: unknown;
   /** маршрут (новіші сейви; waypoint — перша точка для сумісності) */
   route?: Array<{ x: number; z: number }>;
   /** поставлені сітки (world/nets.ts) */

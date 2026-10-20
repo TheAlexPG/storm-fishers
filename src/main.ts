@@ -51,6 +51,9 @@ import { Nets, type NetsNet } from './world/nets';
 import { Bots } from './world/bots';
 import { ShopCounter, type CounterTarget } from './world/shopCounter';
 import { ExchangeBoard } from './world/exchangeBoard';
+import { BuyerStalls } from './world/buyerStalls';
+import { OrdersChip } from './ui/buyers';
+import { BUYER_BY_ID, shortName, type BuyerId } from './game/buyers';
 import { describeSave } from './game/saveTransfer';
 import { Highlighter } from './world/highlight';
 import { HOLDER_MOUNTS } from './world/upgradeParts';
@@ -153,6 +156,9 @@ class Game {
   private cabinDecor!: CabinDecor;
   private shopCounter!: ShopCounter;
   private exchangeBoard!: ExchangeBoard;
+  private stalls!: BuyerStalls;
+  private ordersChip!: OrdersChip;
+  private ordersT = 0;
   private cabinDoor!: CabinDoor;
   private chart!: ChartTable;
   /** сітки (апгрейд «Сітки»): буї в морі, постановка/вибирання з корми */
@@ -258,6 +264,9 @@ class Game {
     this.scene.add(this.moorMark);
     this.landmarks = new Landmarks(this.scene, this.port.rocks);
     this.islands = new Islands(this.scene);
+    // скупники риби — після островів (хижа Остапа шукає вільне місце серед дерев)
+    this.stalls = new BuyerStalls(this.scene, this.port);
+    this.ordersChip = new OrdersChip();
     this.boat = new Boat(this.scene);
     this.player = new Player(this.game);
     this.stations = new Stations(this.boat, this.game, this.audio);
@@ -324,6 +333,7 @@ class Game {
     };
     this.mapView.onClose = () => this.closeMap();
     this.dialogs = new Dialogs(this.audio);
+    this.dialogs.onTrade = () => this.saveGame();
 
     this.reticle = document.createElement('div');
     this.reticle.id = 'reticle';
@@ -946,7 +956,7 @@ class Game {
         demand: g.market.demand(sp.id),
         event: g.market.eventFor(sp.id)?.text,
       })),
-      events: g.market.events.map((e) => `${e.mult > 1 ? '▲' : '▼'} ${e.text}`),
+      events: [...g.market.events.map((e) => `${e.mult > 1 ? '▲' : '▼'} ${e.text}`), ...g.trade.tickerTexts(g.clockH)],
       reports: g.reports.map((r) => ({ zone: ZONE_NAMES[r.zone], name: g.speciesName(r.speciesId), boost: r.boost })),
       hold: { count: g.hold.length, cap: g.holdCap, value: g.hold.reduce((a, f) => a + g.sellPrice(f), 0) },
       stormSoon: w.stormEta != null || snap.forecast > 0.74 || w.base > 0.74,
@@ -994,6 +1004,7 @@ class Game {
       playTime: this.playTime,
       onBeforeExport: () => this.saveGame(),
       places: LANDMARKS.map((l) => ({ name: l.name, found: this.game.places.includes(l.id) })),
+      game: this.game,
       coop: this.coop.active
         ? {
             room: this.coop.room,
@@ -1026,14 +1037,24 @@ class Game {
     });
   }
 
-  private openDialog(kind: Venue | 'exchange' | 'radio') {
+  /** скупники: час, попит, прострочені замовлення */
+  private tickTrade(hours: number) {
+    const g = this.game;
+    g.clockH = this.time.dayCount * 24 + this.time.hours;
+    const failed = g.trade.tick(hours, g.clockH);
+    for (const c of failed) this.hud.toast(`📜 Замовлення згоріло: ${c.title} (${shortName(c.buyer)}) — репутація −4`, 'warn', 4200);
+    if (failed.length) this.saveGame();
+  }
+
+  private openDialog(kind: Venue | 'exchange' | 'radio' | BuyerId) {
     this.phase = 'dialog';
     this.expectUnlock = true;
     document.exitPointerLock();
     this.saveTimer = 30;
-    if (kind === 'radio') this.dialogs.radio(this.game, this.weather, this.time);
+    if (kind in BUYER_BY_ID) this.dialogs.buyer(this.game, kind as BuyerId);
+    else if (kind === 'radio') this.dialogs.radio(this.game, this.weather, this.time);
     else if (kind === 'exchange') this.dialogs.exchange(this.game);
-    else this.dialogs.shop(this.game, kind);
+    else this.dialogs.shop(this.game, kind as Venue);
   }
 
   // ── штурвальна карта (M) ──
@@ -1305,7 +1326,7 @@ class Game {
       this.player.update(dt, input, this.boat, this.port, this.ocean, t);
       this.pickCounter();
       if (this.player.onIsland) {
-        const f = this.islands.pick(this.player.wx, this.player.wz, this.game.finds);
+        const f = this.islands.pick(this.player.wx, this.player.wz, this.game.finds) ?? this.stalls.pickHermit(this.player.wx, this.player.wz);
         if (f) this.player.nearest = f;
       }
       if (crewHelm) this.coop.myHelm = [this.boat.throttle, this.boat.rudder];
@@ -1447,6 +1468,13 @@ class Game {
     // свіжість
     g.decayFreshness(this.time.gameHourDelta(dt));
     g.tickMarket(this.time.gameHourDelta(dt));
+    this.tickTrade(this.time.gameHourDelta(dt));
+    this.stalls.update(dt, g.trade, g.clockH, 1 - this.time.daylight, this.player.mode === 'boat' ? undefined : this.player.head);
+    this.ordersT -= dt;
+    if (this.ordersT <= 0) {
+      this.ordersT = 0.5;
+      this.ordersChip.update(g, this.phase === 'play' && !this.hud.hidden && !this.photo);
+    }
 
     // орієнтир шварту: світний обрис місця біля причалу, коли повертаєшся
     {
@@ -1782,7 +1810,7 @@ class Game {
       return;
     }
     // кожне місце в порту — лише свої послуги
-    const venue = ({ 'port:shop': 'shop', 'port:fuel': 'fuel', 'port:repair': 'yard', 'port:office': 'office', 'port:market': 'exchange' } as const)[id as 'port:shop'];
+    const venue = ({ 'port:shop': 'shop', 'port:fuel': 'fuel', 'port:repair': 'yard', 'port:office': 'office', 'port:market': 'exchange', 'port:tavern': 'tavern', 'port:smoke': 'smoke', 'port:chef': 'chef', 'port:cannery': 'cannery', 'buyer:hermit': 'hermit' } as const)[id as 'port:shop'];
     if (venue) {
       this.openDialog(venue);
       return;
@@ -1824,6 +1852,7 @@ class Game {
       this.game.addEnergy(100);
       this.game.decayFreshness(delta);
       this.game.tickMarket(delta);
+      this.tickTrade(delta);
       this.fade.classList.remove('on');
       this.dawnCard();
       this.hud.toast(`Пройшло ${Math.round(delta)} год. ${inPort ? 'Виспався в хаті.' : 'Виспався на койці.'}`, 'good', 3500);
