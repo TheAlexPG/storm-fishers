@@ -792,6 +792,18 @@ class Game {
     }
   }
 
+  /** пауза → головне меню: зберегти, вийти з кімнати (якщо в ній), показати заставку */
+  private exitToMenu() {
+    this.saveGame();
+    if (this.coop.active) {
+      const wasCrew = this.coop.isClient;
+      this.coop.leave();
+      this.hud.setRoster([]);
+      if (wasCrew) this.endCrew();
+    }
+    this.showIntro();
+  }
+
   /** капітан: дія гостя над спільним човном */
   private onCoopAction(nick: string, act: BoatAction) {
     const g = this.game;
@@ -1308,6 +1320,7 @@ class Game {
         GameState.clear();
         this.showIntro();
       },
+      onMenu: () => this.exitToMenu(),
       settings: this.settings,
       onSettings: (st) => {
         this.applySettings(st);
