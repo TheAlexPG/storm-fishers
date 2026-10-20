@@ -80,8 +80,11 @@ export class CabinDecor {
   private hourHand: THREE.Object3D;
   private minHand: THREE.Object3D;
   private baroNeedle: THREE.Object3D;
-  private lantern: THREE.Group;
+  /** гасова лампа (гойдається) — у неї цілиться погляд, щоб загасити/запалити */
+  readonly lantern: THREE.Group;
   private flame: THREE.MeshStandardMaterial;
+  /** бра обабіч дверей — світять разом із плафонами каюти */
+  readonly sconces: THREE.Object3D[] = [];
   private glow: THREE.MeshStandardMaterial[] = [];
   private swing = new THREE.Vector2();
   private swingV = new THREE.Vector2();
@@ -325,6 +328,7 @@ export class CabinDecor {
       const s = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.035, 0.08, 14, 1, true), shade);
       s.position.set(x, S + 1.345, BZ - 0.1);
       g.add(s);
+      this.sconces.push(cup, s);
     }
     // табличка з назвою над дверним прорізом
     const plate = new THREE.Mesh(
@@ -479,8 +483,8 @@ export class CabinDecor {
     this.lantern.add(foot);
   }
 
-  /** hours — час гри, storm — сила погоди 0..1, boat — група яхти (для гойдання лампи) */
-  update(dt: number, hours: number, storm: number, boat: THREE.Object3D, night: number) {
+  /** hours — час гри, storm — сила погоди 0..1, boat — група яхти (для гойдання лампи); cabin / lantern — чи увімкнені бра й гасова лампа */
+  update(dt: number, hours: number, storm: number, boat: THREE.Object3D, night: number, cabin = true, lantern = true) {
     this.t += dt;
     // годинник: справжній час гри
     const h12 = hours % 12;
@@ -501,6 +505,6 @@ export class CabinDecor {
     this.lantern.rotation.set(this.swing.x, 0, this.swing.y);
     // тепле світло: вночі яскравіше, полум'я ледь мерехтить
     const flick = 1 + Math.sin(this.t * 9) * 0.05 + Math.sin(this.t * 23) * 0.04;
-    for (const m of this.glow) m.emissiveIntensity = (0.7 + night * 0.9) * (m === this.flame ? flick * 1.3 : 1);
+    for (const m of this.glow) m.emissiveIntensity = !(m === this.flame ? lantern : cabin) ? 0 : (0.7 + night * 0.9) * (m === this.flame ? flick * 1.3 : 1);
   }
 }

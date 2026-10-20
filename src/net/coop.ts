@@ -19,7 +19,7 @@ async function relayAvailable(): Promise<boolean> {
   }
 }
 import { Avatar, colorForId, type NetPlayer } from '../world/avatar';
-import { Boat } from '../world/boat';
+import { Boat, type LampId } from '../world/boat';
 import type { Ocean } from '../core/ocean';
 import type { Fishing } from '../game/fishing';
 import type { Player } from '../world/player';
@@ -93,7 +93,8 @@ export type BoatAction =
   | { a: 'ap'; v: number }
   | { a: 'ign' }
   | { a: 'tent'; v: number }
-  | { a: 'curtain'; v: number };
+  | { a: 'curtain'; v: number }
+  | { a: 'lamp'; id: LampId; v: number };
 
 export interface FriendMarker {
   x: number;
@@ -634,7 +635,7 @@ export class Coop {
       const dh = Math.atan2(Math.sin(b.b[3] - a.b[3]), Math.cos(b.b[3] - a.b[3]));
       out[3] = a.b[3] + dh * f;
       // дискретні — від новішого
-      for (const i of [11, 13, 14, 15, 17, 18, 19, 20, 23, 25, 26]) if (i < b.b.length) out[i] = b.b[i];
+      for (const i of [11, 13, 14, 15, 17, 18, 19, 20, 23, 25, 26, 27]) if (i < b.b.length) out[i] = b.b[i];
     }
   }
 

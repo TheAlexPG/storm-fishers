@@ -1043,10 +1043,13 @@ export class YachtBuilder {
     // світло кокпіту: лампа під передньою трубою дуги (над штурвалом)
     this.refs.cockpitLight.position.set(0, ay - 0.45, -3.6);
     g.add(this.refs.cockpitLight);
+    // окремі меші з іменем — у них цілиться погляд (E вмикає/вимикає)
     const lampMat = new THREE.MeshStandardMaterial({ color: 0xfff4e0, emissive: 0xffd9a0, emissiveIntensity: 0.4 });
+    lampMat.userData.lamp = 'helmLamp';
     for (const x of [-0.35, 0.35]) {
       const l = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.03, 12), lampMat);
       l.position.set(x, ay - 0.04, ARCH.z1);
+      l.name = 'helmLamp';
       g.add(l);
     }
     this.refs.glowMats.push(lampMat);
@@ -1434,9 +1437,11 @@ export class YachtBuilder {
 
     // плафони + тепле світло
     const lm = new THREE.MeshStandardMaterial({ color: 0xfff4e0, emissive: 0xffd9a0, emissiveIntensity: 0.5, roughness: 0.5 });
+    lm.userData.lamp = 'cabinLamp';
     for (const z of [0.9, 2.1]) {
       const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.09, 0.03, 14), lm);
       lamp.position.set(0, HOUSE.top - 0.05, z);
+      lamp.name = 'cabinLamp';
       g.add(lamp);
     }
     this.refs.glowMats.push(lm);

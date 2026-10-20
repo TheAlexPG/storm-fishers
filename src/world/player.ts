@@ -32,7 +32,7 @@ const RUN = 5.6;
 const SWIM = 2.3;
 
 // станції в салоні (доступні лише внизу)
-const CABIN_STATIONS = new Set(['kitchen', 'radio', 'bed', 'chart', 'kettle', 'cookbook']);
+const CABIN_STATIONS = new Set(['kitchen', 'radio', 'bed', 'chart', 'kettle', 'cookbook', 'cabinLamp', 'lantern']);
 /** куди дивитись, щоб «вибрати» станцію (локаль яхти) — для приладів на одному місці */
 const LOOK_AT: Record<string, [number, number, number]> = {
   radio: [1.04, SOLE_Y + 1.03, 0.95],
@@ -47,9 +47,13 @@ const LOOK_AT: Record<string, [number, number, number]> = {
   // тент: лівий обруч біміні (скласти) і правий рулон штори
   tent: [-1.02, 2.5, -2.95],
   curtain: [1.06, 2.95, -3.5],
+  // лампи: плафони під стелею каюти, гасова лампа над столиком, лампа на дузі над штурвалом
+  cabinLamp: [0, HOUSE.top - 0.05, 1.5],
+  lantern: [-0.36, HOUSE.top - 0.32, 2.12],
+  helmLamp: [0, 3.23, -4.16],
 };
 /** дрібні органи: вибираються лише точним поглядом (cos кута до точки LOOK_AT), щоб не перебивати сусідів */
-const LOOK_ONLY: Record<string, number> = { autopilot: 0.985 };
+const LOOK_ONLY: Record<string, number> = { autopilot: 0.985, cabinLamp: 0.95, lantern: 0.97, helmLamp: 0.95 };
 /** ближча досяжність: до щогли треба реально підійти бічною палубою */
 const STATION_REACH: Record<string, number> = { sails: 1.7, door: 2.4, nets: 2.4, anchor: 2.2 };
 /** станції, доступні і з палуби, і з каюти */
@@ -699,6 +703,9 @@ export class Player {
       case 'cookbook': return this.stationText?.('cookbook') ?? L('Книга рецептів', `Cookbook`);
       case 'radio': return this.stationText?.('radio') ?? L('Радіо', `Radio`);
       case 'bed': return L('Койка — спати', `Bunk — sleep`);
+      case 'cabinLamp': return boat.lampOn('cabinLamp') ? L('Світло в каюті — вимкнути', `Cabin lights — switch off`) : L('Світло в каюті — увімкнути', `Cabin lights — switch on`);
+      case 'lantern': return boat.lampOn('lantern') ? L('Гасова лампа — загасити', `Oil lamp — put out`) : L('Гасова лампа — запалити', `Oil lamp — light`);
+      case 'helmLamp': return boat.lampOn('helmLamp') ? L('Лампа над штурвалом — вимкнути', `Lamp over the helm — switch off`) : L('Лампа над штурвалом — увімкнути', `Lamp over the helm — switch on`);
       default: return id;
     }
   }

@@ -9,7 +9,7 @@ import { clamp, rand, formatMoney } from './core/math';
 import type { UpgradeId } from './core/types';
 import { UPGRADE_BY_ID, MAX_LEVEL, upgradeCost, upgradeLock } from './game/upgrades';
 import { GameState, newsText } from './game/state';
-import { Boat, BOAT, MOOR, MOOR_HEADING, STATION_POS } from './world/boat';
+import { Boat, BOAT, MOOR, MOOR_HEADING, STATION_POS, LAMPS, type LampId } from './world/boat';
 import { moorSlotX, MOOR_SLOTS } from './net/coop';
 import { Port } from './world/port';
 import { terrainHeight } from './world/portTerrain';
@@ -855,6 +855,11 @@ class Game {
       case 'curtain':
         this.game.tentClosed = act.v === 1 && !this.game.tentFolded;
         break;
+      case 'lamp': {
+        const i = LAMPS.indexOf(act.id);
+        if (i >= 0) g.lampsOff = act.v === 1 ? g.lampsOff & ~(1 << i) : g.lampsOff | (1 << i);
+        break;
+      }
       case 'anchor':
         this.anchorResult(this.boat.anchor.toggle(this.boat), nick);
         break;
@@ -1057,6 +1062,14 @@ class Game {
     if (id === 'st:anchor') return [id, (this._windlass ??= this.boat.group.getObjectsByProperty('name', 'windlass'))];
     if (id === 'st:tent' || id === 'st:curtain') return [id + this.boat.tentLevel, id === 'st:tent' ? this.boat.canvas.foldObjects : this.boat.canvas.curtainObjects];
     if (id === 'st:door') return [id, [this.cabinDoor.group]];
+    // лампи: ключ зі станом — підсвітка перебудовується з уже вимкненого/увімкненого скла
+    if (id === 'st:cabinLamp' || id === 'st:helmLamp' || id === 'st:lantern') {
+      const lamp = id.slice(3) as LampId;
+      const key = id + (this.boat.lampOn(lamp) ? '1' : '0');
+      if (lamp === 'lantern') return [key, [this.cabinDecor.lantern]];
+      const named = (this._lampMeshes[lamp] ??= this.boat.group.getObjectsByProperty('name', lamp));
+      return [key, lamp === 'cabinLamp' ? [...named, ...this.cabinDecor.sconces] : named];
+    }
     if (id === 'st:rod') return [id + this.fishing.rackObjects().length, [...this.fishing.rackObjects(), ...near('rack', 0.42, Y_DECK + 0.2, 3.76, 0.2, 0.6)]];
     if (id.startsWith('st:holder')) {
       const h = Number(id.slice(9));
@@ -1084,6 +1097,7 @@ class Game {
   private _mast: THREE.Object3D[] | null = null;
   private _pumpMeshes: THREE.Object3D[] | null = null;
   private _windlass: THREE.Object3D[] | null = null;
+  private _lampMeshes: Partial<Record<LampId, THREE.Object3D[]>> = {};
   private mastMesh(): THREE.Object3D[] {
     if (!this._mast) {
       const m = this.boat.group.getObjectByName('mast');
@@ -1927,7 +1941,7 @@ class Game {
     this.radioCtl = inCabin && this.phase === 'play' && !this.dialogs.isOpen && this.player.nearest?.id === 'st:radio' ? this.radio.aim(this.camera) : null;
     this.radio.spectrum = this.audio.radioSpectrum();
     this.radio.update(dt, inCabin);
-    this.cabinDecor.update(dt, this.time.hours, this.weather.base, this.boat.group, 1 - this.time.daylight);
+    this.cabinDecor.update(dt, this.time.hours, this.weather.base, this.boat.group, 1 - this.time.daylight, this.boat.lampOn('cabinLamp'), this.boat.lampOn('lantern'));
     {
       // хата: світло у вікнах і лампа; журнал на стіні — перемальовується, коли поруч
       const p = this.player;
@@ -2296,6 +2310,11 @@ class Game {
       return;
     }
 
+    if (id === 'st:cabinLamp' || id === 'st:helmLamp' || id === 'st:lantern') {
+      this.lampToggle(id.slice(3) as LampId);
+      return;
+    }
+
     if (id === 'st:door') {
       this.boat.doorOpen = !this.boat.doorOpen;
       if (this.coop.crewing) this.coop.sendAction({ a: 'door', v: this.boat.doorOpen ? 1 : 0 });
@@ -2575,6 +2594,7 @@ class Game {
       // тент: стан — у сейві власника; екіпаж бачить зі знімка
       this.boat.tentFolded = g.tentFolded;
       this.boat.tentClosed = g.tentClosed;
+      this.boat.lampsOff = g.lampsOff;
     }
 
     // камера: від першої особи / з-за корми (V за штурвалом) / обліт у заставці
@@ -3118,6 +3138,18 @@ class Game {
         L('⚓ Шторм зриває якір — яхту зносить! Шукай мілину ближче до берега або вибирай якір і йди', `⚓ The storm is tearing the anchor loose — the yacht is drifting! Find shallows closer to shore or weigh anchor and go`),
         'warn', 4200,
       );
+    }
+  }
+
+  /** лампа: увімкнути/вимкнути (екіпаж — через власника; стан — у сейві власника) */
+  private lampToggle(id: LampId) {
+    const on = !this.boat.lampOn(id);
+    const bit = 1 << LAMPS.indexOf(id);
+    this.boat.lampsOff = on ? this.boat.lampsOff & ~bit : this.boat.lampsOff | bit;
+    if (this.coop.crewing) this.coop.sendAction({ a: 'lamp', id, v: on ? 1 : 0 });
+    else {
+      this.game.lampsOff = this.boat.lampsOff;
+      this.saveGame();
     }
   }
 

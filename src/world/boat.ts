@@ -75,7 +75,15 @@ export const STATION_POS: Record<string, { x: number; z: number; y?: number }> =
   // тент: скласти / розкласти (лівий обруч біміні) і штори (правий рулон)
   tent: { x: -0.72, z: -3.25 },
   curtain: { x: 0.72, z: -3.25 },
+  // вимикачі світла: плафони й бра в каюті, гасова лампа над столиком, лампа на дузі над штурвалом
+  cabinLamp: { x: 0, z: 1.5, y: SOLE_Y },
+  lantern: { x: -0.36, z: 2.12, y: SOLE_Y },
+  helmLamp: { x: 0, z: -4.16 },
 };
+
+/** лампи, які гравець вмикає/вимикає (E); у сейві й мережі — біт i = LAMPS[i] вимкнено */
+export const LAMPS = ['cabinLamp', 'lantern', 'helmLamp'] as const;
+export type LampId = (typeof LAMPS)[number];
 
 export interface RockObstacle {
   x: number;
@@ -337,6 +345,11 @@ export class Boat {
   autoPumping = false;
   tentFolded = false;
   tentClosed = false;
+  /** вимкнені лампи (біти LAMPS) */
+  lampsOff = 0;
+  lampOn(id: LampId): boolean {
+    return !(this.lampsOff & (1 << LAMPS.indexOf(id)));
+  }
   /** ступінь опущених штор 0..1 (анімація) */
   tentK = 0;
   /** рівень «Приладів» (пульт автопілота — з 5-го) */
@@ -396,11 +409,17 @@ export class Boat {
   setInteriorLight(daylight: number, storm: number) {
     const night = 1 - daylight;
     const i = Math.max(0.2, night * 1.7 + storm * 0.9);
-    this.interiorLight.intensity = i;
+    const cabin = this.lampOn('cabinLamp');
+    this.interiorLight.intensity = cabin ? i : 0;
     // кокпіт: дах завжди читається як темне дерево, вночі/штормі — тепле укриття
-    this.cockpitLight.intensity = 2.5 + i * 3;
-    // скло вікон світиться лише вночі/у шторм (вдень — прозоре, без «бежевих» плям)
-    for (const m of this.glowMats) m.emissiveIntensity = m.userData.nightGlow ? Math.max(0, i - 0.25) * 0.8 : 0.15 + i * 0.55;
+    this.cockpitLight.intensity = this.lampOn('helmLamp') ? 2.5 + i * 3 : 0;
+    // скло вікон світиться лише вночі/у шторм (вдень — прозоре, без «бежевих» плям) і лише з увімкненим світлом у каюті;
+    // вимкнений плафон — темне матове скло
+    for (const m of this.glowMats) {
+      const lamp = m.userData.lamp as LampId | undefined;
+      if (lamp ? !this.lampOn(lamp) : !cabin) m.emissiveIntensity = 0;
+      else m.emissiveIntensity = m.userData.nightGlow ? Math.max(0, i - 0.25) * 0.8 : 0.15 + i * 0.55;
+    }
   }
 
   /** підсвітити маркер станції (1 — активна/близька) */
@@ -1025,6 +1044,7 @@ export class Boat {
       this.hatchOpen ? 1 : 0, r(this.bilge, 10), this.doorOpen ? 1 : 0,
       ...this.anchor.netState(),
       this.tentClosed ? 1 : 0, this.tentFolded ? 1 : 0,
+      this.lampsOff,
     ];
   }
 
@@ -1052,6 +1072,7 @@ export class Boat {
       this.tentClosed = b[25] >= 0.5;
       this.tentFolded = b[26] >= 0.5;
     }
+    if (b.length > 27) this.lampsOff = b[27];
   }
 
   /** сили вітрил → загальні сили/моменти кадру; анімація парусів */

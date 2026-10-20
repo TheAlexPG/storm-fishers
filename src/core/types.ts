@@ -142,6 +142,8 @@ export interface SaveData {
   tentFit?: number | null;
   tentFolded?: boolean;
   tentClosed?: boolean;
+  /** вимкнені лампи яхти (біти LAMPS у world/boat.ts) */
+  lampsOff?: number;
 }
 
 export interface PlayerStats {
