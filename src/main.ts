@@ -245,6 +245,8 @@ class Game {
   private radioTextT = 0;
   /** орган радіо, на який дивиться гравець (кнопка/ручка) */
   private radioCtl: RadioCtl | null = null;
+  /** екіпаж щойно сам крутив радіо — знімки капітана, що ще не знають про це, не відкочують */
+  private radioHold = 0;
   private hl = new Highlighter();
   private _hv = new THREE.Vector3();
   private _ray = new THREE.Raycaster();
@@ -485,6 +487,10 @@ class Game {
     this.coop.onBots = (a) => this.bots.applyNet(a);
     // жива біржа: запаси симулює капітан кімнати, гості отримують знімок і шлють йому свої продажі
     this.coop.marketState = () => this.game.marketSnapshot();
+    this.coop.radioState = () => this.radio.netState();
+    this.coop.onRadio = (s) => {
+      if (this.radioHold <= 0) this.radio.applyNet(s);
+    };
     this.coop.onMarket = (d) => {
       for (const n of this.game.applyMarketSnapshot(d)) this.marketNewsToast(n.who, newsText(n.text, n.who));
     };
@@ -875,6 +881,15 @@ class Game {
       case 'curtain':
         this.game.tentClosed = act.v === 1 && !this.game.tentFolded;
         break;
+      case 'radio': {
+        // лише справжній орган керування — інакше анімація натискання не має що рухати
+        const c = act.c as RadioCtl;
+        if (!this.radio.object(c)) break;
+        if (act.s) this.radio.turn(c, Math.max(-20, Math.min(20, act.s)));
+        else this.radio.use(c, act.v === -1 ? -1 : 1);
+        this.radioTextT = 0;
+        break;
+      }
       case 'anchor':
         this.anchorResult(this.boat.anchor.toggle(this.boat), nick);
         break;
@@ -1614,7 +1629,7 @@ class Game {
       this.mapView.chartZoom(wheelSteps, this.chart.u, this.chart.v, cw, ch);
       this.chart.markDirty();
     } else if (wheelSteps && (this.radioCtl === 'tune' || this.radioCtl === 'vol')) {
-      this.radio.turn(this.radioCtl, -wheelSteps);
+      this.radioTurn(this.radioCtl, -wheelSteps);
       this.audio.click();
     } else if (wheelSteps && this.rig.mode === 'chase') this.rig.zoom(wheelSteps);
     if (this.photo) {
@@ -1899,8 +1914,7 @@ class Game {
     if (locked && this.phase === 'play' && !this.dialogs.isOpen && !this.photo && !this.chartMode && !this.kitchen.active && !this.sailMenuFrame && ((this.player.mode === 'boat' && !this.player.wheeling) || this.player.mode === 'port')) {
       if (this.radioCtl && (input.pressed('Mouse0') || input.pressed('Mouse2'))) {
         // кнопки й ручки радіо
-        this.radio.use(this.radioCtl, input.pressed('Mouse0') ? 1 : -1);
-        this.radioTextT = 0;
+        this.radioUse(this.radioCtl, input.pressed('Mouse0') ? 1 : -1);
         this.audio.click();
       } else if (input.pressed('Mouse0')) this.fishing.click(this.boat, g, this.weather, this.time);
       if (input.pressed('KeyR')) this.fishing.reelHand();
@@ -1953,6 +1967,7 @@ class Game {
     this.radioCtl = inCabin && this.phase === 'play' && !this.dialogs.isOpen && this.player.nearest?.id === 'st:radio' ? this.radio.aim(this.camera) : null;
     this.radio.spectrum = this.audio.radioSpectrum();
     this.radio.update(dt, inCabin);
+    this.radioHold -= dt;
     this.cabinDecor.update(dt, this.time.hours, this.weather.base, this.boat.group, 1 - this.time.daylight);
     {
       // хата: світло у вікнах і лампа; журнал на стіні — перемальовується, коли поруч
@@ -2387,8 +2402,7 @@ class Game {
     }
     if (id === 'st:radio') {
       // фізичне радіо: E — те саме, що ЛКМ по органу, на який дивишся (або живлення)
-      this.radio.use(this.radioCtl ?? 'power', 1);
-      this.radioTextT = 0;
+      this.radioUse(this.radioCtl ?? 'power', 1);
       return;
     }
     if (id === 'st:bed' || id === 'port:house') {
@@ -2843,12 +2857,13 @@ class Game {
       t,
       orbitYaw: this.introYaw(),
     });
-    // над штурманським столом: камера схиляється до карти (згори, північ — від себе)
+    // над штурманським столом: камера схиляється до карти (згори, північ — від себе),
+    // трохи відступивши й піднявши погляд — щоб у кадрі було й радіо над столом
     this.chartK += ((this.chartMode ? 1 : 0) - this.chartK) * (1 - Math.exp(-this.clockDelta * 6));
     if (this.chartK > 0.002) {
       const b = this.boat;
-      b.localToWorld(CHART_CENTER.x - 0.3, CHART_CENTER.y + 0.55, CHART_CENTER.z, this._chEye);
-      b.localToWorld(CHART_CENTER.x + 0.02, CHART_CENTER.y, CHART_CENTER.z, this._chAt);
+      b.localToWorld(CHART_CENTER.x - 0.48, CHART_CENTER.y + 0.72, CHART_CENTER.z, this._chEye);
+      b.localToWorld(CHART_CENTER.x + 0.15, CHART_CENTER.y, CHART_CENTER.z, this._chAt);
       this._chUp.set(1, 0, 0).applyQuaternion(b.group.quaternion);
       this._chM.lookAt(this._chEye, this._chAt, this._chUp);
       this._chQ.setFromRotationMatrix(this._chM);
@@ -3226,6 +3241,24 @@ class Game {
     const dx = w.x - h.x, dy = w.y - h.y, dz = w.z - h.z;
     this.player.yaw = Math.atan2(-dx, -dz);
     this.player.pitch = Math.atan2(dy, Math.hypot(dx, dz));
+  }
+
+  /** кнопка чи ручка радіо; екіпаж ще й шле її власнику яхти — у нього радіо, яке чують усі */
+  private radioUse(ctl: RadioCtl, dir: number) {
+    this.radio.use(ctl, dir);
+    this.radioTextT = 0;
+    if (this.coop.crewing) {
+      this.radioHold = 1;
+      this.coop.sendAction({ a: 'radio', c: ctl, v: dir });
+    }
+  }
+
+  private radioTurn(ctl: RadioCtl, steps: number) {
+    this.radio.turn(ctl, steps);
+    if (this.coop.crewing) {
+      this.radioHold = 1;
+      this.coop.sendAction({ a: 'radio', c: ctl, s: steps });
+    }
   }
 
   private setChart(on: boolean) {

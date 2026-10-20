@@ -93,7 +93,9 @@ export type BoatAction =
   | { a: 'ap'; v: number }
   | { a: 'ign' }
   | { a: 'tent'; v: number }
-  | { a: 'curtain'; v: number };
+  | { a: 'curtain'; v: number }
+  /** радіо: v — ЛКМ/ПКМ по органу, s — кроки коліщатка */
+  | { a: 'radio'; c: string; v?: number; s?: number };
 
 export interface FriendMarker {
   x: number;
@@ -164,6 +166,9 @@ export class Coop {
   onBots: ((a: unknown) => void) | null = null;
   /** жива біржа: капітан кімнати шле запаси всіх бірж (раз на MARKET_SEC) */
   marketState: (() => unknown) | null = null;
+  /** радіо моєї яхти — екіпажу в знімку борту */
+  radioState: (() => number[]) | null = null;
+  onRadio: ((s: number[]) => void) | null = null;
   onMarket: ((d: unknown) => void) | null = null;
   /** капітан: гість продав рибу (порт, вид, типові рибини) */
   onMarketSale: ((portId: string, speciesId: string, units: number) => void) | null = null;
@@ -544,6 +549,7 @@ export class Coop {
       up: g.fittedUpgrades(),
       helm: this.helmOwner,
       ap: boat.autopilot ? 1 : 0,
+      rd: this.radioState?.(),
     };
     // трюм — коли змінився (або раз на 2 с для тих, хто щойно прийшов)
     const key = g.hold.map((f) => f.uid + (f.cooked ? 'c' : '')).join(',');
@@ -610,6 +616,7 @@ export class Coop {
       g.upgrades = { ...g.upgrades, ...(last.up as Record<UpgradeId, number>) };
       this.helmOwner = (last.helm as number | null) ?? null;
       boat.autopilot = last.ap === 1;
+      if (Array.isArray(last.rd)) this.onRadio?.(last.rd as number[]);
       if (Array.isArray(last.hold)) g.hold = (last.hold as FishItem[]).map((x) => ({ ...x }));
     }
     return renderT;
