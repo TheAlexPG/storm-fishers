@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import type { UpgradeId } from '../core/types';
 import { instrShelfModel } from './helmInstruments';
-import { HALF_LEN, DECK_Y, WATERLINE_Y, HOUSE, COCKPIT, RIG, sheerY, hullBottomY, hullHalfWidth, hullXAt } from './yachtLayout';
+import { tentShelfModel } from './canvasTop';
+import { HALF_LEN, DECK_Y, WATERLINE_Y, HOUSE, RIG, ARCH, sheerY, hullBottomY, hullHalfWidth, hullXAt } from './yachtLayout';
 
 // ─────────────────────────────────────────────────────────────
 // Фізичні речі апгрейдів: та сама модель стоїть на полиці крамниці
@@ -673,7 +674,9 @@ function aFrame(k: PartKit): THREE.Object3D {
 
 // ── розкладка на яхті ──
 const AFT = -HALF_LEN; // транець
-const ROOF = COCKPIT.roofY;
+/** рама кормової дуги (сонячні панелі обабіч, посередині — кофр) */
+const ARCH_TOP = ARCH.y + 0.03;
+const ARCH_MID = (ARCH.z0 + ARCH.z1) / 2;
 const finY = WATERLINE_Y + 0.03;
 const finZ = 0.4;
 const finX = (y: number) => hullXAt(y, finZ);
@@ -810,7 +813,7 @@ export const PART_SPECS: Record<UpgradeId, PartSpec[]> = {
     { model: (k) => crate(k, 0x3c6e9a, 0x5a8bb5), mounts: [{ p: [0.72, DECK_Y, -4.0] }] },
     { model: (k) => crate(k, 0x3c6e9a, 0x5a8bb5), mounts: [{ p: [-0.72, DECK_Y, -4.0] }] },
     { model: cooler, mounts: [{ p: [0.72, DECK_Y + 0.32, -4.0] }] },
-    { model: roofBox, mounts: [{ p: [0, ROOF + 0.02, -3.45] }] },
+    { model: roofBox, mounts: [{ p: [0, ARCH_TOP, ARCH_MID], r: [0, Math.PI / 2, 0] }] },
     { model: netBag, mounts: [{ p: [-0.45, DECK_Y, 3.25], r: [0, 0.25, 0] }] },
   ],
   rod: [
@@ -879,8 +882,9 @@ export const PART_SPECS: Record<UpgradeId, PartSpec[]> = {
     { model: lantern, lamp: 'light', mounts: [{ p: [0, sheerY(4.5) + 0.7, 4.5] }] },
     { model: lantern, lamp: 'glow', mounts: [{ p: [0.78, HOUSE.top, 0.2] }] },
     { model: lantern, lamp: 'glow', mounts: [{ p: [-0.78, HOUSE.top, 0.2] }] },
-    { model: lantern, lamp: 'light', mounts: [{ p: [-0.8, ROOF + 0.02, COCKPIT.z0 + 0.12] }] },
-    { model: searchlight, spot: true, mounts: [{ p: [0, ROOF + 0.02, COCKPIT.z1 - 0.3] }] },
+    { model: lantern, lamp: 'light', mounts: [{ p: [ARCH.x - 0.14, ARCH_TOP, ARCH.z1 + 0.02] }] },
+    // прожектор — на щоглі над гіком, б'є вперед
+    { model: searchlight, spot: true, mounts: [{ p: [0, HOUSE.top + 2.45, RIG.mastZ + 0.12] }] },
   ],
   nets: [
     { model: netCrate, until: 4, view: 2.6, mounts: [{ p: [0.6, WATERLINE_Y + 0.26, -HALF_LEN - 0.24] }] },
@@ -914,6 +918,8 @@ export const PART_SPECS: Record<UpgradeId, PartSpec[]> = {
   ],
   // прилади штурвала живуть у HelmInstruments (екрани, стрілки) — тут лише речі для полиці
   instr: [1, 2, 3, 4, 5].map((l) => ({ model: (k: PartKit) => instrShelfModel(l, k), view: -0.25, onBoat: () => new THREE.Group() })),
+  // тент живе в CanvasTop (полотна, складання, штори) — тут лише згортки для полиці
+  tent: [1, 2, 3, 4, 5].map((l) => ({ model: (k: PartKit) => tentShelfModel(l, k), view: -0.25, onBoat: () => new THREE.Group() })),
   // паруси: тканина, гік і генакер змінюються в SailRig (setLevel), тут — «залізо»
   sails: [
     // 1: новий дакрон — видно на самих парусах

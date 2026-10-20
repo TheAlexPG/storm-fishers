@@ -5,14 +5,14 @@ import type { UpgradeId } from '../core/types';
 import { PART_SPECS, buildPartOnBoat } from './upgradeParts';
 import { HelmDisplay } from './helmDisplay';
 import {
-  HALF_LEN, HULL_LEN, DECK_Y, SOLE_Y, WATERLINE_Y, HOUSE, RIG, COCKPIT, STAIR,
+  HALF_LEN, HULL_LEN, DECK_Y, SOLE_Y, WATERLINE_Y, HOUSE, RIG, COCKPIT, STAIR, ARCH,
   hullHalfWidth, hullBottomY, sheerY, hullXAt,
 } from './yachtLayout';
 
 // ─────────────────────────────────────────────────────────────
 // Меш вітрильної яхти: лофтований корпус (білий гелькоут, ватерлінійна смуга,
 // антифоулінг), тиковий настил, рубка з компаньйоном і трапом у салон,
-// кокпіт під hardtop зі склом, рангоут (щогла 12 м, гік, згорнуті паруси,
+// відкритий кокпіт з кормовою дугою, рангоут (щогла 12 м, гік, згорнуті паруси,
 // ванти), салон усередині корпусу: камбуз, штурманський стіл, дивани, V-койка.
 // ─────────────────────────────────────────────────────────────
 
@@ -995,7 +995,7 @@ export class YachtBuilder {
     this.rbox(g, STAIR.x * 2, 0.04, 0.07, 0, DECK_Y + 0.02, HOUSE.z0 - 0.02, this.mat(TEAK_DARK, 0.8), 0.02, 0.008);
   }
 
-  // ── кокпіт: коамінги, лави, hardtop, лобове й бічне скло ──
+  // ── кокпіт: коамінги, лави, кормова дуга (без даху — тент окремим апгрейдом) ──
   private buildCockpit() {
     const g = this.g;
     const white = this.mat(GELCOAT, 0.35, 0.05);
@@ -1011,74 +1011,50 @@ export class YachtBuilder {
       this.rbox(g, 0.36, 0.42, 1.65, s * (cx - 0.22), DECK_Y + 0.21, -1.6, white, 0.06, 0.02);
       this.rbox(g, 0.4, 0.045, 1.69, s * (cx - 0.22), DECK_Y + 0.44, -1.6, teak, 0.08, 0.015);
     }
-    // hardtop: біла панель з темною стелею, кріплення — лобова рама та кормова дуга
-    const roofLen = 0.45 - COCKPIT.z0 + 0.1;
-    const roofZ = (COCKPIT.z0 - 0.1 + 0.45) / 2;
-    // заокруглена плита з фаскою + тонка темно-синя окантовка по краю (як смуга корпусу)
-    this.rbox(g, cx * 2 + 0.5, 0.08, roofLen, 0, COCKPIT.roofY + 0.005, roofZ, white, 0.28, 0.03);
-    this.rbox(g, cx * 2 + 0.52, 0.03, roofLen + 0.02, 0, COCKPIT.roofY - 0.02, roofZ, this.mat(NAVY, 0.6), 0.29, 0.008, false);
-    this.rbox(g, cx * 2 + 0.4, 0.02, roofLen - 0.08, 0, COCKPIT.roofY - 0.04, roofZ, this.mat(0x3a3f47, 0.9), 0.24, 0.006, false);
-    // сонячні панелі на даху: комірки з сіткою, світла алюмінієва рамка
+    // кокпіт відкритий: з-за штурвала видно паруси. Тент (козирок, біміні, штори) —
+    // апгрейд «Тент» (canvasTop.ts). Над транцем — кормова дуга з нержавійки.
+    const steel = this.mat(STEEL, 0.25, 0.9);
+    const ay = ARCH.y;
+    for (const s of [-1, 1]) {
+      // нога дуги: від палуби біля транця вгору, з легким нахилом назад
+      this.rod(g, new THREE.Vector3(s * ARCH.x, DECK_Y + 0.02, ARCH.foot), new THREE.Vector3(s * (ARCH.x - 0.03), ay - 0.25, ARCH.foot - 0.12), 0.045, steel, 10);
+      this.rod(g, new THREE.Vector3(s * (ARCH.x - 0.03), ay - 0.25, ARCH.foot - 0.12), new THREE.Vector3(s * (ARCH.x - 0.12), ay, (ARCH.z0 + ARCH.z1) / 2), 0.045, steel, 10);
+      // розпірка до транця
+      this.rod(g, new THREE.Vector3(s * (ARCH.x - 0.04), DECK_Y + 0.9, ARCH.foot - 0.04), new THREE.Vector3(s * 0.45, DECK_Y + 0.05, -HALF_LEN + 0.12), 0.025, steel, 8);
+      // поздовжні труби рами
+      this.rod(g, new THREE.Vector3(s * (ARCH.x - 0.12), ay, ARCH.z0), new THREE.Vector3(s * (ARCH.x - 0.12), ay, ARCH.z1), 0.03, steel, 8);
+    }
+    for (const z of [ARCH.z0, ARCH.z1]) this.rod(g, new THREE.Vector3(-(ARCH.x - 0.12), ay, z), new THREE.Vector3(ARCH.x - 0.12, ay, z), 0.03, steel, 8);
+    // сонячні панелі на рамі (обабіч кофра/середини)
     {
       const solar = new THREE.MeshStandardMaterial({ map: solarTexture(), roughness: 0.25, metalness: 0.4 });
-      const pg = new THREE.BoxGeometry(1.1, 0.03, 1.15);
-      for (const dx of [-0.6, 0.6]) for (const dz of [-0.9, 0.4]) {
+      const pg = new THREE.BoxGeometry(0.58, 0.03, ARCH.z1 - ARCH.z0 - 0.04);
+      for (const dx of [-0.62, 0.62]) {
         const p = new THREE.Mesh(pg, solar);
-        p.position.set(dx, COCKPIT.roofY + 0.06, roofZ + dz);
+        p.position.set(dx, ay + 0.035, (ARCH.z0 + ARCH.z1) / 2);
         p.receiveShadow = true;
         p.userData.merge = true;
         g.add(p);
       }
     }
-    // кормова дуга (нержавійка)
-    const steel = this.mat(STEEL, 0.25, 0.9);
-    for (const s of [-1, 1]) {
-      this.rod(g, new THREE.Vector3(s * (cx + 0.05), DECK_Y + 0.4, COCKPIT.z0 + 0.15), new THREE.Vector3(s * (cx + 0.2), COCKPIT.roofY - 0.04, COCKPIT.z0 + 0.05), 0.035, steel, 8);
-      this.rod(g, new THREE.Vector3(s * (cx + 0.05), DECK_Y + 0.4, -2.5), new THREE.Vector3(s * (cx + 0.2), COCKPIT.roofY - 0.04, -2.45), 0.03, steel, 8);
-    }
-    // лобове скло: над рубкою від даху рубки до hardtop, нахил назад
-    const glassMat = new THREE.MeshStandardMaterial({ color: 0x9fd3ea, transparent: true, opacity: 0.2, roughness: 0.05, metalness: 0.3, depthWrite: false, side: THREE.DoubleSide });
-    const frameMat = this.mat(0x2a2f36, 0.5, 0.4);
-    {
-      const hgt = COCKPIT.roofY - HOUSE.top;
-      const glass = new THREE.Mesh(new THREE.BoxGeometry(HOUSE.x * 2 - 0.12, hgt, 0.03), glassMat);
-      glass.position.set(0, HOUSE.top + hgt / 2, 0.42);
-      glass.rotation.x = -0.18;
-      g.add(glass);
-      this.box(g, HOUSE.x * 2 - 0.06, 0.06, 0.08, 0, HOUSE.top + 0.05, 0.55, frameMat);
-      for (const x of [-HOUSE.x + 0.04, -0.3, 0.3, HOUSE.x - 0.04]) {
-        const m = this.box(g, 0.05, hgt, 0.05, x, HOUSE.top + hgt / 2, 0.42, frameMat);
-        m.rotation.x = -0.18;
-      }
-    }
-    // бічні щитки: скло від коамінга до даху (z -2.4..-0.6), над рубкою — до даху
-    for (const s of [-1, 1]) {
-      const h1 = COCKPIT.roofY - (DECK_Y + 0.42);
-      const g1 = new THREE.Mesh(new THREE.BoxGeometry(0.02, h1, 1.8), glassMat);
-      g1.position.set(s * cx, DECK_Y + 0.42 + h1 / 2, -1.5);
-      g.add(g1);
-      const h2 = COCKPIT.roofY - HOUSE.top;
-      const g2 = new THREE.Mesh(new THREE.BoxGeometry(0.02, h2, 1.05), glassMat);
-      g2.position.set(s * (HOUSE.x - 0.02), HOUSE.top + h2 / 2, -0.1);
-      g.add(g2);
-      for (const z of [-2.4, -0.6]) this.box(g, 0.05, h1, 0.05, s * cx, DECK_Y + 0.42 + h1 / 2, z, frameMat);
-      this.box(g, 0.05, 0.05, 1.8, s * cx, DECK_Y + 0.44, -1.5, frameMat, false);
-    }
-    // тепле світло під hardtop
-    this.refs.cockpitLight.position.set(0, COCKPIT.roofY - 0.7, -2.2);
+    // світло кокпіту: лампа під передньою трубою дуги (над штурвалом)
+    this.refs.cockpitLight.position.set(0, ay - 0.45, -3.6);
     g.add(this.refs.cockpitLight);
     const lampMat = new THREE.MeshStandardMaterial({ color: 0xfff4e0, emissive: 0xffd9a0, emissiveIntensity: 0.4 });
-    for (const z of [-3.3, -1.3]) {
-      const l = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.02, 12), lampMat);
-      l.position.set(0, COCKPIT.roofY - 0.065, z);
+    for (const x of [-0.35, 0.35]) {
+      const l = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.03, 12), lampMat);
+      l.position.set(x, ay - 0.04, ARCH.z1);
       g.add(l);
     }
     this.refs.glowMats.push(lampMat);
+    // погон гіка-шкота на даху рубки (шкот — із середини гіка, перед козирком)
+    this.rod(g, new THREE.Vector3(-0.62, HOUSE.top + 0.05, 0.6), new THREE.Vector3(0.62, HOUSE.top + 0.05, 0.6), 0.02, steel, 8);
+    this.rbox(g, 0.12, 0.05, 0.08, 0, HOUSE.top + 0.07, 0.6, this.mat(0x1f2328, 0.5, 0.3), 0.02, 0.006);
   }
 
   // ── штурвальна тумба: колесо, бінакль, приборна панель, газ ──
   private buildHelm() {
-    // уся штурвальна тумба — на HELM_DZ ближче до корми (ширший прохід повз скло кокпіту)
+    // уся штурвальна тумба — на HELM_DZ ближче до корми (ширший прохід кокпітом)
     const g = new THREE.Group();
     g.position.z = HELM_DZ;
     this.g.add(g);
