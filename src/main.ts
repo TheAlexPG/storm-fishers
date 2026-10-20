@@ -52,6 +52,8 @@ import { forecast3 } from './game/forecast';
 import { CabinDecor } from './world/cabinDecor';
 import { Galley, PAN_POS, TEA_LOOK } from './world/galley';
 import { KitchenUI } from './ui/kitchenUI';
+import { SailMenu, type SailChoice } from './ui/sailMenu';
+import { SAIL_AREA, sailModeLabel, type SailMode } from './world/sails';
 import { CabinDoor } from './world/cabinDoor';
 import { ChartTable, CHART_CENTER } from './world/chartTable';
 import { Nets, type NetsNet } from './world/nets';
@@ -172,6 +174,9 @@ class Game {
   /** камбуз: чайник, книга рецептів, пательня (world/galley.ts) і міні-ігри (ui/kitchenUI.ts) */
   private galley!: Galley;
   private kitchen!: KitchenUI;
+  private sailMenu!: SailMenu;
+  /** меню парусів відкрите в цьому кадрі — ЛКМ не закидає вудку */
+  private sailMenuFrame = false;
   private shopCounter!: ShopCounter;
   private exchangeBoard!: ExchangeBoard;
   private stalls!: BuyerStalls;
@@ -436,6 +441,7 @@ class Game {
     this.coop.onMarketSale = (portId, sp, u) => this.game.marketOf(portId).addStock(sp, u);
 
     this.hud = new Hud();
+    this.sailMenu = new SailMenu(document.getElementById('hud') ?? document.body);
     this.minimap = new Minimap();
     this.mapView = new MapView();
     this.mapView.onRouteChange = () => {
@@ -758,9 +764,15 @@ class Game {
     const g = this.game;
     switch (act.a) {
       case 'sails': {
-        const m = this.boat.sails.cycle();
-        const txt = m === 2 ? L('паруси підняті', `sails hoisted`) : m === 1 ? L('взято риф', `reef taken`) : L('паруси спущено', `sails dropped`);
-        this.hud.toast(`⛵ ${nick}: ${txt}`, 'good', 2200);
+        const sr = this.boat.sails;
+        // v: 0..3 — рівень з меню; 10/11 — генакер увімк./вимк.; без v — старий цикл
+        if (act.v === 10 || act.v === 11) {
+          sr.gennOff = act.v === 11;
+          this.hud.toast(`⛵ ${nick}: ${act.v === 10 ? L('генакер готовий', `gennaker ready`) : L('генакер прибрано', `gennaker stowed`)}`, 'good', 2200);
+          break;
+        }
+        const m = act.v != null && act.v >= 0 && act.v <= 3 ? (sr.mode = act.v as SailMode) : sr.cycle();
+        this.hud.toast(`⛵ ${nick}: ${L('паруси', `sails`)} — ${sr.label()}`, m === 0 ? 'warn' : 'good', 2200);
         break;
       }
       case 'engine':
@@ -1324,13 +1336,15 @@ class Game {
     }
 
     // E — дія
-    if (locked && input.pressed('KeyE') && this.phase === 'play' && !this.dialogs.isOpen && !this.kitchen.busy) {
+    if (locked && input.pressed('KeyE') && this.phase === 'play' && !this.dialogs.isOpen && !this.kitchen.busy && !this.sailMenuFrame) {
       if (this.chartMode) this.setChart(false);
       else this.doInteract();
     }
     // Esc — меню паузи / продовження / закрити карту (працює і без pointer lock)
     if (input.pressed('Escape')) {
-      if (this.kitchen.active) {
+      if (this.sailMenu.open) {
+        this.sailMenu.close(); // меню парусів — просто закрити
+      } else if (this.kitchen.active) {
         this.kitchen.abort(); // чай / готування — перервати, а не меню паузи
       } else if (this.chartMode) {
         this.setChart(false);
@@ -1555,6 +1569,8 @@ class Game {
         this.boat.throttle = this.coop.myHelm[0];
         this.boat.rudder = this.coop.myHelm[1];
       }
+      this.sailMenuFrame = this.sailMenu.open;
+      if (this.sailMenu.open) this.updateSailMenu(input);
       this.player.update(dt, input, this.boat, this.port, this.ocean, t);
       this.pickCounter();
       if (this.player.onIsland) {
@@ -1633,7 +1649,7 @@ class Game {
     this.fishing.ashore = this.player.mode === 'port';
     this.fishing.update(dt, t, this.boat, this.ocean, input, g, this.weather, this.time);
     // вудка в руках: ЛКМ — закид / підсічка, R — змотати
-    if (locked && this.phase === 'play' && !this.dialogs.isOpen && !this.photo && !this.chartMode && !this.kitchen.active && ((this.player.mode === 'boat' && !this.player.wheeling) || this.player.mode === 'port')) {
+    if (locked && this.phase === 'play' && !this.dialogs.isOpen && !this.photo && !this.chartMode && !this.kitchen.active && !this.sailMenuFrame && ((this.player.mode === 'boat' && !this.player.wheeling) || this.player.mode === 'port')) {
       if (this.radioCtl && (input.pressed('Mouse0') || input.pressed('Mouse2'))) {
         // кнопки й ручки радіо
         this.radio.use(this.radioCtl, input.pressed('Mouse0') ? 1 : -1);
@@ -2090,17 +2106,10 @@ class Game {
       return;
     }
     if (id === 'st:sails') {
-      // фізична робота біля щогли: тягнути фал / риф-шкентель займає час і сили
+      // біля щогли — радіальне меню: скільки вітрила поставити
       if (this.stations.active?.id === 'sails') return;
-      const m = this.boat.sails.mode;
-      const [label, dur, cost] = m === 0 ? [L('Тягнемо фал — піднімаємо паруси…', `Hauling the halyard — hoisting the sails…`), 3.5, 4] as const
-        : m === 2 ? [L('Беремо риф…', `Taking a reef…`), 2.5, 2] as const
-        : [L('Травимо фал — спускаємо паруси…', `Easing the halyard — dropping the sails…`), 2.0, 1] as const;
-      if (!g.spendEnergy(cost)) {
-        this.hud.toast(L('Занадто втомлений, щоб тягнути фали', `Too tired to haul the halyards`), 'warn', 2500);
-        return;
-      }
-      this.stations.startTimed('sails', label, dur, () => this.cycleSails());
+      const sr = this.boat.sails;
+      this.sailMenu.show(sr.mode, sr.hasGenn ? !sr.gennOff : null, sr.recommend(), sr.tws, true);
       return;
     }
     if (id === 'st:radio') {
@@ -2141,12 +2150,69 @@ class Game {
     }
   }
 
-  private cycleSails() {
-    if (this.coop.crewing) this.coop.sendAction({ a: 'sails' });
-    const m = this.boat.sails.cycle();
+  /** кожен кадр, поки відкрите меню парусів: миша вибирає, клавіші підтверджують */
+  private updateSailMenu(input: Input) {
+    const menu = this.sailMenu;
+    if (this.phase !== 'play' || this.dialogs.isOpen || this.player.mode !== 'boat' || this.player.nearest?.id !== 'st:sails') {
+      menu.close();
+      return;
+    }
+    const [dx, dy] = input.consumeMouse();
+    menu.move(dx, dy);
+    for (const k of ['1', '2', '3', '4', '5']) {
+      if (input.pressed('Digit' + k) || input.pressed('Numpad' + k)) {
+        const c = menu.byKey(k);
+        if (c != null) return this.chooseSails(c);
+      }
+    }
+    if (input.pressed('Mouse2')) return menu.close();
+    if (input.pressed('Mouse0') || input.pressed('KeyE')) {
+      if (menu.sel != null) return this.chooseSails(menu.sel);
+      return menu.close();
+    }
+    // затиснули E, повели мишею й відпустили — як «колесо» в іграх
+    if (!input.down('KeyE')) {
+      if (menu.heldLong() && menu.sel != null) return this.chooseSails(menu.sel);
+      menu.releaseHold();
+    }
+  }
+
+  /** вибір з меню: фізична робота біля щогли — що більша зміна, то довше */
+  private chooseSails(c: SailChoice) {
+    this.sailMenu.close();
+    const g = this.game;
+    const sr = this.boat.sails;
+    if (c === 'genn') {
+      const off = !sr.gennOff;
+      this.stations.startTimed('sails', off ? L('Прибираємо генакер у мішок…', `Bagging the gennaker…`) : L('Готуємо генакер…', `Rigging the gennaker…`), 1.6, () => {
+        if (this.coop.crewing) this.coop.sendAction({ a: 'sails', v: off ? 11 : 10 });
+        sr.gennOff = off;
+        this.audio.click();
+        this.hud.toast(off ? L('⛵ Генакер прибрано', `⛵ Gennaker stowed`) : L('⛵ Генакер готовий — розкриється на повних курсах', `⛵ Gennaker ready — it sets on broad reaches`), 'good', 2400);
+      });
+      return;
+    }
+    if (c === sr.mode) return;
+    const from = SAIL_AREA[sr.mode], to = SAIL_AREA[c];
+    const d = Math.abs(to - from);
+    const up = to > from;
+    const label = c === 0 ? L('Травимо фал — спускаємо паруси…', `Easing the halyard — dropping the sails…`)
+      : up ? L(`Тягнемо фал — ${sailModeLabel(c)}…`, `Hauling the halyard — ${sailModeLabel(c)}…`)
+      : L(`Беремо риф — ${sailModeLabel(c)}…`, `Taking a reef — ${sailModeLabel(c)}…`);
+    const dur = up ? 1.2 + d * 2.6 : 1.0 + d * 1.6;
+    const cost = up ? Math.max(1, Math.round(d * 4)) : Math.max(1, Math.round(d * 2));
+    if (!g.spendEnergy(cost)) {
+      this.hud.toast(L('Занадто втомлений, щоб тягнути фали', `Too tired to haul the halyards`), 'warn', 2500);
+      return;
+    }
+    this.stations.startTimed('sails', label, dur, () => this.setSails(c));
+  }
+
+  private setSails(m: SailMode) {
+    if (this.coop.crewing) this.coop.sendAction({ a: 'sails', v: m });
+    this.boat.sails.mode = m;
     this.audio.click();
-    const txt = m === 2 ? L('⛵ Паруси підняті — повні', `⛵ Sails up — full`) : m === 1 ? L('⛵ Взято риф (≈60 % площі)', `⛵ Reef taken (≈60 % of sail area)`) : L('⛵ Паруси спущено', `⛵ Sails dropped`);
-    this.hud.toast(txt, m === 0 ? 'warn' : 'good', 2200);
+    this.hud.toast(L(`⛵ Паруси: ${this.boat.sails.label()}`, `⛵ Sails: ${this.boat.sails.label()}`), m === 0 ? 'warn' : 'good', 2200);
   }
 
   private doSleep(inPort: boolean) {

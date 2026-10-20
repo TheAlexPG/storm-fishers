@@ -56,7 +56,7 @@ explore islands, outrun Beaufort‑scale storms and come home with a hold full o
 - **Wave slamming** — punch head‑on into big seas at full throttle and the hull takes damage; take them at an angle like a real sailor.
 
 ### ⛵ The yacht
-- **Sailing physics** — keel, sails trimmed to the apparent wind, gybes, a motor for the harbour, fuel, rudder and throttle at a real wheel.
+- **Sailing physics** — keel, sails trimmed to the apparent wind, a sail wheel at the mast to set exactly how much canvas you carry (two reefs, full sail, gennaker) with a suggestion for the current wind, gybes, a motor for the harbour, fuel, rudder and throttle at a real wheel.
 - **Walk the whole boat** — deck, cockpit and a cabin below with closable companionway doors (leave them open in a storm and water gets in!).
 - **A cozy cabin** — settees with cushions, rugs, bookshelves, a ship in a bottle, a swinging oil lantern, and a clock and barometer that follow the game time and the weather.
 - **Physical radio «Шторм‑М1»** — a real set with a screen and separate controls: power, five preset buttons, a tuning knob (with static between stations) and a volume knob. Aim at a control and click it, or turn it with the mouse wheel. Its screen shows a 3‑day forecast, market prices with sparklines, fish reports, a live music spectrum or typed‑out channel 16 chatter.
@@ -106,6 +106,7 @@ explore islands, outrun Beaufort‑scale storms and come home with a hold full o
 | **W A S D** | walk · throttle & rudder at the wheel |
 | **Mouse** | look around |
 | **E** | interact (wheel, sails, doors, shops, chart table, nets…) · go ashore / back aboard |
+| **E at the mast** | sail wheel — drop, reef 2 (40 %), reef 1 (70 %), full, gennaker · pick with the mouse or **1–5**, haul with **LMB** / **E** |
 | **LMB** | cast / strike · place a route point on the chart |
 | **Space** | reel in during a fight · jump |
 | **A / D** | tilt the rod while fighting |
