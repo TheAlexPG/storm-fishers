@@ -1043,6 +1043,9 @@ class Game {
     return ['', null];
   }
 
+  private _pickBox = new THREE.Box3();
+  private _pickBox2 = new THREE.Box3();
+  private _pickV = new THREE.Vector3();
   private _mast: THREE.Object3D[] | null = null;
   private mastMesh(): THREE.Object3D[] {
     if (!this._mast) {
@@ -1073,9 +1076,22 @@ class Game {
         : s.id === 'st:chart' ? [this.chart.group]
         : s.id === 'st:sails' ? [...(this.stationObjects(s.id)[1] ?? []), ...this.boat.sails.pickables(), ...this.mastMesh()]
         : this.stationObjects(s.id)[1];
-      const hit = objs && this._ray.intersectObjects(objs, true).find((h) => shown(h.object));
-      if (hit && hit.distance < bestD) {
-        bestD = hit.distance;
+      if (!objs) continue;
+      const hit = this._ray.intersectObjects(objs, true).find((h) => shown(h.object));
+      let d = hit ? hit.distance : Infinity;
+      // дрібна станція (тонка рукоять помпи, кнопка, тримач) — рахуємо й промах на кілька сантиметрів
+      if (!hit) {
+        const box = this._pickBox.makeEmpty();
+        for (const o of objs) o.traverse((m) => {
+          if ((m as THREE.Mesh).isMesh && shown(m)) box.union(this._pickBox2.setFromObject(m));
+        });
+        if (!box.isEmpty() && box.getSize(this._pickV).length() < 0.8 && this._ray.ray.intersectBox(box.expandByScalar(0.08), this._pickV)) {
+          d = this._pickV.distanceTo(this._ray.ray.origin);
+          if (d > this._ray.far) d = Infinity;
+        }
+      }
+      if (d < bestD) {
+        bestD = d;
         best = s;
       }
     }
