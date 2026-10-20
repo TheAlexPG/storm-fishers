@@ -46,6 +46,7 @@ import { RadioSet, RADIO_CHANNELS } from './world/radioSet';
 import { CabinDoor } from './world/cabinDoor';
 import { ChartTable, CHART_CENTER } from './world/chartTable';
 import { Nets, type NetsNet } from './world/nets';
+import { Bots } from './world/bots';
 import { ShopCounter, type CounterTarget } from './world/shopCounter';
 import { describeSave } from './game/saveTransfer';
 import { Highlighter } from './world/highlight';
@@ -145,6 +146,9 @@ class Game {
   private chart!: ChartTable;
   /** сітки (апгрейд «Сітки»): буї в морі, постановка/вибирання з корми */
   private nets!: Nets;
+  /** місцеві рибалки на човнах (боти) */
+  private bots!: Bots;
+  private stormWarned = false;
   private netsSyncT = 0;
   private netsSyncKey = '';
   private netsSyncMode = 'idle';
@@ -247,6 +251,9 @@ class Game {
     this.cabinDoor = new CabinDoor(this.boat.group);
     this.chart = new ChartTable(this.boat.group);
     this.nets = new Nets(this.scene);
+    this.bots = new Bots(this.scene, this.port.platforms, this.port.rocks);
+    this.bots.onChatter = (name, text) => this.hud.toast(`📻 «${name}»: ${text}`, 'warn', 4200);
+    this.bots.onHorn = (v) => this.audio.horn(v);
     this.nets.onEvent = (msg, kind) => this.hud.toast(msg, kind, 4000);
     this.nets.onSound = (k, p) => (k === 'splash' ? this.audio.splash(p) : k === 'winch' ? this.audio.click() : this.audio.thump(p));
     this.nets.onFish = (f, at) => {
@@ -287,6 +294,8 @@ class Game {
       },
       onClosed: (reason) => this.onCoopClosed(reason),
     });
+    this.coop.botState = () => this.bots.netState();
+    this.coop.onBots = (a) => this.bots.applyNet(a);
 
     this.hud = new Hud();
     this.minimap = new Minimap();
@@ -891,7 +900,8 @@ class Game {
       case 1: {
         const fc = w.snapshot().forecast;
         const bf = w.beaufort;
-        const f = fc > 0.74 ? 'УВАГА: очікується ШТОРМ, у відкритому морі — до 10–11 балів' : fc > 0.45 ? 'вітер посилюється, хвилі ростуть' : fc < 0.14 ? 'погода покращується, море спокійне' : 'погода стабільна';
+        const eta = w.stormEta;
+        const f = eta != null ? `УВАГА: ШТОРМ приблизно за ${Math.max(1, Math.round(eta / 25))} год, у відкритому морі — до 10–11 балів` : fc > 0.74 ? 'УВАГА: очікується ШТОРМ, у відкритому морі — до 10–11 балів' : fc > 0.45 ? 'вітер посилюється, хвилі ростуть' : fc < 0.14 ? 'погода покращується, море спокійне' : 'погода стабільна';
         return `зараз ${bf.b} б. (${bf.name}, ${w.windMs.toFixed(0)} м/с) · прогноз: ${f} · далі від берега завжди сильніше`;
       }
       case 2:
@@ -1140,6 +1150,12 @@ class Game {
     }
     if (this.coop.isClient) this.weather.updatePassive(dt);
     else this.weather.update(dt);
+    // штормове попередження заздалегідь (фронт ще не прийшов)
+    const eta = this.weather.stormEta;
+    if (eta != null && eta > 60 && !this.stormWarned) {
+      this.stormWarned = true;
+      this.hud.toast(`📻 Штормове попередження: шторм приблизно за ${Math.max(1, Math.round(eta / 60))} хв (≈${Math.max(1, Math.round(eta / 25))} год гри). Рибалки вертаються в порт`, 'warn', 6500);
+    } else if (eta == null && this.weather.state() !== 'storm') this.stormWarned = false;
     if (this.weather.state() !== this.lastWeather) {
       const st = this.weather.state();
       if (st === 'storm') this.hud.toast('⛈ ШТОРМ! Хвилі ростуть. Дістанься порту або ризикуй!', 'bad', 5000);
@@ -1250,7 +1266,7 @@ class Game {
     } else {
       this.coop.ownerApply(dt, this.boat, this.player);
       // інші яхти флотилії — теж перешкоди (зіткнення бортами)
-      const others = this.coop.active ? this.coop.fleetObstacles() : [];
+      const others = [...(this.coop.active ? this.coop.fleetObstacles() : []), ...this.bots.obstacles()];
       this.boat.update(dt, t, this.ocean, this.weather, g, this.particles, this.audio, others.length ? [...this.port.rocks, ...others] : this.port.rocks, this.port.platforms[0]);
     }
     this.boat.updateGangway(dt, this.port.platforms[0]);
@@ -1271,6 +1287,9 @@ class Game {
     // кооп: знімок світу (капітан), свій гравець і аватари екіпажу
     this.coop.ownerSend(dt, t, this.boat, this.weather, this.time, g, this.coop.crewing ? undefined : this.ocean.netState());
     this.coop.updateFleet(dt, t, this.ocean, this.weather, g, this.particles, this.time.daylight);
+    // боти: симулює соло-гравець або капітан кімнати; гості доганяють пози
+    this.bots.remote = this.coop.isClient;
+    this.bots.update(dt, t, this.ocean, this.weather, this.time.daylight, [this.boat.pos, ...this.coop.fleetObstacles()], this.boat.pos);
     this.coop.tick(dt, this.boat, this.player, this.stations.active?.id === 'pump', this.fishing, this.ocean, t);
 
     // ловля
@@ -1830,9 +1849,10 @@ class Game {
     this.mapView.friends = friends;
     this.mapView.buoys = this.nets.markers();
     this.minimap.buoys = this.mapView.buoys;
+    this.mapView.bots = this.minimap.bots = this.bots.markers();
     this.minimap.update(this.boat.pos.x, this.boat.pos.z, this.boat.heading, this.port.rocks, time.isNight);
     // відкрита мапа в коопі — друзі й човен рухаються (~4 рази/с)
-    if (this.phase === 'map' && this.coop.active) {
+    if (this.phase === 'map') {
       this.mapRefreshT -= this.clockDelta;
       if (this.mapRefreshT <= 0) {
         this.mapRefreshT = 0.25;

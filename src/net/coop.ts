@@ -139,6 +139,9 @@ export class Coop {
   private holdT = 0;
   private _b: number[] = [];
   private lastWorld: GameMsg | null = null;
+  /** човни-боти: капітан кімнати шле пози в пакеті світу, гості їх приймають */
+  botState: (() => number[]) | null = null;
+  onBots: ((a: unknown) => void) | null = null;
   private worldFresh = false;
 
   constructor(private scene: THREE.Scene, private h: CoopHandlers) {}
@@ -330,6 +333,7 @@ export class Coop {
         else this.clockOffset += (off - this.clockOffset) * (off > this.clockOffset ? 0.3 : 0.02);
         this.lastWorld = d;
         this.worldFresh = true;
+        if (d.bt) this.onBots?.(d.bt);
         break;
       }
       case 'b': {
@@ -450,7 +454,8 @@ export class Coop {
         this.session!.send({
           k: 'w',
           t: r(simTime),
-          w: [r(weather.base, 1e4), r(weather.snapshot().forecast, 1e3), r(weather.windDir, 1e4), r(weather.flash, 100)],
+          w: [r(weather.base, 1e4), r(weather.snapshot().forecast, 1e3), r(weather.windDir, 1e4), r(weather.flash, 100), Math.round(weather.stormEta ?? -1)],
+          bt: this.botState?.(),
           tm: [r(time.hours, 1e4), time.dayCount],
         });
       }
@@ -505,7 +510,7 @@ export class Coop {
     if (w && this.worldFresh) {
       this.worldFresh = false;
       const wv = w.w as number[];
-      weather.applyNet(wv[0], wv[1], wv[2], wv[3]);
+      weather.applyNet(wv[0], wv[1], wv[2], wv[3], wv[4]);
       const tm = w.tm as number[];
       // години — м'яко (щоб не стрибало між пакетами), стрибок сну — одразу
       let dh = tm[0] - time.hours;

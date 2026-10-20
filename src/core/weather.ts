@@ -1,9 +1,14 @@
-import { clamp, damp, rand, chance, mulberry32 } from './math';
+import { clamp, damp, rand, mulberry32 } from './math';
 import type { WeatherState, WeatherSnapshot } from './types';
 
 // ─────────────────────────────────────────────────────────────
-// Погода: Тиша → Повіє → Вітер → Шторм.
-// Переходи плавні (~60 с), стан тримається 2–4 год гри.
+// Погода: Тиша → Повіє → Вітер → Шторм — довгими фазами, щоб встигнути
+// вийти в море й відчути шторм (реальні хвилини; доба = 10 хв):
+//   ясно 8–14 хв (тиша/легкий бриз, міняються раз на 2–4 хв)
+//   → фронт 2,5–4 хв (вітер наростає; за ~4 хв до нього — штормове попередження)
+//   → шторм 5–8 хв (65 %) або просто вітряно 4–7 хв
+//   → стихає 2,5–3,5 хв → знову ясно.
+// Сила погоди тягнеться до цілі повільно (~40 с), тож шторм наростає хвилинами.
 // ─────────────────────────────────────────────────────────────
 
 const STATE_RANGE: Record<WeatherState, [number, number]> = {
@@ -57,7 +62,13 @@ export class Weather {
   private target = 0.1;
   windDir = 0;
   private windDirTarget = 0;
-  private holdTimer = 0; // секунд до наступної зміни
+  /** секунд до наступного кроку погоди (тести «заморожують» великим числом) */
+  private holdTimer = 0;
+  /** фаза погодного циклу і скільки їй лишилось (реальні секунди) */
+  phase: 'fair' | 'front' | 'storm' | 'windy' | 'ease' = 'fair';
+  private phaseLeft = 0;
+  /** наступний фронт принесе шторм (відомо заздалегідь — для прогнозу й ботів) */
+  private nextStorm = true;
   private rng: () => number;
   flash = 0;
   /** між блискавками */
@@ -66,17 +77,19 @@ export class Weather {
 
   constructor(seed = Date.now() % 100000) {
     this.rng = mulberry32(seed);
+    this.phaseLeft = rand(360, 600);
+    this.nextStorm = this.rng() < 0.65;
   }
 
   update(dt: number) {
-    // тримаємо стан 2–4 год гри = 50–100 с реально
-    this.holdTimer -= dt;
-    if (this.holdTimer <= 0) {
-      this.pickTarget();
-      this.holdTimer = rand(50, 100);
+    if (this.holdTimer < 1e8) {
+      this.holdTimer -= dt;
+      this.phaseLeft -= dt;
+      if (this.phaseLeft <= 0) this.nextPhase();
+      else if (this.holdTimer <= 0) this.wobble();
     }
-    // плавний перехід (~60 с)
-    this.base = damp(this.base, this.target, 0.05, dt);
+    // плавний перехід (стала ~40 с: шторм наростає хвилинами, а не стрибком)
+    this.base = damp(this.base, this.target, 0.025, dt);
     this.windDir = damp(this.windDir, this.windDirTarget, 0.08, dt);
     this.flash = Math.max(0, this.flash - dt * 2.2);
 
@@ -92,25 +105,91 @@ export class Weather {
     }
   }
 
-  private pickTarget() {
-    // випадковий блукання: частіше в біг, рідше в шторм; з порту (тиша) — помірний вітер
-    const r = this.rng();
-    // у відкритому морі шторми частіші (гравець далеко — ціль погоди важча)
-    const cur = stateFromIntensity(this.base);
+  /** наступна фаза циклу */
+  private nextPhase() {
     const far = this.localMul > 1.15;
-    const nextState: WeatherState = (() => {
-      const roll = r;
-      if (cur === 'calm') return roll < 0.75 ? 'breeze' : 'calm';
-      if (cur === 'breeze') return roll < (far ? 0.25 : 0.45) ? 'calm' : roll < (far ? 0.92 : 0.85) ? 'wind' : 'breeze';
-      if (cur === 'wind') return roll < (far ? 0.2 : 0.35) ? 'breeze' : roll < (far ? 0.7 : 0.6) ? 'storm' : 'wind';
-      return roll < (far ? 0.45 : 0.65) ? 'wind' : 'storm'; // шторм минає (далеко — довше)
-    })();
-    const [a, b] = STATE_RANGE[nextState];
-    this.target = a + this.rng() * (b - a);
+    switch (this.phase) {
+      case 'fair':
+        this.phase = 'front';
+        this.phaseLeft = rand(150, 240);
+        break;
+      case 'front':
+        this.phase = this.nextStorm ? 'storm' : 'windy';
+        // далеко в морі шторм тримається довше
+        this.phaseLeft = this.nextStorm ? rand(300, 480) * (far ? 1.15 : 1) : rand(240, 420);
+        break;
+      case 'storm':
+      case 'windy':
+        this.phase = 'ease';
+        this.phaseLeft = rand(150, 210);
+        break;
+      default:
+        this.phase = 'fair';
+        this.phaseLeft = rand(480, 840);
+        this.nextStorm = this.rng() < (far ? 0.75 : 0.65);
+    }
     this.windDirTarget += rand(-1.2, 1.2);
-    // іноді різкі зміни — «радіо шипить»
-    if (nextState === 'storm' && chance(0.5)) this.holdTimer = rand(35, 60);
+    this.wobble();
   }
+
+  /** ціль у межах фази; дрібні зміни раз на кілька хвилин */
+  private wobble() {
+    const pick = (st: WeatherState, lo = 0, hi = 1) => {
+      const [a, b] = STATE_RANGE[st];
+      return a + (b - a) * (lo + (hi - lo) * this.rng());
+    };
+    switch (this.phase) {
+      case 'fair':
+        this.target = this.rng() < 0.4 ? pick('calm', 0.3) : pick('breeze', 0, 0.75);
+        this.holdTimer = rand(120, 240);
+        break;
+      case 'front':
+        this.target = pick('wind', 0.2, 0.9);
+        this.holdTimer = 1e3;
+        break;
+      case 'storm':
+        this.target = pick('storm', 0.15, 0.85);
+        this.holdTimer = rand(90, 150);
+        this.windDirTarget += rand(-0.4, 0.4);
+        break;
+      case 'windy':
+        this.target = pick('wind', 0.1, 1);
+        this.holdTimer = rand(100, 160);
+        break;
+      case 'ease':
+        this.target = pick('breeze', 0.3, 1);
+        this.holdTimer = 1e3;
+        break;
+    }
+  }
+
+  /** очікувана сила погоди найближчим часом (прогноз по радіо, рішення ботів) */
+  get forecast(): number {
+    if (this.holdTimer >= 1e8) return this.target; // кооп-гість / тест: ціль від капітана
+    const peak = this.nextStorm ? 0.86 : 0.6;
+    switch (this.phase) {
+      case 'fair':
+        return this.phaseLeft < 240 ? peak : this.target;
+      case 'front':
+        return peak;
+      case 'storm':
+      case 'windy':
+        return this.phaseLeft < 150 ? 0.35 : Math.max(this.target, this.phase === 'storm' ? 0.8 : 0.5);
+      default:
+        return this.target;
+    }
+  }
+
+  /** через скільки реальних секунд почнеться шторм (null — не очікується найближчим часом) */
+  get stormEta(): number | null {
+    if (this.holdTimer >= 1e8) return this.netEta;
+    if (!this.nextStorm) return null;
+    if (this.phase === 'fair' && this.phaseLeft < 300) return this.phaseLeft + 150;
+    if (this.phase === 'front') return Math.max(0, this.phaseLeft);
+    return null;
+  }
+  /** кооп-гість: прогноз від капітана */
+  private netEta: number | null = null;
 
   /** сила вітру 0..1 (трохи нижча за інтенсивність) */
   get wind(): number {
@@ -152,7 +231,7 @@ export class Weather {
       windDir: this.windDir,
       rain: this.rain,
       flash: this.flash,
-      forecast: this.target,
+      forecast: this.forecast,
     };
   }
 
@@ -161,9 +240,10 @@ export class Weather {
   }
 
   /** кооп-клієнт: стан погоди від капітана */
-  applyNet(intensity: number, target: number, windDir: number, flash: number) {
+  applyNet(intensity: number, target: number, windDir: number, flash: number, eta?: number) {
     this.base = intensity;
     this.target = target;
+    this.netEta = eta == null || eta < 0 ? null : eta;
     this.windDir = windDir;
     this.flash = Math.max(this.flash, flash);
     this.holdTimer = 1e9;
@@ -176,6 +256,12 @@ export class Weather {
 
   restore(v: number) {
     this.base = v / 100;
+    // фаза за силою: після сейву в шторм — шторм ще потриває
+    const st = stateFromIntensity(this.base);
+    this.phase = st === 'storm' ? 'storm' : st === 'wind' ? 'windy' : 'fair';
+    this.phaseLeft = st === 'storm' ? rand(180, 300) : st === 'wind' ? rand(120, 240) : rand(300, 600);
+    this.nextStorm = this.rng() < 0.65;
+    this.wobble();
     this.target = this.base;
   }
 }
