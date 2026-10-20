@@ -67,6 +67,9 @@ export class Player {
   /** рівень на яхті та висота підлоги під ногами (локальна y) */
   level: DeckLevel = 'deck';
   floorY = BOAT.deckY;
+  private sternPush = 0;
+  /** куди сходимо за борт: 0 — корма, ±1 — борт */
+  private exitSide = 0;
   /** під дахом: каюта або критий кокпіт (hardtop) — захист від негоди */
   sheltered = false;
   /** найближча інтерактивна ціль */
@@ -211,9 +214,14 @@ export class Player {
           if (this.moveOnBoat(nx, nz, dt)) {
             // вихід за борт: поруч платформа (зазор до ~0.9 м) — зійти на неї, інакше — у воду
             const gangOut = this.toGang ? deckLimitX(Boat.GANG_Z, 0) + boat.gangLen + 0.15 : 0;
+            // у воду — за обрис корпусу (раніше плавець з'являвся всередині яхти)
+            const ex = this.exitSide ? this.localX + this.exitSide * 0.9 : this.localX;
+            const ez = this.exitSide ? this.localZ : -(HALF_LEN + 0.9);
             const world = this.toGang
               ? boat.localToWorld(this.gang * gangOut, BOAT.deckY, Boat.GANG_Z, this._v)
-              : boat.localToWorld(this.localX, BOAT.deckY, this.localZ, this._v);
+              : boat.localToWorld(ex, BOAT.deckY, ez, this._v);
+            this.sternPush = 0;
+            this.railPush = 0;
             this.toGang = false;
             const plat = this.platformNear(world.x, world.z, port, 0.9);
             const shore = plat ? null : Islands.landingSpot(world.x, world.z, 1.6);
@@ -365,7 +373,11 @@ export class Player {
       }
       const atRail = Math.abs(nx) > deckLimitX(nz, r) + 0.02 && nz < HALF_LEN - 1.0;
       this.railPush = atRail ? this.railPush + dt : 0;
-      const overboard = nz < -(HALF_LEN - 0.32) || this.railPush > 0.6;
+      // корма: теж треба «натиснути» ~0.5 с — інакше біля штурвала випадали випадково
+      const atStern = nz < -(HALF_LEN - 0.32);
+      this.sternPush = atStern ? this.sternPush + dt : 0;
+      const overboard = this.sternPush > 0.5 || this.railPush > 0.6;
+      if (overboard) this.exitSide = this.sternPush > 0.5 ? 0 : Math.sign(nx) || 1;
       this.localX = clamp(nx, -deckLimitX(nz, r), deckLimitX(nz, r));
       this.localZ = clamp(nz, -(HALF_LEN - 0.35), HALF_LEN - 0.35);
       this.floorY = this.level === 'stairs' ? stairY(this.localZ) : BOAT.deckY;

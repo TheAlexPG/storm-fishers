@@ -279,9 +279,14 @@ export function contractTitle(c: Omit<Contract, 'title' | 'got' | 'id'>): string
   let t: string;
   if (c.kg) t = c.sp ? `${fmtKg(c.kg)} кг · ${nm(c.sp)}` : `${fmtKg(c.kg)} кг риби · ${c.zone ? ZONE_NAMES[c.zone].toLowerCase() : 'будь-якої'}`;
   else t = `${c.n ?? 1} × ${nm(c.sp ?? '')}`;
-  if (c.minKg) t += ` від ${fmtKg(c.minKg)} кг`;
+  if (c.minKg) t += c.kg ? ` (кожна від ${fmtKg(c.minKg)} кг)` : ` від ${fmtKg(c.minKg)} кг`;
   if (c.minFresh) t += `, свіжість ≥ ${c.minFresh} %`;
   return t;
+}
+
+/** вага замовлення: дрібне — з точністю 0,1 кг, велике — 0,5 кг */
+function roundKg(v: number): number {
+  return v < 3 ? Math.max(0.2, Math.round(v * 10) / 10) : Math.round(v * 2) / 2;
 }
 
 function fmtKg(v: number): string {
@@ -310,19 +315,22 @@ function rollOffers(day: number, b: BuyerDef, rep: number, discovered: string[])
     if (b.id === 'tavern') {
       const pool = known(TAVERN.slice(0, 5));
       const sp = pool[Math.floor(r() * pool.length)];
-      const n = Math.round((4 + Math.floor(r() * 4)) * big);
-      c = { buyer: b.id, sp, n, deadline, reward: Math.round((n * typical(sp) * 3 + 30) * lvl.reward), rep: 6 };
+      // замовлення — на вагу (риба в грі важиться): ~4–7 середніх рибин
+      const kg = roundKg(avg(sp) * (4 + Math.floor(r() * 4)) * big);
+      c = { buyer: b.id, sp, kg, deadline, reward: Math.round(((kg / avg(sp)) * typical(sp) * 3 + 30) * lvl.reward), rep: 6 };
     } else if (b.id === 'smoke') {
       const pool = known(SMOKE);
       const sp = pool[Math.floor(r() * pool.length)];
-      const kg = Math.max(1, Math.round(avg(sp) * (6 + Math.floor(r() * 6)) * big * 2) / 2);
+      const kg = roundKg(avg(sp) * (6 + Math.floor(r() * 6)) * big);
       c = { buyer: b.id, sp, kg, deadline, reward: Math.round(((kg / avg(sp)) * typical(sp) * 3 + 40) * lvl.reward), rep: 6 };
     } else if (b.id === 'chef') {
       const pool = known(CHEF);
       const sp = pool[Math.floor(r() * pool.length)];
       const n = r() < 0.6 ? 1 : 2;
       const minKg = Math.round(avg(sp) * (1.1 + r() * 0.25) * 10) / 10;
-      c = { buyer: b.id, sp, n, minKg, deadline, reward: Math.round((n * typical(sp) * 4.5 + 60) * lvl.reward), rep: 9 };
+      // загальна вага, кожна рибина — не менша за minKg
+      const kg = n === 1 ? minKg : roundKg(minKg * n);
+      c = { buyer: b.id, sp, kg, minKg, deadline, reward: Math.round(((kg / avg(sp)) * typical(sp) * 4.5 + 60) * lvl.reward), rep: 9 };
     } else if (b.id === 'cannery') {
       const zone: ZoneId = rep >= 40 && r() < 0.5 ? 'mid' : r() < 0.6 ? 'shore' : 'mid';
       const kg = Math.round((zone === 'shore' ? 1.5 + r() * 2 : 3 + r() * 4) * big * 2) / 2;
@@ -331,7 +339,9 @@ function rollOffers(day: number, b: BuyerDef, rep: number, discovered: string[])
     } else {
       const sp = HERMIT[Math.floor(r() * (rep >= 40 ? 4 : 3))];
       const n = r() < 0.65 ? 1 : 2;
-      c = { buyer: b.id, sp, n, minKg: r() < 0.5 ? Math.round(avg(sp) * 10) / 10 : undefined, deadline: deadline + 24, reward: Math.round((n * typical(sp) * 4.5 + 100) * lvl.reward), rep: 10 };
+      const minKg = r() < 0.5 ? Math.round(avg(sp) * 10) / 10 : undefined;
+      const kg = roundKg(avg(sp) * n * 1.1);
+      c = { buyer: b.id, sp, kg, minKg, deadline: deadline + 24, reward: Math.round(((kg / avg(sp)) * typical(sp) * 4.5 + 100) * lvl.reward), rep: 10 };
     }
     out.push({ ...c, id: `${day}:${b.id}:o${i}`, got: 0, title: contractTitle(c) });
   }
