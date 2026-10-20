@@ -23,7 +23,7 @@ import { Hud, type FightHud } from './ui/hud';
 import { Minimap } from './ui/minimap';
 import { MapView } from './ui/map';
 import { Dialogs, type Venue } from './ui/dialogs';
-import { zoneFromDist, ZONE_NAMES, FISH, SCHOOL_ANCHORS } from './game/fish';
+import { zoneFromDist, ZONE_NAMES, FISH, SCHOOL_ANCHORS, SCHOOL_R } from './game/fish';
 
 /** місця швартування й причали інших гаваней (portSites.ts) */
 const SITE_BERTHS: Record<string, Berth[]> = Object.fromEntries(PORT_SITES.map((p) => [p.id, siteBerths(p)]));
@@ -171,6 +171,11 @@ class Game {
   private fishJump: FishJump;
   /** стрибок риби під час боротьби */
   private leapJump: FishJump;
+  /** риба, що вистрибує над стаєю з радіозвіту */
+  private schoolJumps: FishJump[] = [];
+  private schoolJumpT = 2;
+  private _jFrom = new THREE.Vector3();
+  private _jTo = new THREE.Vector3();
   private deckFish: DeckFish;
   private radio!: RadioSet;
   private cabinDecor!: CabinDecor;
@@ -315,6 +320,7 @@ class Game {
     this.jellies = new Jellies(this.scene);
     this.fishJump = new FishJump(this.scene);
     this.leapJump = new FishJump(this.scene);
+    for (let i = 0; i < 3; i++) this.schoolJumps.push(new FishJump(this.scene));
     this.scene.add(this.moorMark);
     this.landmarks = new Landmarks(this.scene, this.port.rocks);
     this.islands = new Islands(this.scene);
@@ -1058,6 +1064,42 @@ class Game {
     if (best || p.nearest?.id !== 'go-ashore') p.nearest = best;
   }
 
+  /** над стаєю з радіозвіту риба вистрибує з води раз на ~2 с — видно, де клює */
+  private updateSchoolJumps(dt: number, t: number) {
+    for (const j of this.schoolJumps) {
+      const was = j.busy;
+      j.update(dt, t);
+      if (was && !j.busy) {
+        const l = j.landing;
+        this.particles.splash(l.x, l.y + 0.2, l.z, 0.35);
+      }
+    }
+    this.schoolJumpT -= dt;
+    if (this.schoolJumpT > 0) return;
+    this.schoolJumpT = 1.5 + Math.random();
+    const cam = this.camera.position;
+    const r = this.game.reports.find((r) => {
+      const [ax, az] = SCHOOL_ANCHORS[r.zone];
+      return Math.hypot(ax - cam.x, az - cam.z) < SCHOOL_R;
+    });
+    const jump = this.schoolJumps.find((j) => !j.busy);
+    if (!r || !jump) return;
+    const a = Math.random() * Math.PI * 2;
+    const d = 8 + Math.random() * 30;
+    const x = cam.x + Math.cos(a) * d;
+    const z = cam.z + Math.sin(a) * d;
+    // не з-під корпусу й не з суходолу
+    if (Math.hypot(x - this.boat.pos.x, z - this.boat.pos.z) < 6 || terrainHeight(x, z) > -1.5 || islandNear(x, z, 5)) return;
+    const y = this.ocean.heightAt(x, z, t);
+    const h = Math.random() * Math.PI * 2;
+    const len = 1.2 + Math.random() * 1.5;
+    this._jFrom.set(x, y - 0.2, z);
+    this._jTo.set(x + Math.cos(h) * len, y - 0.3, z + Math.sin(h) * len);
+    jump.start(r.speciesId, 0.4 + Math.random() * 1.5, this._jFrom, this._jTo, true);
+    this.particles.splash(x, y + 0.1, z, 0.5);
+    this.audio.splash(Math.max(0.05, 0.35 - d * 0.008));
+  }
+
   /** підсвітка того, з чим зараз взаємодієш (E) */
   private updateHighlight(t: number) {
     const p = this.player;
@@ -1712,6 +1754,7 @@ class Game {
     this.player.rodBusy = this.fishing.state === 'fight' || this.fishing.state === 'charge';
     this.fishJump.update(dt, t);
     this.leapJump.update(dt, t);
+    this.updateSchoolJumps(dt, t);
     const catched = this.fishing.takeCatch();
     if (catched) {
       // риба вилітає з води в руки

@@ -99,6 +99,16 @@ export class FishJump {
     scene.add(this.fish);
   }
 
+  /** зараз у польоті */
+  get busy(): boolean {
+    return this.t >= 0;
+  }
+
+  /** куди падає (для сплеску на вході у воду) */
+  get landing(): THREE.Vector3 {
+    return this.to;
+  }
+
   /** запустити: з води (from) до рук (to); kg — розмір */
   start(speciesId: string, kg: number, from: THREE.Vector3, to: THREE.Vector3, leap = false) {
     this.leap = leap;
