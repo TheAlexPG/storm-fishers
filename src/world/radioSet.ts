@@ -287,6 +287,19 @@ export class RadioSet {
     this.freqTarget = st.freq;
   }
 
+  /** кооп: стан для екіпажу — [увімкнене, куди веде стрілка, гучність] */
+  netState(): number[] {
+    return [this.on ? 1 : 0, Math.round(this.freqTarget * 1e4) / 1e4, Math.round(this.volume * 100) / 100];
+  }
+
+  applyNet(s: number[]) {
+    const on = s[0] === 1;
+    if (on && !this.on) this.boot = 1;
+    this.on = on;
+    if (Number.isFinite(s[1])) this.freqTarget = Math.max(0, Math.min(1, s[1]));
+    if (Number.isFinite(s[2])) this.volume = Math.max(0, Math.min(1, s[2]));
+  }
+
   /** коліщатко на ручці: кроки (+ — за годинниковою) */
   turn(ctl: RadioCtl, steps: number) {
     if (ctl === 'vol') this.volume = Math.max(0, Math.min(1, this.volume + steps * 0.05));
