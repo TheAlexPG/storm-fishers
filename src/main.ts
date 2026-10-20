@@ -2892,7 +2892,7 @@ class Game {
     const atWheel = p.wheeling || this.phase === 'intro';
     const w = STATION_POS.wheel;
     if (p.mode !== 'boat') {
-      this.selfAvatar.state = { m: p.mode === 'port' ? 1 : 2, x: p.wx, y: p.wy + p.jumpH, z: p.wz, yaw: p.yaw, pitch: 0, wh: 0, mv: 0 };
+      this.selfAvatar.state = { m: p.mode === 'port' ? 1 : 2, x: p.wx, y: p.wy + p.jumpH, z: p.wz, yaw: p.yaw, pitch: 0, wh: 0, mv: 0, rd: this.fishing.netHand };
       this.selfAvatar.update(this.clockDelta, this.boat, this.ocean, this.simTime);
       return;
     }
@@ -2905,6 +2905,7 @@ class Game {
       pitch: 0,
       wh: atWheel ? 1 : 0,
       mv: p.moving ? 1 : 0,
+      rd: atWheel ? undefined : this.fishing.netHand,
     };
     this.selfAvatar.update(this.clockDelta, this.boat, this.ocean, this.simTime);
   }

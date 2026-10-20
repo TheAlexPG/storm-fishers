@@ -299,6 +299,11 @@ export class Fishing {
   get holding(): boolean {
     return !!this.hand;
   }
+  /** кооп: вудка в руках без закиду — 1, заряджає закид — 2, інакше undefined */
+  get netHand(): 1 | 2 | undefined {
+    if (this.charging) return 2;
+    return this.hand && this.hand.state === 'idle' && !this.fightRod ? 1 : undefined;
+  }
 
   private say(msg: string, sec = 1.6) {
     this.status = msg;

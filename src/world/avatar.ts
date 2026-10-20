@@ -26,6 +26,8 @@ export interface NetPlayer {
   mv: 0 | 1;
   /** риболовля: [1 чекає / 2 клює / 3 боротьба, x, z, натяг] */
   f?: [number, number, number, number];
+  /** вудка в руках без закиду: 1 — носить, 2 — заряджає закид (немає — руки порожні) */
+  rd?: 1 | 2;
   /** чия яхта (id власника), на якій цей гравець */
   bo?: number;
   /** капелюх (game/hats.ts; немає — капітанський кашкет) */
@@ -210,8 +212,10 @@ export class Avatar {
     const wk = this.walkK;
     const sw = Math.sin(this.phase) * 0.55 * wk;
     const f = s.f;
-    this.fishing = !!f && s.m === 0;
-    this.rod.visible = this.fishing;
+    // закинута вудка — і з яхти, і з причалу/берега; у воді вудки немає
+    this.fishing = !!f && !swim;
+    const carry = !this.fishing && !swim && !s.wh && !!s.rd;
+    this.rod.visible = this.fishing || carry;
     const idle = !s.mv && !s.wh && !this.fishing && !swim;
     // дихання й перенесення ваги
     const br = Math.sin(t * 1.7 + this.phase * 0.1);
@@ -246,6 +250,15 @@ export class Avatar {
       const pull = f![0] === 3 ? Math.sin(this.phase * 3) * 0.12 + 0.25 : 0;
       this.armR.rotation.set(-0.75 + pull, 0, -0.12);
       this.armL.rotation.set(-0.9 + pull, 0.3, 0.25);
+    } else if (carry) {
+      // носить вудку: права рука трохи вперед, вудка вгору-вперед; заряджає закид — заносить за плече
+      if (s.rd === 2) {
+        this.armR.rotation.set(-2.5, 0, -0.2);
+        this.armL.rotation.set(-0.7, 0.3, 0.25);
+      } else {
+        this.armR.rotation.set(-0.45 + sw * 0.15, 0, -0.1);
+        this.armL.rotation.set(-sw * 0.8 - 0.08, 0, -0.12);
+      }
     } else if (s.wh) {
       // руки на колесі, трохи підкермовує
       const steer = Math.sin(t * 0.7) * 0.06;
