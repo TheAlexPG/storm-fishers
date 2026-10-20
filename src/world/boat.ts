@@ -110,6 +110,8 @@ export class Boat {
   angVel = new THREE.Vector3();
   /** зараз тримається на шварті (для HUD) */
   mooredNow = false;
+  /** висота дна/суші (для відштовхування від причалу під парусами) */
+  landAt: ((x: number, z: number) => number) | null = null;
   /** стоїть біля причалу без газу (пришвартована) — не тоне */
   atBerth = false;
   /** сходня на причал: борт (−1/1), 0 — прибрана; z — де на палубі */
@@ -526,9 +528,30 @@ export class Boat {
     const dMx = this.pos.x - this.moor.x;
     const dMz = this.pos.z - this.moor.z;
     const dMoor = Math.hypot(dMx, dMz);
-    this.mooredNow = dMoor < MOOR_CAPTURE && Math.abs(this.throttle) < 0.15 && speed < 3;
+    // підняті паруси — швартови віддано: можна відійти без двигуна (і без пального)
+    const underSail = this.sails.mode !== 0;
+    this.mooredNow = dMoor < MOOR_CAPTURE && Math.abs(this.throttle) < 0.15 && speed < 3 && !underSail;
     // біля причалу без газу — навіть якщо штормовий накат на мить розігнав понад 3 м/с
-    this.atBerth = dMoor < MOOR_CAPTURE && Math.abs(this.throttle) < 0.15;
+    this.atBerth = dMoor < MOOR_CAPTURE && Math.abs(this.throttle) < 0.15 && !underSail;
+    // відштовхнутись від причалу: під парусами біля берега на малому ходу — м'який поштовх
+    // від суші й розворот носа з вітру, щоб паруси взяли вітер, а не притискали до стінки
+    if (underSail && this.landAt && speed < 1.6 && dMoor < MOOR_CAPTURE * 1.5) {
+      let ax = 0, az = 0;
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
+        for (const r of [4, 7, 10]) if (this.landAt(this.pos.x + sa * r, this.pos.z + ca * r) > -1.2) { ax -= sa / r; az -= ca / r; }
+      }
+      const al = Math.hypot(ax, az);
+      if (al > 1e-3) {
+        const k = 2600 * (1 - speed / 1.6);
+        this._f.x += (ax / al) * k;
+        this._f.z += (az / al) * k;
+        // ніс — у бік від суші (туди, куди штовхаємо), поки не набрали ходу
+        const want = Math.atan2(ax, az);
+        const e = wrapAngle(this.heading - want);
+        if (Math.abs(e) < Math.PI * 0.85) this._t.y += (-e * 9000 - this.angVel.y * 20000) * (1 - speed / 1.6);
+      }
+    }
     if (this.mooredNow) {
       let fxm = -dMx * 3200 - this.vel.x * 5200;
       let fzm = -dMz * 3200 - this.vel.z * 5200;

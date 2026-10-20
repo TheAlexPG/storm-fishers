@@ -310,6 +310,7 @@ class Game {
     this.ports = new Ports(this.scene, this.port.platforms, this.port.solids);
     this.moorDock = this.port.platforms[0];
     this.boat = new Boat(this.scene);
+    this.boat.landAt = terrainHeight;
     this.player = new Player(this.game);
     this.stations = new Stations(this.boat, this.game, this.audio);
     this.fishing = new Fishing(this.scene, this.audio, this.boat);
