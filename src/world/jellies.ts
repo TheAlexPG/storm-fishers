@@ -1,21 +1,32 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { UNDERWATER_LAYER, type Ocean } from '../core/ocean';
+import { hash2, mulberry32 } from '../core/math';
+import type { TimeCycle } from '../core/time';
 import { islandNear } from './islandShape';
 import { terrainHeight } from './portTerrain';
 
 // ─────────────────────────────────────────────────────────────
 // Нічне цвітіння медуз: зграї світних медуз під самою поверхнею у
-// відкритій воді. Вночі розгоряються, пульсують і повільно дрейфують;
-// зграї, що лишились далеко позаду, з'являються знову попереду.
+// відкритій воді. Вночі розгоряються, пульсують і повільно дрейфують.
+// Зграї детерміновані: море поділене на клітинки, і що в кожній цвіте
+// цієї ночі, вирішує сід (клітинка + номер ночі), а дрейф — спільний
+// simTime. Тож усі гравці кімнати бачать ті самі зграї там само, без
+// жодного мережевого повідомлення.
 // Один InstancedMesh (один draw call), адитивне світіння.
 // ─────────────────────────────────────────────────────────────
 
-const SWARMS = 5;
+/** скільки найближчих зграй малюємо одночасно */
+const SWARMS = 10;
 const PER = 36;
-const NEAR = 25;
-const FAR = 110;
-const DROP = 170;
+/** сітка моря: у клітинці щонайбільше одна зграя */
+const CELL = 70;
+const DENSITY = 0.5;
+/** далі — не видно; останні FADE метрів зграя плавно гасне */
+const DROP = 150;
+const FADE = 40;
+/** радіус повільного блукання зграї довкола свого місця */
+const WANDER = 12;
 const HUES = [0x5ff6ff, 0x48ffc8, 0xb68cff, 0xff7ad9];
 
 interface Jelly {
@@ -28,13 +39,10 @@ interface Jelly {
 }
 
 interface Swarm {
-  x: number;
-  z: number;
-  vx: number;
-  vz: number;
-  /** секунд від появи (плавне розгоряння) */
-  age: number;
-  on: boolean;
+  x0: number;
+  z0: number;
+  ph1: number;
+  ph2: number;
   jellies: Jelly[];
 }
 
@@ -53,7 +61,10 @@ function jellyGeometry(): THREE.BufferGeometry {
 
 export class Jellies {
   private mesh: THREE.InstancedMesh;
-  private swarms: Swarm[] = [];
+  /** зграї клітинок цієї ночі (null — порожня клітинка) */
+  private cells = new Map<number, Swarm | null>();
+  private nightId = NaN;
+  private near: { sw: Swarm; x: number; z: number; d: number }[] = [];
   private _m = new THREE.Matrix4();
   private _q = new THREE.Quaternion();
   private _p = new THREE.Vector3();
@@ -71,67 +82,79 @@ export class Jellies {
     this.mesh.layers.enable(UNDERWATER_LAYER);
     for (let i = 0; i < SWARMS * PER; i++) this.mesh.setColorAt(i, this._c.setRGB(0, 0, 0));
     scene.add(this.mesh);
-    for (let s = 0; s < SWARMS; s++) {
-      const jellies: Jelly[] = [];
-      for (let j = 0; j < PER; j++) {
-        // щільніше до центру зграї
-        const r = 9 * Math.sqrt(Math.random()) * Math.random();
-        const a = Math.random() * Math.PI * 2;
-        jellies.push({ dx: Math.cos(a) * r, dz: Math.sin(a) * r, depth: 0.45 + Math.random() * 1.8, size: 0.16 + Math.random() * 0.26, phase: Math.random() * Math.PI * 2, color: new THREE.Color() });
+  }
+
+  /** зграя клітинки цієї ночі — лише у відкритій глибокій воді; той самий сід — та сама зграя в усіх */
+  private cell(ix: number, iz: number): Swarm | null {
+    const key = ix * 65536 + iz;
+    let sw = this.cells.get(key);
+    if (sw !== undefined) return sw;
+    const r = mulberry32(Math.floor(hash2(ix, iz) * 4294967296) ^ Math.imul(this.nightId, 0x9e3779b1));
+    sw = null;
+    if (r() < DENSITY) {
+      const x = (ix + 0.15 + r() * 0.7) * CELL;
+      const z = (iz + 0.15 + r() * 0.7) * CELL;
+      if (Math.hypot(x, z) >= 160 && terrainHeight(x, z) <= -3 && !islandNear(x, z, 20)) {
+        const hue = HUES[Math.floor(r() * HUES.length)];
+        const jellies: Jelly[] = [];
+        for (let j = 0; j < PER; j++) {
+          // щільніше до центру зграї
+          const rr = 9 * Math.sqrt(r()) * r();
+          const a = r() * Math.PI * 2;
+          jellies.push({ dx: Math.cos(a) * rr, dz: Math.sin(a) * rr, depth: 0.45 + r() * 1.8, size: 0.16 + r() * 0.26, phase: r() * Math.PI * 2, color: new THREE.Color(hue).offsetHSL((r() - 0.5) * 0.06, 0, 0) });
+        }
+        sw = { x0: x, z0: z, ph1: r() * Math.PI * 2, ph2: r() * Math.PI * 2, jellies };
       }
-      this.swarms.push({ x: 0, z: 0, vx: 0, vz: 0, age: 0, on: false, jellies });
     }
+    this.cells.set(key, sw);
+    return sw;
   }
 
-  /** нова зграя довкола гравця — лише у відкритій глибокій воді */
-  private place(sw: Swarm, cx: number, cz: number) {
-    sw.on = false;
-    for (let tries = 0; tries < 8; tries++) {
-      const a = Math.random() * Math.PI * 2;
-      const d = NEAR + Math.random() * (FAR - NEAR);
-      const x = cx + Math.cos(a) * d;
-      const z = cz + Math.sin(a) * d;
-      if (Math.hypot(x, z) < 160 || terrainHeight(x, z) > -3 || islandNear(x, z, 20)) continue;
-      sw.x = x;
-      sw.z = z;
-      const da = Math.random() * Math.PI * 2;
-      sw.vx = Math.cos(da) * 0.15;
-      sw.vz = Math.sin(da) * 0.15;
-      sw.age = 0;
-      sw.on = true;
-      const hue = HUES[Math.floor(Math.random() * HUES.length)];
-      for (const j of sw.jellies) j.color.setHex(hue).offsetHSL((Math.random() - 0.5) * 0.06, 0, 0);
-      return;
-    }
-  }
-
-  /** night 0..1 (1 − daylight) */
-  update(dt: number, t: number, ocean: Ocean, cam: THREE.Vector3, night: number) {
-    const glow = THREE.MathUtils.smoothstep(night, 0.55, 0.95);
+  /** t — спільний simTime кімнати */
+  update(t: number, ocean: Ocean, cam: THREE.Vector3, time: TimeCycle) {
+    const glow = THREE.MathUtils.smoothstep(1 - time.daylight, 0.55, 0.95);
     this.mesh.visible = glow > 0.01;
-    if (!this.mesh.visible) {
-      // удень зграї розходяться — уночі розквітнуть деінде
-      for (const sw of this.swarms) sw.on = false;
-      return;
+    if (!this.mesh.visible) return;
+    // ніч рахуємо від полудня: вечір і ранок — одна ніч, наступної цвіте деінде
+    const nightId = time.hours >= 12 ? time.dayCount : time.dayCount - 1;
+    if (nightId !== this.nightId || this.cells.size > 4000) {
+      this.nightId = nightId;
+      this.cells.clear();
     }
+    const near = this.near;
+    near.length = 0;
+    const cx = Math.floor(cam.x / CELL);
+    const cz = Math.floor(cam.z / CELL);
+    const R = Math.ceil(DROP / CELL);
+    for (let ix = cx - R; ix <= cx + R; ix++)
+      for (let iz = cz - R; iz <= cz + R; iz++) {
+        const sw = this.cell(ix, iz);
+        if (!sw) continue;
+        const x = sw.x0 + Math.sin(t * 0.011 + sw.ph1) * WANDER;
+        const z = sw.z0 + Math.cos(t * 0.009 + sw.ph2) * WANDER;
+        const d = Math.hypot(x - cam.x, z - cam.z);
+        if (d < DROP) near.push({ sw, x, z, d });
+      }
+    near.sort((a, b) => a.d - b.d);
     let i = 0;
-    for (const sw of this.swarms) {
-      if (!sw.on || Math.hypot(sw.x - cam.x, sw.z - cam.z) > DROP) this.place(sw, cam.x, cam.z);
-      sw.age += dt;
-      sw.x += sw.vx * dt;
-      sw.z += sw.vz * dt;
-      const k = sw.on ? glow * Math.min(1, sw.age / 4) : 0;
-      for (const j of sw.jellies) {
+    for (let s = 0; s < SWARMS; s++) {
+      const n = near[s];
+      const k = n ? glow * (1 - THREE.MathUtils.smoothstep(n.d, DROP - FADE, DROP)) : 0;
+      for (let jj = 0; jj < PER; jj++, i++) {
+        if (k <= 0) {
+          this.mesh.setMatrixAt(i, this._m.makeScale(0, 0, 0));
+          continue;
+        }
+        const j = n.sw.jellies[jj];
         const pulse = 0.5 + 0.5 * Math.sin(t * 1.7 + j.phase);
-        const x = sw.x + j.dx + Math.sin(t * 0.2 + j.phase) * 0.6;
-        const z = sw.z + j.dz + Math.cos(t * 0.17 + j.phase) * 0.6;
+        const x = n.x + j.dx + Math.sin(t * 0.2 + j.phase) * 0.6;
+        const z = n.z + j.dz + Math.cos(t * 0.17 + j.phase) * 0.6;
         // поштовх дзвоном: скорочення — і медуза трохи спливає
         const y = ocean.heightAt(x, z, t) - j.depth + pulse * 0.12;
         this._p.set(x, y, z);
         this._s.set(j.size * (1.08 - 0.16 * pulse), j.size * (0.85 + 0.25 * pulse), j.size * (1.08 - 0.16 * pulse));
-        this.mesh.setMatrixAt(i, this._m.compose(this._p, this._q, k > 0 ? this._s : this._s.setScalar(0)));
+        this.mesh.setMatrixAt(i, this._m.compose(this._p, this._q, this._s));
         this.mesh.setColorAt(i, this._c.copy(j.color).multiplyScalar(k * (0.5 + pulse)));
-        i++;
       }
     }
     this.mesh.instanceMatrix.needsUpdate = true;
