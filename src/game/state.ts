@@ -1,6 +1,7 @@
 import { clamp, mulberry32 } from '../core/math';
 import { FISH, FISH_BY_ID, fishSellPrice } from './fish';
 import { demandAt, FishMarket, glutUnits, type MarketEvent } from './market';
+import { BUYER_BY_ID, contractNeed, fitsContract, FishTrade, type BuyerId, type Contract, type TradeSave } from './buyers';
 import { defaultUpgrades, eff, UPGRADES, MAX_LEVEL, upgradeCost, upgradeLock } from './upgrades';
 import type {
   FishItem,
@@ -50,6 +51,10 @@ export class GameState {
   private weekRng = mulberry32(1234);
   /** біржа: насичення за видами, історія цін, події */
   market = new FishMarket();
+  /** скупники риби: репутація, попит, замовлення (game/buyers.ts) */
+  trade = new FishTrade();
+  /** абсолютний ігровий час (день × 24 + година) — оновлює Game щокадру */
+  clockH = 32;
   /** подія біржі, що з'явилась у новий день (для оголошення) */
   lastMarketEvent: MarketEvent | null = null;
 
@@ -192,6 +197,65 @@ export class GameState {
     return v;
   }
 
+  // ── Скупники (таверна, коптильня, ресторан, завод, Остап) ──
+
+  /** ціни партії в цього скупника (null — риба не підходить) */
+  buyerQuote(id: BuyerId, items: FishItem[]) {
+    return this.trade.quote(BUYER_BY_ID[id], items, this.priceMult, this.clockH);
+  }
+
+  /** продати скупнику; повертає суму (кооп-екіпаж: риба знімається з трюму власника через holdHook) */
+  sellToBuyer(id: BuyerId, uids: number[]): number {
+    const b = BUYER_BY_ID[id];
+    if (!this.trade.isOpen(b, this.clockH)) return 0;
+    const set = new Set(uids);
+    const items = this.hold.filter((f) => set.has(f.uid));
+    const q = this.trade.quote(b, items, this.priceMult, this.clockH);
+    let sum = 0;
+    for (const [uid, v] of q.prices) {
+      const f = this.removeFish(uid);
+      if (!f) continue;
+      this.trade.recordSale(b, f);
+      sum += v;
+    }
+    if (!sum) return 0;
+    this.money += sum;
+    this.stats.totalEarned += sum;
+    this.trade.addRep(id, Math.min(3, q.prices.size * 0.25));
+    this.objectives.firstSale = true;
+    this.checkObjectives();
+    return sum;
+  }
+
+  /** риба з трюму, що підходить під замовлення (у порядку здачі) */
+  contractFish(c: Contract): FishItem[] {
+    const fit = this.hold.filter((f) => fitsContract(c, f));
+    // на вагу — спершу важчі (менше рибин), поштучно — спершу найдешевші
+    return c.kg ? fit.sort((a, b) => b.kg - a.kg) : fit.sort((a, b) => this.sellPrice(a) - this.sellPrice(b));
+  }
+
+  /** здати рибу під замовлення; повертає { delivered, done, reward } */
+  deliverContract(cid: string): { delivered: number; done: boolean; reward: number } {
+    const c = this.trade.active.find((x) => x.id === cid);
+    if (!c) return { delivered: 0, done: false, reward: 0 };
+    const need = contractNeed(c);
+    let delivered = 0;
+    for (const f of this.contractFish(c)) {
+      if (c.got >= need - 1e-6) break;
+      if (!this.removeFish(f.uid)) continue;
+      c.got = Math.round((c.got + (c.kg ? f.kg : 1)) * 100) / 100;
+      delivered++;
+    }
+    if (c.got < need - 1e-6) return { delivered, done: false, reward: 0 };
+    this.trade.active = this.trade.active.filter((x) => x !== c);
+    this.trade.addRep(c.buyer, c.rep);
+    this.trade.done++;
+    this.money += c.reward;
+    this.stats.totalEarned += c.reward;
+    this.checkObjectives();
+    return { delivered, done: true, reward: c.reward };
+  }
+
   buyUpgrade(id: UpgradeId): boolean {
     const cost = upgradeCost(id, this.upgrades[id]);
     if (cost == null || this.money < cost || upgradeLock(id, this.upgrades)) return false;
@@ -323,6 +387,7 @@ export class GameState {
       priceWeek: this.priceWeek,
       priceMult: this.priceMult,
       market: this.market.serialize(),
+      trade: this.trade.serialize(),
       stats: this.stats,
       boatX: 0,
       boatZ: 0,
@@ -390,6 +455,7 @@ export class GameState {
     this.lastMarketEvent = null;
     if (!this.market.hist[FISH[0].id]?.length) this.market.sample(this.priceMult);
     this.market.backfill(this.priceMult, this.priceWeek);
+    this.trade.load(data.trade as Partial<TradeSave> | undefined);
     const ok = (p: unknown): p is { x: number; z: number } => !!p && Number.isFinite((p as { x: number }).x) && Number.isFinite((p as { z: number }).z);
     this.route = [];
     if (Array.isArray(data.route)) this.route = data.route.filter(ok).slice(0, GameState.ROUTE_MAX).map((p) => ({ x: p.x, z: p.z }));

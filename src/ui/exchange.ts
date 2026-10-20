@@ -95,7 +95,9 @@ export function exchangeHtml(game: GameState, sel: string): string {
     return `<span class="tk"><b>${esc(sp.name.toUpperCase())}</b> ${Math.round(s[s.length - 1])} ₴ <i class="${tr > 0.03 ? 'up' : tr < -0.03 ? 'down' : ''}">${tr > 0.03 ? '▲' : tr < -0.03 ? '▼' : '●'}${Math.abs(Math.round(tr * 100))}%</i></span>`;
   });
   const evs = m.events.map((e) => `<span class="tk ev ${e.mult > 1 ? 'up' : 'down'}">${e.mult > 1 ? '📈' : '📉'} ${esc(e.text)}</span>`);
-  const items = [...evs, ...tick];
+  // акції скупників (таверна, коптильня…) — щоб було видно, куди ще везти
+  const promos = game.trade.tickerTexts(game.clockH).map((t) => `<span class="tk ev up">${esc(t)}</span>`);
+  const items = [...evs, ...promos, ...tick];
   if (!items.length) items.push('<span class="tk">Біржа відкрита · спіймай першу рибу — з’явиться в котируваннях</span>');
   const strip = items.join('<span class="tk-sep">✦</span>');
   const ticker = `<div class="ex-ticker"><div class="ex-tk-run">${strip}<span class="tk-sep">✦</span>${strip}<span class="tk-sep">✦</span></div></div>`;

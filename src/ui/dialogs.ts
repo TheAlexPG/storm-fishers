@@ -12,6 +12,8 @@ import type { AudioEngine } from '../core/audio';
 import type { Settings } from '../game/settings';
 import { exportSave, parseSaveFile, applyImport, hasAnySave } from '../game/saveTransfer';
 import { exchangeHtml, drawExchange } from './exchange';
+import { buyerHtml, ordersHtml } from './buyers';
+import { BUYER_BY_ID, type BuyerId } from '../game/buyers';
 
 /** місця в порту — кожне зі своїми послугами */
 export type Venue = 'shop' | 'fuel' | 'yard' | 'office';
@@ -282,7 +284,7 @@ export class Dialogs {
 
   // ── ПАУЗА ──
 
-  pause(opts: { onResume: () => void; onReset: () => void; onBeforeExport?: () => void; settings: Settings; onSettings: (s: Settings) => void; playTime: number; places?: Array<{ name: string; found: boolean }>; coop?: CoopPause; hats?: HatsPause }) {
+  pause(opts: { onResume: () => void; onReset: () => void; onBeforeExport?: () => void; settings: Settings; onSettings: (s: Settings) => void; playTime: number; places?: Array<{ name: string; found: boolean }>; coop?: CoopPause; hats?: HatsPause; game?: GameState }) {
     this.escAllowed = false;
     this.show(`
       <h1>Пауза</h1>
@@ -308,6 +310,7 @@ export class Dialogs {
       ${opts.places ? `
       <h2>Місця · ${opts.places.filter((p) => p.found).length}/${opts.places.length}</h2>
       <div class="places">${opts.places.map((p) => `<span class="place${p.found ? ' found' : ''}">${p.found ? esc(p.name) : '???'}</span>`).join('')}</div>` : ''}
+      ${opts.game ? `<h2>Замовлення · ${opts.game.trade.active.length}/3</h2>${ordersHtml(opts.game)}` : ''}
       ${opts.hats ? `
       <h2>Капелюхи · ${opts.hats.list.filter((h) => h.owned).length}/${opts.hats.list.length}</h2>
       <p class="sub">Знахідки з островів — зійди на берег і шукай, що блищить. Вибраний капелюх видно з-за корми й друзям.</p>
@@ -683,6 +686,67 @@ export class Dialogs {
     });
     this.panel.querySelector('[data-close]')!.addEventListener('click', () => this.close());
   }
+
+  // ── СКУПНИКИ (таверна, коптильня, ресторан, завод, Остап) ──
+  private byNote = '';
+
+  buyer(game: GameState, id: BuyerId) {
+    this.escAllowed = true;
+    const scroll = this.panel.querySelector('.by-orders')?.scrollTop ?? 0;
+    this.show(`
+      ${buyerHtml(game, id)}
+      ${this.byNote ? `<div class="by-note">${this.byNote}</div>` : ''}
+      <div class="btn-row"><button class="btn" data-close>Закрити (Esc)</button></div>
+    `, true, 'shop buyer');
+    this.byNote = '';
+    const ord = this.panel.querySelector('.by-orders');
+    if (ord) ord.scrollTop = scroll;
+    const refresh = () => this.buyer(game, id);
+    const sell = (uids: number[]) => {
+      const v = game.sellToBuyer(id, uids);
+      if (v) this.byNote = `+${formatMoney(v)}`;
+      this.audio.catchJingle();
+      refresh();
+    };
+    this.panel.querySelectorAll('[data-bsell1]').forEach((b) => b.addEventListener('click', () => {
+      const sp = (b as HTMLElement).dataset.bsell1!;
+      const items = game.hold.filter((f) => f.speciesId === sp);
+      const q = game.buyerQuote(id, items);
+      const best = [...q.prices.entries()].sort((a, c) => c[1] - a[1])[0];
+      if (best) sell([best[0]]);
+    }));
+    this.panel.querySelectorAll('[data-bsellsp]').forEach((b) => b.addEventListener('click', () => {
+      const sp = (b as HTMLElement).dataset.bsellsp!;
+      sell(game.hold.filter((f) => f.speciesId === sp).map((f) => f.uid));
+    }));
+    this.panel.querySelector('[data-bsellall]')?.addEventListener('click', () => sell(game.hold.map((f) => f.uid)));
+    this.panel.querySelectorAll('[data-accept]').forEach((b) => b.addEventListener('click', () => {
+      const cid = (b as HTMLElement).dataset.accept!;
+      const c = game.trade.offers(BUYER_BY_ID[id], game.clockH, game.discovered).find((x) => x.id === cid);
+      if (c && game.trade.accept(c)) {
+        this.byNote = `📜 Замовлення взято: ${esc(c.title)}`;
+        this.onTrade?.();
+      }
+      this.audio.click();
+      refresh();
+    }));
+    this.panel.querySelectorAll('[data-deliver]').forEach((b) => b.addEventListener('click', () => {
+      const r = game.deliverContract((b as HTMLElement).dataset.deliver!);
+      if (r.done) {
+        this.byNote = `✅ Замовлення виконано! +${formatMoney(r.reward)}`;
+        this.audio.catchJingle();
+      } else if (r.delivered) {
+        this.byNote = `Здано ${r.delivered} шт — ще трохи`;
+        this.audio.click();
+      }
+      this.onTrade?.();
+      refresh();
+    }));
+    this.panel.querySelector('[data-close]')!.addEventListener('click', () => this.close());
+  }
+
+  /** замовлення змінились (зберегти гру) */
+  onTrade: (() => void) | null = null;
 
   // ── СТРАХОВКА ──
   private insuranceTab(game: GameState): string {
