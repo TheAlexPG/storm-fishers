@@ -5,6 +5,7 @@ import { DECK_COLLIDERS, deckLimitX } from '../world/yachtLayout';
 import type { GameState } from './state';
 import type { AudioEngine } from '../core/audio';
 import { L } from '../core/i18n';
+import { pumpManual } from './upgrades';
 
 // ─────────────────────────────────────────────────────────────
 // Станції та рутини: ремонт, помпа, кухня, сон, прибирання.
@@ -69,7 +70,8 @@ export class Stations {
           label: L('Помпа працює…', `Pump running…`),
           duration: -1,
           t: 0,
-          energyRate: 1.6,
+          // краща помпа — менше сил на хід важеля
+          energyRate: 1.6 / pumpManual(this.boat.pumpLevel),
           tick: (dt) => {
             this.boat.dryDeck(dt);
             if ((this.boat.deckWater <= 0.5 && this.boat.bilge <= 0.5) || this.game.energy < 3) this.stop();

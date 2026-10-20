@@ -2452,7 +2452,7 @@ class Game {
       const risk = g.insurance < 2 && (g.hold.length > 0 || this.deckFish.count > 0 || Object.values(g.upgrades).some((v) => v > g.insurance));
       const b = this.boat;
       this.hud.setInsWarn(
-        b.bilge > 2 ? L(`🌊 Вода в трюмі ${Math.round(b.bilge)}%`, `🌊 Water in the bilge ${Math.round(b.bilge)}%`) :
+        b.bilge > 2 ? L(`🌊 Вода в трюмі ${Math.round(b.bilge)}%`, `🌊 Water in the bilge ${Math.round(b.bilge)}%`) + (b.autoPumping ? L(' · автопомпа качає', ` · auto pump on`) : '') :
         b.hatchOpen && atSea ? L('⚠ Люк трюму відкрито', `⚠ Hold hatch open`) :
         b.doorOpen && atSea && this.weather.intensity > 0.5 ? L('⚠ Двері каюти відчинені', `⚠ Cabin doors open`) :
         atSea && risk ? (g.insurance ? L('⚠ Слабка страховка', `⚠ Weak insurance`) : L('⚠ Без страховки — ризик', `⚠ No insurance — risky`)) : null,
