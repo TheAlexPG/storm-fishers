@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Input } from './core/input';
-import { TimeCycle } from './core/time';
+import { TimeCycle, DAY_SECONDS } from './core/time';
 import { offshore, seaFactor, Weather } from './core/weather';
 import { Ocean, UNDERWATER_LAYER } from './core/ocean';
 import { AudioEngine } from './core/audio';
@@ -141,7 +141,7 @@ class Game {
   private _tiltQ = new THREE.Quaternion();
   private _tiltEuler = new THREE.Euler();
   /** наскільки камера наслідує нахил човна (1 = повністю, 0 = повна стабілізація) */
-  private tiltFollow = 0.5;
+  private tiltFollow = 0.3;
   private _v = new THREE.Vector3();
   private _v2 = new THREE.Vector3();
   private _v3 = new THREE.Vector3();
@@ -1965,6 +1965,8 @@ class Game {
     this.fade.classList.add('on');
     setTimeout(() => {
       const delta = this.time.sleepToDawn();
+      // погода живе далі, поки спиш: стільки ж «реальних» секунд, скільки годин минуло
+      this.weather.advance((delta / 24) * DAY_SECONDS);
       this.nets.advanceHours(delta);
       this.lastHours = this.time.hours;
       this.game.addEnergy(100);
@@ -2045,11 +2047,13 @@ class Game {
     const chase = this.rig.mode !== 'fp';
     // тряска: шторм + хвилі
     this.slamShake = Math.max(0, this.slamShake - this.clockDelta * 1.8);
-    const shakeAmp = 0.008 + this.weather.intensity * 0.02 + this.slamShake * 0.09;
+    // у штиль і помірну погоду — без тремтіння (раніше ~1 см на 2 Гц постійно);
+    // лише шторм і удар хвилі дають тряску, і повільнішу
+    const shakeAmp = Math.max(0, this.weather.intensity - 0.6) * 0.025 + this.slamShake * 0.09;
     this.camShake.set(
-      (Math.sin(t * 13.7) + Math.sin(t * 7.3)) * 0.5 * shakeAmp,
-      (Math.sin(t * 11.1) + Math.sin(t * 5.9)) * 0.5 * shakeAmp,
-      (Math.sin(t * 12.3)) * 0.5 * shakeAmp,
+      (Math.sin(t * 8.7) + Math.sin(t * 4.3)) * 0.5 * shakeAmp,
+      (Math.sin(t * 7.1) + Math.sin(t * 3.9)) * 0.5 * shakeAmp,
+      Math.sin(t * 7.9) * 0.5 * shakeAmp,
     );
     // нахил: позицію й курс ми наслідуємо човен повністю, а тангаж/крен — частково
     // (тіло стабілізує половину). Обертання у world-рамці (premultiply) —
@@ -2057,7 +2061,9 @@ class Game {
     // у воді тіло тримає рівновагу на хвилі, на причалі човен не наш.
     let tilt: THREE.Quaternion | null = null;
     if (this.player.mode === 'boat') {
-      this._tiltEuler.set(this.boat.pitch * this.tiltFollow, 0, this.boat.roll * this.tiltFollow);
+      // очі моряка тримають горизонт: у тиху погоду — ~70 % стабілізації, у шторм — менше
+      const follow = this.tiltFollow + 0.18 * clamp((this.weather.intensity - 0.5) / 0.5, 0, 1);
+      this._tiltEuler.set(this.boat.pitch * follow, 0, this.boat.roll * follow);
       tilt = this._tiltQ.setFromEuler(this._tiltEuler);
     }
     this.rig.update(this.clockDelta, {

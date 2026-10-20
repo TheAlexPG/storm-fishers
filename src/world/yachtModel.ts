@@ -44,7 +44,10 @@ export interface YachtRefs {
 }
 
 // ── палітра ──
-const GELCOAT = 0xf2efe8;
+export const GELCOAT = 0xf2efe8;
+/** зсувний люк компаньйона: довжина кришки й центр у відкритому положенні (локаль яхти) */
+export const HATCH_LEN = 1.14;
+export const HATCH_OPEN_Z = 0.77;
 const NAVY = 0x1d2b45;
 const ANTIFOUL = 0x6b1f24;
 const TEAK = 0xb08355;
@@ -324,7 +327,7 @@ const rboxCache = new Map<string, THREE.BufferGeometry>();
  * «Обтічний» брусок w×h×d: заокруглені вертикальні ребра (радіус r у плані)
  * і фаска b на верхніх/нижніх ребрах — замість гострих BoxGeometry.
  */
-function roundedBoxGeo(w: number, h: number, d: number, r: number, b: number): THREE.BufferGeometry {
+export function roundedBoxGeo(w: number, h: number, d: number, r: number, b: number): THREE.BufferGeometry {
   const key = [w, h, d, r, b].map((v) => v.toFixed(4)).join('|');
   const hit = rboxCache.get(key);
   if (hit) return hit;
@@ -966,11 +969,19 @@ export class YachtBuilder {
     const roofTop = HOUSE.top + 0.05;
     // антиковзке покриття даху (світло-сіре, заокруглене)
     this.rbox(g, HOUSE.x * 2 - 0.36, 0.008, roofZ1 - hatchEnd - 0.24, 0, roofTop + 0.003, (hatchEnd + roofZ1) / 2 - 0.02, this.mat(0xd9d6cc, 0.95), 0.12, 0.003, false);
-    // зсувний люк компаньйона (відкритий, у «гаражі»): біла кришка з димчастою вставкою
-    this.rbox(g, STAIR.x * 2 + 0.12, 0.06, 0.9, 0, roofTop + 0.06, hatchEnd + 0.35, white, 0.06, 0.02);
-    this.rbox(g, STAIR.x * 2 - 0.12, 0.012, 0.66, 0, roofTop + 0.09, hatchEnd + 0.35, this.mat(0x3b4a56, 0.15, 0.3), 0.05, 0.004, false);
-    // тикові напрямні люка
-    for (const s of [-1, 1]) this.rbox(g, 0.05, 0.07, hatchEnd - HOUSE.z0 + 0.9, s * (STAIR.x + 0.05), roofTop + 0.03, (HOUSE.z0 + hatchEnd + 0.9) / 2, this.mat(TEAK, 0.7), 0.02, 0.01);
+    // зсувний люк компаньйона (відкритий, у «гаражі»): біла кришка з димчастою вставкою.
+    // Це нерухома копія для чужих яхт флотилії; на своїй яхті її ховає CabinDoor
+    // і показує рухомий люк, що зсувається разом із дверима
+    for (const m of [
+      this.rbox(g, STAIR.x * 2 + 0.12, 0.06, HATCH_LEN, 0, roofTop + 0.06, HATCH_OPEN_Z, white, 0.06, 0.02),
+      this.rbox(g, STAIR.x * 2 - 0.12, 0.012, HATCH_LEN - 0.24, 0, roofTop + 0.09, HATCH_OPEN_Z, this.mat(0x3b4a56, 0.15, 0.3), 0.05, 0.004, false),
+    ]) {
+      m.userData.merge = false;
+      m.name = 'companion-hatch';
+    }
+    // тикові напрямні люка — на весь хід кришки (від кормового краю прорізу до «гаража»)
+    const railZ1 = HATCH_OPEN_Z + HATCH_LEN / 2 + 0.04;
+    for (const s of [-1, 1]) this.rbox(g, 0.05, 0.07, railZ1 - HOUSE.z0, s * (STAIR.x + 0.05), roofTop + 0.03, (HOUSE.z0 + railZ1) / 2, this.mat(TEAK, 0.7), 0.02, 0.01);
     // носовий світловий люк: біла рама + тоноване скло (зсунуто з-під щогли)
     this.rbox(g, 0.58, 0.06, 0.56, 0, roofTop + 0.03, 2.03, white, 0.07, 0.015);
     this.rbox(g, 0.48, 0.012, 0.46, 0, roofTop + 0.062, 2.03, this.mat(0x223040, 0.08, 0.6), 0.05, 0.004, false);

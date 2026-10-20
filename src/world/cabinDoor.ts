@@ -1,11 +1,14 @@
 import * as THREE from 'three';
 import { DECK_Y, HOUSE, STAIR } from './yachtLayout';
+import { GELCOAT, HATCH_LEN, HATCH_OPEN_Z, roundedBoxGeo } from './yachtModel';
 
 // ─────────────────────────────────────────────────────────────
 // Двері каюти (компаньйон): дві тикові стулки на петлях у прорізі трапа.
 // E зовні (у кокпіті) або зсередини (на трапі/в салоні) — відчинити/зачинити.
 // Відчинені стулки складаються до передньої стінки рубки. Червоний засув-ричаг
 // видно з обох боків: горизонтально — зачинено, вертикально — відчинено.
+// Над дверима — зсувний люк у даху рубки: відчиняєш двері — він їде вперед
+// у «гараж», зачиняєш — насувається на проріз, щоб згори не лишалось дірки.
 // У шторм відчинені двері пропускають воду з палуби в салон і трюм.
 // ─────────────────────────────────────────────────────────────
 
@@ -14,15 +17,41 @@ const H = HOUSE.top - DECK_Y - 0.05;
 const T = 0.035;
 const PIVOT_Z = HOUSE.z0 - 0.045;
 const OPEN_A = Math.PI - 0.2;
+/** люк: центр кришки зачиненої (над прорізом від кормової стінки) і відчиненої */
+const HATCH_SHUT_Z = HOUSE.z0 + HATCH_LEN / 2 - 0.06;
+const ROOF_TOP = HOUSE.top + 0.05;
 
 export class CabinDoor {
   readonly group = new THREE.Group();
   private leaves: THREE.Group[] = [];
   private levers: THREE.Mesh[] = [];
   private a = OPEN_A;
+  private hatch = new THREE.Group();
 
   constructor(parent: THREE.Object3D) {
     parent.add(this.group);
+    // нерухома «відчинена» кришка з моделі яхти — замінюємо рухомою
+    parent.traverse((o) => {
+      if (o.name === 'companion-hatch') o.visible = false;
+    });
+    {
+      const white = new THREE.MeshStandardMaterial({ color: GELCOAT, roughness: 0.35, metalness: 0.05 });
+      const smoke = new THREE.MeshStandardMaterial({ color: 0x3b4a56, roughness: 0.15, metalness: 0.3 });
+      const teakH = new THREE.MeshStandardMaterial({ color: 0x9a6a3e, roughness: 0.7 });
+      const add = (geo: THREE.BufferGeometry, m: THREE.Material, y: number, z = 0) => {
+        const mm = new THREE.Mesh(geo, m);
+        mm.position.set(0, y, z);
+        mm.castShadow = true;
+        mm.receiveShadow = true;
+        this.hatch.add(mm);
+      };
+      add(roundedBoxGeo(STAIR.x * 2 + 0.12, 0.06, HATCH_LEN, 0.06, 0.02), white, 0.06);
+      add(roundedBoxGeo(STAIR.x * 2 - 0.12, 0.012, HATCH_LEN - 0.24, 0.05, 0.004), smoke, 0.09);
+      // тикова ручка на кормовому краї — за неї кришку тягнуть
+      add(roundedBoxGeo(0.3, 0.035, 0.05, 0.015, 0.008), teakH, 0.105, -HATCH_LEN / 2 + 0.08);
+      this.hatch.position.y = ROOF_TOP;
+      this.group.add(this.hatch);
+    }
     const teak = new THREE.MeshStandardMaterial({ color: 0x9a6a3e, roughness: 0.7 });
     const frame = new THREE.MeshStandardMaterial({ color: 0x5e3c22, roughness: 0.75 });
     const brass = new THREE.MeshStandardMaterial({ color: 0xc9a227, roughness: 0.3, metalness: 0.85 });
@@ -76,6 +105,9 @@ export class CabinDoor {
     // засув: зачинено (a≈0) — поперек, відчинено — вертикально
     const k = Math.min(1, this.a / 0.6);
     for (const lv of this.levers) lv.rotation.z = (Math.PI / 2) * k;
+    // люк їде разом зі стулками
+    const h = Math.min(1, this.a / OPEN_A);
+    this.hatch.position.z = HATCH_SHUT_Z + (HATCH_OPEN_Z - HATCH_SHUT_Z) * h;
   }
 
   update(dt: number, open: boolean) {
