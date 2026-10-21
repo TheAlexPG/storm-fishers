@@ -91,13 +91,15 @@ const W = { ox: -1, oz: 0 };
 
 const RAW_SITES: PortSite[] = [
   {
-    id: 'port-kut', name: L('Рибальський Кут', `Fisher's Nook`), sub: L('село на палях · пальне й рибна лавка', `a village on stilts · fuel and a fish stall`), size: 'tiny', style: 'village',
+    id: 'port-kut', name: L('Рибальський Кут', `Fisher's Nook`), sub: L('село на палях · пальне, рибна лавка й наживка', `a village on stilts · fuel, a fish stall and bait`), size: 'tiny', style: 'village',
     x: -470, z: 70, ...E, R: 34, elong: 1.4, peak: 9, seed: 61,
     plW: 30, plD: 14, plY: 1.5, pierL: 20, pierW: 3.2,
     econ: { fuel: 7, repair: null, fish: 0.95, species: { hamsa: 1.35, balyk: 1.35, leschak: 1.2, plyotka: 1.15, tunets: 0.8, akula: 0.7 } },
     svc: [
       { kind: 'fuel', a: -3, b: 9, name: L('Бочка з пальним', `Fuel barrel`), icon: '⛽', label: L('Пальне в бочках (дорожче, ніж у «Шторму»)', `Fuel from barrels (pricier than at Storm Harbour)`) },
       { kind: 'exchange', a: -4, b: -8, name: L('Рибна лавка', `Fish stall`), icon: '🐟', label: L('Рибна лавка Кута — продати улов', `Fisher's Nook fish stall — sell your catch`) },
+      // наживка (kutVillage / ui/baitShop.ts): баф клювання на кілька хвилин
+      { kind: 'bait', a: -6, b: 20, name: L('Наживка Орисі', `Orysia's Bait`), icon: '🪱', label: L('Наживка Орисі — черв\'яки, мотиль і живець (клює швидше)', `Orysia's Bait — worms, bloodworms and live bait (faster bites)`) },
     ],
   },
   {

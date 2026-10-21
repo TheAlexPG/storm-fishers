@@ -95,6 +95,7 @@ import { CargoView, CARGO_SLOTS } from './world/cargoView';
 import { Traders } from './world/traders';
 import { glowTex } from './world/textures';
 import { cargoHtml, bindCargo, baseHtml } from './ui/cargoBoard';
+import { baitHtml, bindBait } from './ui/baitShop';
 import { GOODS_BY_ID, DOCK_BY_ID, cargoSlots, dockName, type CargoOrder } from './game/cargo';
 import { continentRegion } from './world/continents';
 import { PORT_SITES, PORT_SITE_BY_ID, PORT_SERVICE_HANDLERS, pierRect, siteBerths, type Berth } from './world/portSites';
@@ -524,6 +525,8 @@ class Game {
     this.dialogs.buyerExtra = (id, panel, refresh) => this.kitchen.buyerSection(id, panel, refresh);
     // кулінарна лавка Сонячної Марини (portSites: svc 'cookshop')
     PORT_SERVICE_HANDLERS.cookshop = () => this.kitchen.openMarinaShop();
+    // наживка Орисі в Рибальському Куті (portSites: svc 'bait')
+    PORT_SERVICE_HANDLERS.bait = () => this.openBait();
 
     this.reticle = document.createElement('div');
     this.reticle.id = 'reticle';
@@ -2755,6 +2758,22 @@ class Game {
   }
 
   /** дім-база на континенті: купити / поспати */
+  /** Наживка Орисі (Рибальський Кут): баф клювання на кілька хвилин */
+  private openBait() {
+    const g = this.game;
+    this.phase = 'dialog';
+    this.expectUnlock = true;
+    document.exitPointerLock();
+    this.dialogs.custom(baitHtml(g), 'shop cargo', (panel) => {
+      bindBait(panel, g, (name) => {
+        this.audio.click();
+        this.saveGame();
+        this.hud.toast(L(`${name} — є! Хай клює.`, `${name} — got it. Tight lines!`), 'good', 3000);
+        this.openBait();
+      });
+    });
+  }
+
   private openBase(site: string) {
     const g = this.game;
     const price = 6000;

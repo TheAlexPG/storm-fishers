@@ -5,6 +5,7 @@ import { cobbleTex, corrugatedTex, glowTex, groundDetailTex, planksTex, plasterT
 import { PORT_SITES, siteGround as siteHeight, siteRect, siteToWorld, worldToSite, siteBerths, siteServices, pierRect, type PortSite } from './portSites';
 import type { Platform, Solid } from './port';
 import { mergeStatic } from './staticMerge';
+import { buildKutVillage, type VillageLife } from './kutVillage';
 
 // ─────────────────────────────────────────────────────────────
 // Інші гавані світу (дані — portSites.ts): суходіл, кам'яна набережна,
@@ -91,6 +92,8 @@ interface Built {
   lantern: THREE.Sprite;
   lanternPos: THREE.Vector3;
   phase: number;
+  /** життя гавані (люди, тварини, дим) — лише поблизу */
+  life?: VillageLife;
 }
 
 export class Ports {
@@ -106,6 +109,11 @@ export class Ports {
     this.M = makeMats();
     this.glowMat = new THREE.SpriteMaterial({ map: glowTex(), color: 0xffc677, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
     for (const site of PORT_SITES) this.built.push(this.build(site, platforms, solids));
+    // старт — день (night 0): ореоли сховані, поки не стемніє (setNight)
+    for (const g of this.lampGlows) {
+      g.userData.hide = true;
+      g.visible = false;
+    }
     scene.add(this.group);
   }
 
@@ -372,6 +380,12 @@ export class Ports {
       batch.add(boxGeo(1.4, 0.5, 4.2), M.sdBlue, T(bx, p.plY + 0.25, bz, ry));
     }
 
+    // ── Рибальський Кут: хатки на палях, місток, сушарки, мешканці (kutVillage.ts) ──
+    let life: VillageLife | undefined;
+    if (p.id === 'port-kut') {
+      life = buildKutVillage({ p, g, batch, M, H, platforms, solids, rng, lampPost: (x, z, y0) => this.lampPost(batch, g, x, z, y0), glow: (x, y, z, s) => this.glow(g, x, y, z, s) });
+    }
+
     // ── злити ──
     batch.build(g);
     g.traverse((o) => {
@@ -381,7 +395,7 @@ export class Ports {
     // решту окремих мешів (вивіски, ліхтарі, дрібниці з власними матеріалами) — теж докупи
     mergeStatic(g, { skip: [lantern] });
     this.group.add(g);
-    return { site: p, group: g, lantern, lanternPos, phase: rng() * 6 };
+    return { site: p, group: g, lantern, lanternPos, phase: rng() * 6, life };
   }
 
   /** точка для маяка: на краю суходолу поруч із гаванню, на сухому */
@@ -580,10 +594,20 @@ export class Ports {
     this.M.lamp.emissiveIntensity = 0.05 + night * 1.6;
     this.M.lens.emissiveIntensity = 0.3 + night * 1.8;
     this.glowMat.opacity = night * 0.85;
+    // удень ореоли ліхтарів невидимі (opacity 0) — не витрачаємо на них виклики малювання
+    for (const g of this.lampGlows) {
+      g.userData.hide = night <= 0.02;
+      g.visible = !g.userData.hide;
+    }
   }
 
+  private lastT = -1;
+
   update(t: number, cam: THREE.Vector3) {
+    const dt = this.lastT < 0 ? 0 : Math.min(0.1, Math.max(0, t - this.lastT));
+    this.lastT = t;
     for (const b of this.built) {
+      b.life?.update(dt, t, cam, this.night);
       const d = Math.hypot(cam.x - b.site.x, cam.z - b.site.z);
       // далеко за туманом — не малюємо (вогник маяка лишається видно)
       b.group.visible = d < 1500;
@@ -596,7 +620,8 @@ export class Ports {
         b.group.children.forEach((c) => (c.visible = c === b.lantern));
         b.lantern.scale.setScalar(Math.min(60, 9 + d * 0.02));
       } else {
-        b.group.children.forEach((c) => (c.visible = true));
+        // userData.hide — дитина сама ховається (життя гавані далеко від камери)
+        b.group.children.forEach((c) => (c.visible = !c.userData.hide));
         b.lantern.scale.setScalar(Math.min(40, 9 + d * 0.015));
       }
     }
