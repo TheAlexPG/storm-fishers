@@ -599,7 +599,11 @@ export class Boat {
         this._f.x += (ax / al) * k;
         this._f.z += (az / al) * k;
         // ніс — у бік від суші (туди, куди штовхаємо), поки не набрали ходу
-        const want = Math.atan2(ax, az);
+        let want = Math.atan2(ax, az);
+        // не носом проти вітру (мертвий кут — паруси не тягнуть): щонайменше ~65° від вітру
+        const upwind = -weather.windDir;
+        const off = wrapAngle(want - upwind);
+        if (Math.abs(off) < 1.15) want = upwind + (off >= 0 ? 1.15 : -1.15);
         const e = wrapAngle(this.heading - want);
         // гравець кермує сам — не заважаємо
         if (Math.abs(this.rudder) < 0.1 && Math.abs(e) < Math.PI * 0.85) this._t.y += (-e * 9000 - this.angVel.y * 20000) * (1 - speed / 1.2);

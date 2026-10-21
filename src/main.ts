@@ -394,7 +394,12 @@ class Game {
     this.traders = new Traders(this.scene, glowTex());
     this.moorDock = this.port.quay;
     this.boat = new Boat(this.scene);
-    this.boat.landAt = terrainHeight;
+    // суша для відштовхування під парусами: рельєф + настил причалу, біля якого стоїмо
+    this.boat.landAt = (x, z) => {
+      const d = this.moorDock;
+      if (d && x > d.x0 && x < d.x1 && z > d.z0 && z < d.z1) return 1;
+      return terrainHeight(x, z);
+    };
     this.player = new Player(this.game);
     this.ports.listener = this.player.head;
     this.stations = new Stations(this.boat, this.game, this.audio);
