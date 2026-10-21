@@ -13,7 +13,7 @@ explore islands, outrun Beaufort‑scale storms and come home with a hold full o
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6?logo=typescript&logoColor=white)
 ![Vite](https://img.shields.io/badge/Vite-5-646cff?logo=vite&logoColor=white)
 ![Co-op](https://img.shields.io/badge/co--op-WebRTC%20P2P-2e8b57)
-![License: MIT](https://img.shields.io/badge/license-MIT-yellow)
+![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial-yellow)
 ![No install](https://img.shields.io/badge/install-none%20%E2%80%94%20just%20a%20browser-e2674a)
 
 <br>
@@ -201,7 +201,13 @@ src/
 
 ## 📜 License
 
-Storm Fishers is free and open source under the [MIT License](LICENSE) — play it, fork it, mod it, learn from it, ship your own version. Contributions and ideas are welcome!
+Storm Fishers is source‑available under the [PolyForm Noncommercial License 1.0.0](LICENSE) — you're welcome to play it, read the code, learn from it, fork it and mod it **for non‑commercial purposes**.
+
+**Commercial use, selling the game or any part of it, or redistributing it as part of a paid product requires a separate written permission from the author**, Alex Bromson ([@TheAlexPG](https://github.com/TheAlexPG)). Copyright © 2026 Alex Bromson. All rights not expressly granted are reserved.
+
+Contributions are welcome — by opening a pull request you agree that your contribution may be distributed under this license and under any separate commercial license granted by the author.
+
+> Versions of this repository published before this change were released under the MIT License; that grant still applies to those earlier copies.
 
 ---
 
