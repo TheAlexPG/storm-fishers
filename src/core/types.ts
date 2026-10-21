@@ -16,6 +16,8 @@ export interface FishSpecies {
   /** мінімальний/максимальний розмір у кг */
   minKg: number;
   maxKg: number;
+  /** лише біля цих берегів (не задано — скрізь): 'med' — Лазурове, 'north' — Північ */
+  regions?: Array<'med' | 'north'>;
 }
 
 export interface FishItem {
@@ -170,6 +172,8 @@ export interface ObjectiveState {
 export interface RadioReport {
   zone: ZoneId;
   speciesId: string;
+  /** іменована стая (fish.ts SCHOOL_SPOTS); без неї — домашня стая зони */
+  spot?: string;
   /** множник клювання для цього виду в цій зоні */
   boost: number;
 }

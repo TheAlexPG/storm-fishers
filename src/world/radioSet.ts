@@ -551,7 +551,8 @@ export class RadioSet {
       x.fillStyle = DIM;
       x.fillText(L('Стаї не помічено. Слухайте завтра.', `No schools spotted. Listen again tomorrow.`), 18, 130);
     }
-    d.reports.slice(0, 4).forEach((r, i) => {
+    // три найближчі стаї (main сортує за відстанню) — під ними ще вміщається підказка
+    d.reports.slice(0, 3).forEach((r, i) => {
       const y = 104 + i * 58;
       x.fillStyle = 'rgba(157,240,192,0.07)';
       roundRect(x, 14, y, SW - 28, 50, 10);
@@ -572,7 +573,7 @@ export class RadioSet {
     if (d.tip) {
       x.font = `700 17px ${SANS}`;
       x.fillStyle = GREEN;
-      wrap(x, d.tip, 18, 104 + Math.min(4, d.reports.length) * 58 + 22, SW - 36, 22, 2);
+      wrap(x, d.tip, 18, 104 + Math.min(3, d.reports.length) * 58 + 22, SW - 36, 22, 2);
     }
     x.font = `600 17px ${MONO}`;
     x.fillStyle = DIM;

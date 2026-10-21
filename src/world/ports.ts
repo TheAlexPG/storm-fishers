@@ -6,6 +6,7 @@ import { PORT_SITES, siteGround as siteHeight, siteRect, siteToWorld, worldToSit
 import type { Platform, Solid } from './port';
 import { mergeStatic } from './staticMerge';
 import { buildKutVillage, type VillageLife } from './kutVillage';
+import { buildCoveDecor, isCove } from './coveDecor';
 import { ZORYA_ID, ZoryaLife, buildZoryaStatic, zoryaPlan, type TownCtx } from './zoryaTown';
 import { buildResort, type ResortLife } from './marinaResort';
 import { NIKOS_ID, NikosLife, buildNikos, nikosPlan } from './nikosVillage';
@@ -429,6 +430,8 @@ export class Ports {
       batch.add(boxGeo(1.4, 0.5, 4.2), M.sdBlue, T(bx, p.plY + 0.25, bz, ry));
     }
 
+    // ── маленькі бухти континентів: каїки, амфори, сушарки, коптильня, каплиця (coveDecor.ts) ──
+    if (isCove(p)) buildCoveDecor({ p, batch, M, H, rng });
     // ── Рибальський Кут: хатки на палях, місток, сушарки, мешканці (kutVillage.ts) ──
     let life: VillageLife | undefined;
     if (p.id === 'port-kut') {
@@ -724,7 +727,8 @@ export class Ports {
       b.kray?.update(dt, t, cam, this.night);
       const d = Math.hypot(cam.x - b.site.x, cam.z - b.site.z);
       // далеко за туманом — не малюємо (вогник маяка лишається видно)
-      b.group.visible = d < 1500;
+      // маленькі бухти континентів — лише зблизька (їх і так не розгледіти далі ~0,9 км)
+      b.group.visible = d < (b.site.id.startsWith('cove-') ? 900 : 1500);
       const blink = 0.5 + 0.5 * Math.sin(t * 1.6 + b.phase);
       b.lantern.material.opacity = this.night * (0.35 + 0.65 * blink * blink);
       b.lantern.visible = this.night > 0.05;

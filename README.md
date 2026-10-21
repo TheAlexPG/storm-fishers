@@ -71,7 +71,8 @@ explore islands, outrun Beaufort‑scale storms and come home with a hold full o
 - **Rod mini‑game** — power cast, strike on the bite, fight the fish with line tension and rod angle; rod holders for several rods at once.
 - **Physical catch** — fish flop on deck, can be washed overboard, and are carried by hand to the fish box or the hold.
 - **Commercial nets** (mid/end‑game) — set drift nets from the stern drum, mark them with buoys, come back hours later and haul the catch. Storms can tear them.
-- **12 species** across shore, mid‑water and open‑sea zones, with radio reports of where the schools are biting today.
+- **12 species everywhere plus local catch** — gilt-head bream, sea bass, squid and octopus only off the Azure Coast; Arctic char and king crab only off the Northern Reach — across shore, mid‑water and open‑sea zones.
+- **Radio fishing reports** name today's schools by place — a couple off each continent, a few at home and one out in the ocean — nearest first, with distance and bearing; the chart and the minimap mark them too.
 - **Fishing grounds** — four marked spots where the fish run 1.5–2.5× heavier and trophies are far more common. The richest ones lie deep inside the rough waters. They appear on the chart as sailors' rumours with a risk rating (⚠ to ⚠⚠⚠) until you find them.
 
 ### 🏝️ Islands & treasure
@@ -83,12 +84,12 @@ explore islands, outrun Beaufort‑scale storms and come home with a hold full o
 
 ### 🌍 Continents across the ocean
 - **Two continents** 3–5 km away across open water, each with its own look, climate and harbours:
-  - **The Azure Coast** — a Mediterranean shore in the spirit of Italy and Greece: white villages with blue domes and terracotta roofs, cypresses and olive groves, terraced hills, a wide turquoise shallow and calm warm sea. Harbours: **Porto Azzurro** and the Greek village **Agios Nikos**.
-  - **The Northern Reach** — a cold coast like Maine or Alaska: dark fir forests, granite shores, snow on the peaks, red-and-white lighthouses, more fog and more frequent storms. Harbours: **Cedar Harbor** and the remote trading post **Grizzly Cove**.
+  - **The Azure Coast** — a Mediterranean shore in the spirit of Italy and Greece: white villages with blue domes and terracotta roofs, cypresses and olive groves, terraced hills, a wide turquoise shallow and calm warm sea. Harbours: **Porto Azzurro** and the Greek village **Agios Nikos**, plus three little coves — **Olive Cove**, **Cala del Sole** with a chapel on the rock and **Cala Luce** facing the lighthouse.
+  - **The Northern Reach** — a cold coast like Maine or Alaska: dark fir forests, granite shores, snow on the peaks, red-and-white lighthouses, more fog and more frequent storms. Harbours: **Cedar Harbor** and the remote trading post **Grizzly Cove**, plus three little coves — the **Salmon Shack** on stilts, **Smokehouse Cove** and **Fjord Landing**. Every cove has a pier, fuel, a fish buyer and a cargo office for short coastal runs.
 - Small islands off each coast (a cypress isle, a chapel rock, an olive island; a fir island, granite skerries, a seal islet) and **three lighthouse refuges** in the middle of the ocean to shelter from a front.
 - **Places to find off every coast**, as many as around home:
-  - **Azure Coast** — the temple ruins of **Poseidon's Cape**, the sea arch of **Sirens' Grotto**, the blue-and-white **Santa Luce Light** with the keeper's washing line, **Amphora Shoal** next to a **sunken galley**, the **Turquoise Lagoon** and **Squid Hollow** fishing grounds.
-  - **Northern Reach** — an abandoned **whaling station** on the skerries, a **trapper's cabin**, a carved totem on **Raven Rock**, the **Granite Tooth Light**, a **sunken trawler**, the **Waterfall Fjord** and **Seal Cove** fishing grounds.
+  - **Azure Coast** — the temple ruins of **Poseidon's Cape**, the sea arch of **Sirens' Grotto**, the blue-and-white **Santa Luce Light** with the keeper's washing line, **Amphora Shoal** next to a **sunken galley**, the **Turquoise Lagoon**, **Squid Hollow**, **Sea Bass Strait** and far-out **Tuna Ridge** fishing grounds.
+  - **Northern Reach** — an abandoned **whaling station** on the skerries, a **trapper's cabin**, a carved totem on **Raven Rock**, the **Granite Tooth Light**, a **sunken trawler**, the **Waterfall Fjord**, **Seal Cove**, **Crab Bank** and the stormy **Ice Deep** fishing grounds.
   - **Great Ocean** — the **Delta** weather buoy, **Broken Masts Reef** and the **Bird Cauldron**, where gulls dive over feeding tuna.
   - Four more hats (a laurel wreath, a straw boater, a trapper's coonskin cap and a horned helm), an amphora, message bottles and a whaler's chest.
 - Mountains are visible from far out at sea as hazy silhouettes; every harbour has its own fish prices — northern fish fetches more on the Azure Coast and the other way round.

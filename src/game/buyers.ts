@@ -1,5 +1,5 @@
 import { clamp, mulberry32 } from '../core/math';
-import { FISH, FISH_BY_ID, fishPrice, ZONE_NAMES } from './fish';
+import { FISH, FISH_BY_ID, fishPrice, ZONE_NAMES, BASE_FISH } from './fish';
 import type { FishItem, ZoneId } from '../core/types';
 import { L } from '../core/i18n';
 
@@ -202,6 +202,7 @@ export interface Promo {
 const ACC: Record<string, string> = {
   hamsa: L('шпрот', `sprat`), balyk: L('оселедця', `herring`), leschak: L('камбалу', `flounder`), plyotka: L('пікшу', `haddock`), makrel: L('скумбрію', `mackerel`), sula: L('сайду', `saithe`),
   krap: L('морського окуня', `redfish`), forel: L('лосося', `salmon`), lusk: L('тріску', `cod`), shoraga: L('палтуса', `halibut`), tunets: L('тунця', `tuna`), akula: L('акулу', `shark`),
+  dorada: L('дораду', `gilt-head bream`), sibas: L('сибаса', `sea bass`), kalmar: L('кальмара', `squid`), vosmyn: L('восьминога', `octopus`), golets: L('гольця', `Arctic char`), krab: L('краба', `king crab`),
 };
 const acc = (id: string) => ACC[id] ?? nm(id).toLowerCase();
 
@@ -210,7 +211,7 @@ const hh = (h: number) => `${String(Math.floor(((h % 24) + 24) % 24)).padStart(2
 /** риба дня в Остапа (детерміновано від дня) */
 export function hermitWish(day: number): string {
   const r = mulberry32(day * 6151 + 7);
-  const pool = FISH.filter((f) => !HERMIT.includes(f.id) && f.basePrice >= 16);
+  const pool = BASE_FISH.filter((f) => !HERMIT.includes(f.id) && f.basePrice >= 16);
   return pool[Math.floor(r() * pool.length)].id;
 }
 
@@ -231,7 +232,7 @@ function rollPromos(day: number): Promo[] {
       const kind = kinds[Math.floor(r() * kinds.length)];
       if (used.has(kind)) continue;
       used.add(kind);
-      const pool = b.id === 'hermit' ? HERMIT : b.species ?? FISH.map((f) => f.id);
+      const pool = b.id === 'hermit' ? HERMIT : b.species ?? BASE_FISH.map((f) => f.id);
       const sp = pool[Math.floor(r() * pool.length)];
       const id = `${day}:${b.id}:${i}`;
       if (kind === 'species') {

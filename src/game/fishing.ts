@@ -2,7 +2,7 @@ import { seaDist } from '../core/region';
 import * as THREE from 'three';
 import { clamp, rand } from '../core/math';
 import { Boat } from '../world/boat';
-import { FISH, FISH_BY_ID, fishingSpot, makeFish, rollKg, zoneFromDist, type FishingSpot } from './fish';
+import { FISH, FISH_BY_ID, fishingSpot, makeFish, rollKg, zoneFromDist, type FishingSpot, fishPoolAt } from './fish';
 import { eff, holderBiteSpeed, holderBiteWindow } from './upgrades';
 import { paceMul } from './pace';
 import { FORTUNE_TROPHY } from './cooking';
@@ -490,8 +490,10 @@ export class Fishing {
     const pier = r.pier;
     const zone = pier ? 'shore' : zoneFromDist(seaDist(this.boat.pos.x, this.boat.pos.z));
     const day = !time.isNight;
-    const pool = FISH.filter((f) => f.zones.includes(zone) && (day ? f.day : f.night));
-    if (pool.length === 0) pool.push(...FISH.filter((f) => f.zones.includes(zone)));
+    // місцеві види — лише біля свого континенту (fishPoolAt)
+    const here = fishPoolAt(r.bobberPos.x, r.bobberPos.z, zone);
+    const pool = here.filter((f) => (day ? f.day : f.night));
+    if (pool.length === 0) pool.push(...here);
     // ваги: рідкісність, радіо, шторм; «трофейні» вудки тягнуть рідкісну велику рибу
     const off = pier ? 0 : offshore(this.boat.pos.x, this.boat.pos.z);
     const spot = fishingSpot(r.bobberPos.x, r.bobberPos.z, game.reports);
@@ -500,8 +502,10 @@ export class Fishing {
     const weights = pool.map((f) => {
       let w = 1 / f.rarity;
       // радіо-звіт діє в межах стаї (на карті), трохи — по всій зоні
-      const rep = game.reportBoost(f.id, zone);
+      const rep = game.reportBoost(f.id, zone, r.bobberPos.x, r.bobberPos.z);
       if (rep > 1) w *= 1 + (rep - 1) * (0.35 + 0.65 * spot.heat);
+      // місцевий вид біля свого берега трапляється помітно частіше — щоб відчувалось «інше море»
+      if (f.regions) w *= 1.8;
       if (weather.intensity > 0.6 && f.zones.includes('open')) w *= 1.6;
       w *= 1 + trophy * (f.rarity - 1) * 1.5;
       // далі від берега — рідкісніша риба

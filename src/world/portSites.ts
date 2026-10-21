@@ -163,7 +163,7 @@ const CONT_SITES: PortSite[] = [
   {
     id: 'port-azzurro', name: L('Порто-Аццурро', `Porto Azzurro`), sub: L('Лазурове узбережжя · білі вілли, оливи й вино', `the Azure Coast · white villas, olives and wine`), size: 'large', style: 'med',
     ...cpos('port-azzurro'), R: 56, elong: 1.4, peak: 18, seed: 111,
-    econ: { fuel: 7.5, repair: 1.1, fish: 1.05, species: { lusk: 1.6, shoraga: 1.45, sula: 1.4, plyotka: 1.3, tunets: 0.85, hamsa: 1.2, makrel: 0.9 } },
+    econ: { fuel: 7.5, repair: 1.1, fish: 1.05, species: { lusk: 1.6, shoraga: 1.45, sula: 1.4, plyotka: 1.3, tunets: 0.85, hamsa: 1.2, makrel: 0.9, golets: 1.55, krab: 1.45, dorada: 0.85, sibas: 0.9, kalmar: 0.9, vosmyn: 0.95 } },
     svc: [
       { kind: 'fuel', a: -3, b: -30, name: L('Заправка', `Fuel dock`), icon: '⛽', label: L('Заправка Порто-Аццурро — пальне', `Porto Azzurro fuel dock — fuel`) },
       { kind: 'exchange', a: -5, b: -14, name: L('Рибний ринок', `Fish market`), icon: '🐟', label: L('Рибний ринок — північна риба тут у ціні', `Fish market — northern fish fetches a good price here`) },
@@ -177,7 +177,7 @@ const CONT_SITES: PortSite[] = [
   {
     id: 'port-nikos', name: L('Айос-Нікос', `Agios Nikos`), sub: L('грецьке село з блакитними куполами', `a Greek village with blue domes`), size: 'medium', style: 'med',
     ...cpos('port-nikos'), R: 40, elong: 1.3, peak: 14, seed: 127,
-    econ: { fuel: 8, repair: null, fish: 1.0, species: { forel: 1.5, lusk: 1.4, krap: 1.25, hamsa: 1.1, tunets: 0.8 } },
+    econ: { fuel: 8, repair: null, fish: 1.0, species: { forel: 1.5, lusk: 1.4, krap: 1.25, hamsa: 1.1, tunets: 0.8, golets: 1.5, krab: 1.5, dorada: 0.8, sibas: 0.85, vosmyn: 0.9 } },
     svc: [
       { kind: 'fuel', a: -3, b: 15, name: L('Бочка з пальним', `Fuel barrel`), icon: '⛽', label: L('Пальне в бочках', `Fuel from barrels`) },
       { kind: 'exchange', a: -4, b: -10, name: L('Таверна-скупка', `Taverna buyer`), icon: '🐟', label: L('Таверна купує рибу — лосось і тріска в ціні', `The taverna buys fish — salmon and cod fetch a lot`) },
@@ -189,7 +189,7 @@ const CONT_SITES: PortSite[] = [
   {
     id: 'port-cedar', name: L('Сідар-Гарбор', `Cedar Harbor`), sub: L('Північний край · лісопилки, хутро й кленовий сироп', `the Northern Reach · sawmills, furs and maple syrup`), size: 'large', style: 'north',
     ...cpos('port-cedar'), R: 58, elong: 1.35, peak: 30, seed: 139,
-    econ: { fuel: 6.5, repair: 0.9, fish: 1.0, species: { tunets: 1.6, akula: 1.4, krap: 1.3, makrel: 1.3, lusk: 0.75, shoraga: 0.8, balyk: 0.8 } },
+    econ: { fuel: 6.5, repair: 0.9, fish: 1.0, species: { tunets: 1.6, akula: 1.4, krap: 1.3, makrel: 1.3, lusk: 0.75, shoraga: 0.8, balyk: 0.8, dorada: 1.5, sibas: 1.45, kalmar: 1.5, vosmyn: 1.55, golets: 0.85, krab: 0.85 } },
     svc: [
       { kind: 'fuel', a: -3, b: 30, name: L('Заправка', `Fuel dock`), icon: '⛽', label: L('Заправка Сідар-Гарбор — дешеве пальне', `Cedar Harbor fuel dock — cheap fuel`) },
       { kind: 'exchange', a: -5, b: 14, name: L('Рибна біржа', `Fish exchange`), icon: '🐟', label: L('Рибна біржа — теплолюбна риба тут рідкість і в ціні', `Fish exchange — warm-water fish is rare and pricey here`) },
@@ -203,7 +203,7 @@ const CONT_SITES: PortSite[] = [
   {
     id: 'port-grizzly', name: L('Бухта Гризлі', `Grizzly Cove`), sub: L('далека факторія під снігами', `a remote trading post under the snow`), size: 'outpost', style: 'north',
     ...cpos('port-grizzly'), R: 42, elong: 1.3, peak: 26, seed: 151,
-    econ: { fuel: 9.5, repair: 1.3, fish: 1.0, species: { akula: 1.7, tunets: 1.5, forel: 1.3, hamsa: 0.6, balyk: 0.6 } },
+    econ: { fuel: 9.5, repair: 1.3, fish: 1.0, species: { akula: 1.7, tunets: 1.5, forel: 1.3, hamsa: 0.6, balyk: 0.6, dorada: 1.6, sibas: 1.5, kalmar: 1.55, vosmyn: 1.6, golets: 0.8, krab: 0.9 } },
     svc: [
       { kind: 'fuel', a: -3, b: 12, name: L('Цистерна', `Fuel tank`), icon: '⛽', label: L('Цистерна — пальне (дороге: глушина)', `Fuel tank — fuel (expensive: the back of beyond)`) },
       { kind: 'exchange', a: -5, b: -8, name: L('Факторія', `Trading post`), icon: '🐟', label: L('Факторія — купує рибу', `Trading post — buys fish`) },
@@ -213,6 +213,28 @@ const CONT_SITES: PortSite[] = [
     ],
   },
 ];
+
+// маленькі бухти континентів (як Рибальський Кут чи Китобійня вдома): кілька хаток, пальне, скупка й склад для коротких рейсів
+const COVE = (id: string, name: string, sub: string, style: 'med' | 'north', seed: number, econ: PortEcon, extra: PortSite['svc'] = []): PortSite => ({
+  id, name, sub, size: 'tiny', style, ...cpos(id), R: 26, elong: 1.2, peak: style === 'north' ? 16 : 10, seed, econ,
+  svc: [
+    { kind: 'fuel', a: -3, b: 10, name: L('Пальне', `Fuel`), icon: '⛽', label: L(`${name} — пальне`, `${name} — fuel`) },
+    { kind: 'exchange', a: -4, b: -8, name: L('Скупка риби', `Fish buyer`), icon: '🐟', label: L(`${name} — скупка риби`, `${name} — fish buyer`) },
+    { kind: 'cargo', a: -10, b: 3, name: L('Склад', `Cargo office`), icon: '📦', label: L(`${name} — склад: короткі рейси уздовж берега`, `${name} — store: short runs along the coast`) },
+    ...extra,
+  ],
+});
+const SLEEP = (name: string): PortSite['svc'][number] => ({ kind: 'sleep', a: -12, b: -6, name: L('Кімната', `Room`), icon: '🛏', label: L(`${name} — кімната над скупкою (сон)`, `${name} — a room above the buyer's (sleep)`) });
+const MED_ECON = (k: number): PortEcon => ({ fuel: 8.5, repair: null, fish: 0.95, species: { dorada: 0.85 * k, sibas: 0.9 * k, kalmar: 0.95 * k, vosmyn: k, golets: 1.4, krab: 1.35, lusk: 1.35, shoraga: 1.3 } });
+const NORTH_ECON = (k: number): PortEcon => ({ fuel: 8, repair: null, fish: 0.95, species: { golets: 0.85 * k, krab: 0.9 * k, forel: 0.9 * k, dorada: 1.45, sibas: 1.4, kalmar: 1.4, vosmyn: 1.45, tunets: 1.3 } });
+CONT_SITES.push(
+  COVE('cove-olive', L('Оливкова бухта', `Olive Cove`), L('рибальське селище під оливами · каїки на піску', `a fishing hamlet under the olives · boats on the sand`), 'med', 163, MED_ECON(1)),
+  COVE('cove-sole', L('Кала-дель-Соле', `Cala del Sole`), L('сонячна бухточка з каплицею на скелі', `a sunny little cove with a chapel on the rock`), 'med', 167, MED_ECON(0.95), [SLEEP(L('Кала-дель-Соле', `Cala del Sole`))]),
+  COVE('cove-luce', L('Кала-Луче', `Cala Luce`), L('бухта навпроти маяка Санта-Луче · восьминоги й кальмари', `a cove facing the Santa Luce lighthouse · octopus and squid`), 'med', 173, MED_ECON(1.05)),
+  COVE('cove-salmon', L('Лососева хижа', `Salmon Shack`), L('хижа на палях і коптильня · лосось і голець', `a shack on stilts and a smokehouse · salmon and char`), 'north', 179, NORTH_ECON(1)),
+  COVE('cove-smoke', L('Бухта Коптильні', `Smokehouse Cove`), L('дим над водою · копчена риба й маяк на скелі', `smoke over the water · smoked fish and a lighthouse on the rock`), 'north', 181, NORTH_ECON(0.95), [SLEEP(L('Бухта Коптильні', `Smokehouse Cove`))]),
+  COVE('cove-fjord', L('Фіордова пристань', `Fjord Landing`), L('причал між фіордами · краби й палтус поруч', `a landing between the fjords · crab and halibut nearby`), 'north', 191, NORTH_ECON(1.05)),
+);
 
 /** позиції — у масштабі світу (region.ts WS); кожна гавань — затишок від шторму */
 export const PORT_SITES: PortSite[] = [

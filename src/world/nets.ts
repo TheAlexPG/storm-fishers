@@ -4,7 +4,7 @@ import type { Ocean } from '../core/ocean';
 import { offshore, type Weather } from '../core/weather';
 import { localIntensity, seaDist, seaMul } from '../core/region';
 import type { GameState } from '../game/state';
-import { FISH, makeFish, zoneFromDist } from '../game/fish';
+import { FISH, makeFish, zoneFromDist, fishPoolAt } from '../game/fish';
 import { netCount, netHaulSpeed, netLength } from '../game/upgrades';
 import type { Boat } from './boat';
 import { HALF_LEN, WATERLINE_Y } from './yachtLayout';
@@ -248,12 +248,12 @@ export class Nets {
     const base = zone === 'shore' ? 7 : zone === 'mid' ? 11 : 15;
     const soakF = 1 - Math.exp(-n.soakH / 4);
     const count = Math.round(base * (n.len / 40) * soakF * (1 - n.wear / 160) * (1 - this.gear / 220) * (0.75 + Math.random() * 0.45));
-    const pool = FISH.filter((f) => f.zones.includes(zone));
+    const pool = fishPoolAt(mx, mz, zone);
     const deep = level >= 5 ? 2.2 : 1;
     // сітка бере косяки: звичайна риба частіше, рідкісна — далеко в морі й на глибоководний дрифтер
     const weights = pool.map((f) => {
       let w = 1 / Math.pow(f.rarity, 1.6);
-      const rep = game.reportBoost(f.id, zone);
+      const rep = game.reportBoost(f.id, zone, mx, mz);
       if (rep > 1) w *= rep;
       w *= 1 + off * (f.rarity - 1) * 1.1 * deep;
       return w;

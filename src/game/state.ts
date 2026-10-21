@@ -1,6 +1,6 @@
 import { clamp, mulberry32 } from '../core/math';
 import { WS, seaDist } from '../core/region';
-import { FISH, FISH_BY_ID, fishSellPrice, zoneFromDist } from './fish';
+import { FISH, FISH_BY_ID, fishSellPrice, zoneFromDist, SCHOOL_SPOTS, schoolPos, type SchoolSpot } from './fish';
 import { isUk, L, plural } from '../core/i18n';
 import { avgKg, FishMarket, PortMarket, glutUnits, speciesGen, type MarketCtx, type MarketEvent, type MarketSave } from './market';
 import { Kitchen, type KitchenSave } from './cooking';
@@ -484,25 +484,41 @@ export class GameState {
     for (const [, m] of this.allMarkets()) m.remote = on;
   }
 
-  /** свіжий радіо-звіт дня: 2–3 види в зонах */
+  /** свіжий радіо-звіт дня: стаї біля дому (2–3), біля кожного континенту (по 2) і в океані (1) — з місцем */
   rollReports() {
     const rng = mulberry32(this.priceWeek * 7919 + 13);
     this.reports = [];
-    const n = 2 + Math.floor(rng() * 2);
-    const zones: ZoneId[] = ['shore', 'mid', 'open'];
-    for (let i = 0; i < n; i++) {
-      const zone = zones[Math.floor(rng() * zones.length)];
-      const cands = FISH.filter((f) => f.zones.includes(zone));
-      const sp = cands[Math.floor(rng() * cands.length)];
-      if (!this.reports.some((r) => r.speciesId === sp.id)) {
-        this.reports.push({ zone, speciesId: sp.id, boost: 1.4 + rng() * 0.6 });
+    const take = (region: SchoolSpot['region'], n: number) => {
+      const spots = SCHOOL_SPOTS.filter((s) => s.region === region);
+      for (let i = 0; i < n && spots.length; i++) {
+        const spot = spots.splice(Math.floor(rng() * spots.length), 1)[0];
+        // місцеві види — біля свого берега; в океані й удома — базові
+        const cands = FISH.filter((f) => f.zones.includes(spot.zone) && (f.regions ? region !== 'ocean' && region !== 'home' && f.regions.includes(region) : true));
+        // біля континенту — частіше місцевий вид (щоб звіт звучав «звідти»)
+        const local = cands.filter((f) => f.regions);
+        const pool = local.length && rng() < 0.6 ? local : cands;
+        const sp = pool[Math.floor(rng() * pool.length)];
+        if (sp && !this.reports.some((r) => r.speciesId === sp.id && r.spot === spot.id)) this.reports.push({ zone: spot.zone, speciesId: sp.id, boost: 1.4 + rng() * 0.6, spot: spot.id });
       }
-    }
+    };
+    take('home', 2 + Math.floor(rng() * 2));
+    take('med', 2);
+    take('north', 2);
+    take('ocean', 1);
   }
 
-  reportBoost(speciesId: string, zone: ZoneId): number {
-    const r = this.reports.find((x) => x.speciesId === speciesId && x.zone === zone);
-    return r ? r.boost : 1;
+  /** множник клювання виду від радіо-звіту — лише біля стаї (у межах ~1,5 км) */
+  reportBoost(speciesId: string, zone: ZoneId, x?: number, z?: number): number {
+    let best = 1;
+    for (const r of this.reports) {
+      if (r.speciesId !== speciesId || r.zone !== zone) continue;
+      if (x != null && z != null) {
+        const [ax, az] = schoolPos(r);
+        if (Math.hypot(ax - x, az - z) > 1500) continue;
+      }
+      best = Math.max(best, r.boost);
+    }
+    return best;
   }
 
   // ── Навігація ──

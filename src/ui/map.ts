@@ -8,7 +8,7 @@ import { terrainHeight } from '../world/portTerrain';
 import { LANDMARKS } from '../world/landmarks';
 import type { RockObstacle } from '../world/boat';
 import type { GameState } from '../game/state';
-import { HOTSPOTS, SCHOOL_ANCHORS, SCHOOL_R } from '../game/fish';
+import { HOTSPOTS, SCHOOL_R, schoolPos, schoolName } from '../game/fish';
 import { CALM, ROUGH, WORLD, WS, roughness, seaDist } from '../core/region';
 import { DOCK_BY_ID, GOODS_BY_ID } from '../game/cargo';
 import { L, plural } from '../core/i18n';
@@ -718,7 +718,8 @@ export class MapView {
         continue;
       }
       // гавані — якір; назву знають і до відвідин (чутки моряків), відкриті — яскраві
-      if (l.id.startsWith('port-')) {
+      // гавані й маленькі бухти континентів (cove-)
+      if (l.id.startsWith('port-') || l.id.startsWith('cove-')) {
         c.beginPath();
         c.arc(px, pz, 10, 0, Math.PI * 2);
         c.fillStyle = found ? '#2a3a46' : 'rgba(42,58,70,0.35)';
@@ -787,7 +788,7 @@ export class MapView {
 
     // ── сті (радіо-звіти) ──
     for (const r of game.reports) {
-      const [ax, az] = SCHOOL_ANCHORS[r.zone];
+      const [ax, az] = schoolPos(r);
       const px = mx(ax);
       const pz = my(az);
       c.beginPath();
@@ -806,7 +807,7 @@ export class MapView {
       c.fillText('🐟', px, pz + 6);
       labels.block(px, pz, 10);
       const sy = pz + Math.max(38, rr + 16);
-      labels.add({ prio: 65, x: px, y: sy, lines: [{ t: `${game.speciesName(r.speciesId)} ×${r.boost.toFixed(1).replace('.', L(',', '.'))}`, font: `800 11.5px ${FONT}`, fill: '#1d6f73' }], alts: [[0, -(sy - pz) * 2 + 4], [0, 16]] });
+      labels.add({ prio: 65, x: px, y: sy, lines: [{ t: `${game.speciesName(r.speciesId)} ×${r.boost.toFixed(1).replace('.', L(',', '.'))}`, font: `800 11.5px ${FONT}`, fill: '#1d6f73' }, { t: L(`📻 ${schoolName(r)}`, `📻 ${schoolName(r)}`), font: `600 10px ${FONT}`, fill: INK_SOFT }], alts: [[0, -(sy - pz) * 2 + 4], [0, 16]] });
     }
 
     // ── доставки: звідки → куди (коричневий пунктир, ящик біля гавані призначення) ──
