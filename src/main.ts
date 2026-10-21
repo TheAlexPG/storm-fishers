@@ -96,6 +96,7 @@ import { Traders } from './world/traders';
 import { glowTex } from './world/textures';
 import { cargoHtml, bindCargo, baseHtml } from './ui/cargoBoard';
 import { baitHtml, bindBait } from './ui/baitShop';
+import { mezeHtml, eatMeze } from './ui/nikosMeze';
 import { chartOffers, chartmakerHtml, bindChartmaker } from './ui/chartmaker';
 import { GOODS_BY_ID, DOCK_BY_ID, cargoSlots, dockName, type CargoOrder } from './game/cargo';
 import { continentRegion } from './world/continents';
@@ -386,6 +387,7 @@ class Game {
     this.boat = new Boat(this.scene);
     this.boat.landAt = terrainHeight;
     this.player = new Player(this.game);
+    this.ports.listener = this.player.head;
     this.stations = new Stations(this.boat, this.game, this.audio);
     this.fishing = new Fishing(this.scene, this.audio, this.boat);
     this.deckFish = new DeckFish(this.scene, this.boat);
@@ -538,6 +540,8 @@ class Game {
     PORT_SERVICE_HANDLERS.chartmaker = () => this.openChartmaker();
     // кіоск «Морозиво й сувеніри» Сонячної Марини
     PORT_SERVICE_HANDLERS.gelato = () => this.openGelato();
+    // «Мезе тітки Деспіни» в Айос-Нікосі
+    PORT_SERVICE_HANDLERS.meze = () => this.openMeze();
 
     this.reticle = document.createElement('div');
     this.reticle.id = 'reticle';
@@ -2715,6 +2719,22 @@ class Game {
 
   /** склад гавані: накладні, здати, відмовитись */
   /** пекарня «Тепла скоринка»: випічку з'їдаєш одразу — енергія й бафи */
+  /** «Мезе тітки Деспіни» (Айос-Нікос): грецькі страви з бафами */
+  private openMeze(note = '') {
+    this.phase = 'dialog';
+    this.expectUnlock = true;
+    document.exitPointerLock();
+    this.dialogs.custom(mezeHtml(this.game, note), 'shop cargo', (panel) => {
+      panel.querySelectorAll<HTMLElement>('[data-meze]').forEach((b) => b.addEventListener('click', () => {
+        const msg = eatMeze(this.game, b.dataset.meze!);
+        if (!msg) return;
+        this.audio.click();
+        this.saveGame();
+        this.openMeze(msg);
+      }));
+    });
+  }
+
   private openBakery(note = '') {
     this.dialogs.custom(bakeryHtml(this.game, note), 'shop cargo', (panel) => {
       panel.querySelectorAll<HTMLElement>('[data-pastry]').forEach((b) => b.addEventListener('click', () => {

@@ -181,6 +181,7 @@ const CONT_SITES: PortSite[] = [
       { kind: 'exchange', a: -4, b: -10, name: L('Таверна-скупка', `Taverna buyer`), icon: '🐟', label: L('Таверна купує рибу — лосось і тріска в ціні', `The taverna buys fish — salmon and cod fetch a lot`) },
       { kind: 'cargo', a: -12, b: 6, name: L('Склад', `Cargo office`), icon: '📦', label: L('Склад села — оливкова олія й мед', `Village store — olive oil and honey`) },
       { kind: 'sleep', a: -16, b: -8, name: L('Кімнати в таверні', `Taverna rooms`), icon: '🛏', label: L('Кімнати в таверні (сон)', `Taverna rooms (sleep)`) },
+      { kind: 'meze', a: -4, b: 6, name: L('Мезе Деспіни', `Despina's Meze`), icon: '🫒', label: L('Мезе тітки Деспіни — грецькі страви з бафами', `Aunt Despina's Meze — Greek dishes with buffs`) },
     ],
   },
   {
