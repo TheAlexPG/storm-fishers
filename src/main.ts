@@ -2550,6 +2550,8 @@ class Game {
     // three.js кодує fog.color у sRGB при завантаженні, тож для мешів даємо зворотне перетворення —
     // інакше далека суша й острови завжди світліші за небо позаду
     this.fogRaw.copy(time.skyHorizon).lerp(time.fogColor, 0.25).lerp(this._fogGrey.setRGB(0.3, 0.33, 0.38).multiplyScalar(0.35 + 0.65 * time.daylight), this.weather.cloudiness * 0.8);
+    // під стелею хмар повітря в тіні — туман темнішає (той самий колір, що й обрій неба під фронтом)
+    this.fogRaw.lerp(this.clouds.airColor, this.clouds.airCam * 0.75);
     const fog = this.scene.fog as THREE.FogExp2;
     fog.color.copy(this.fogRaw).convertSRGBToLinear();
     fog.density = this.fogDensity();

@@ -28,6 +28,8 @@ uniform float uStars;
 uniform float uMoon;
 uniform float uCirrus;
 uniform float uSteps;
+uniform sampler2D uCloudBN;
+uniform highp sampler3D uCloudN3;
 //CLOUDS//
 varying vec3 vDir;
 
@@ -36,79 +38,167 @@ float hsh(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); 
 
 // у циклі з break неявні похідні (вибір mip) невизначені — рівень деталізації явно з відстані
 float shapeLod(vec2 uv, float lod) {
-  return textureLod(uCloudNoise, uv, lod).r * 0.62 + textureLod(uCloudNoise, uv * 2.7 + vec2(0.37, 0.11) + uCloudLayer.w * vec2(0.0011, 0.0007), lod + 1.4).a * 0.38;
+  return textureLod(uCloudNoise, uv, lod).r * 0.62 + textureLod(uCloudNoise, mat2(0.866, 0.5, -0.5, 0.866) * uv * 2.7 + vec2(0.37, 0.11) + uCloudLayer.w * vec2(0.0011, 0.0007), lod + 1.4).a * 0.38;
 }
 
-// купчастий шар: 16 кроків крізь шар (без апскейлу), світло — один семпл до сонця
+// слід пікселя на поточному кроці (м): з нього — mip кожної текстури за її масштабом
+// (дрібні «кульбаби» без фільтрації давали «цукрове» зерно на кромках)
+float gFoot = 1.0;
+float lodFor(float metersPerTile) {
+  return clamp(log2(max(gFoot / (metersPerTile / 256.0), 1.0)), 0.0, 7.5);
+}
+
+// густина хмари в точці: e — «надлишок» форми над покривом, профіль за висотою
+// в одиницях висоти вежі (кубічний — боки крутіші, верх заокруглений «капустою»)
+float cloudDens(vec3 p, vec4 cv, float base, float lod, bool fine, out float hr) {
+  vec2 uv0 = cloudUV(p.xz);
+  float Ht = towerH(cv.a);
+  hr = (p.y - base) / Ht;
+  // під штормовою стелею — рвані низькі шматки (scud) на 150–450 м нижче бази
+  if (hr < 0.0) {
+    float below = base - p.y;
+    if (cv.g < 0.35 || below > 280.0 || p.y < 60.0) return -1.0;
+    float band = smoothstep(70.0, 130.0, below) * (1.0 - smoothstep(200.0, 270.0, below));
+    // форма — з 3D-шуму (2D-Ворлі знизу під кутом показував комірки — «квадрати»)
+    vec3 qs = vec3(p.x + uCloudOff.x * 1.3, p.y * 1.6, p.z + uCloudOff.y * 1.3) / 900.0;
+    float ls = clamp(log2(max(gFoot / 14.0, 1.0)), 0.0, 5.0);
+    float sc = textureLod(uCloudN3, qs, ls).r;
+    return (sc - 0.78 + 0.2 * cv.g) * band * 0.9 - 0.01;
+  }
+  // вежа нахиляється за вітром і на різних висотах має свої «кульбаби» — не видавлена 2D-пляма
+  vec2 uv = uv0 + vec2(0.045, 0.02) * hr;
+  // високі вежі — з крупнішої плями: інакше дрібний візерунок, видавлений на кілометри, дає «стовпи»
+  // (змішуємо два сталі масштаби: масштабувати uv на змінний множник не можна — великі uv
+  //  тоді «стрибають» між клітинками карти покриву й дають квадратні блоки)
+  float kf = smoothstep(0.2, 0.95, cv.a);
+  float sh0 = kf < 0.99 ? shapeLod(uv, max(lod, lodFor(uCloudLayer.z))) : 0.0;
+  float sh1 = kf > 0.01 ? shapeLod(uv * 0.3 + vec2(0.29, 0.53), max(lod - 1.7, lodFor(uCloudLayer.z / 0.3))) : 0.0;
+  float e = mix(sh0, sh1, kf) - (1.0 - cv.r);
+  float prof = 0.1 * hr + 0.58 * hr * hr * hr;
+  // явно поза хмарою (і не ковадло) — далі не рахуємо
+  if (e - prof < -0.3 && cv.a < 0.75) return e - prof;
+  // насичення: у суцільному фронті «надлишок» величезний — без цього висота вежі
+  // повторює 2D-пляму (силует «міста»); так верхи однорідні, форму дають кульбаби
+  e = e > 0.0 ? 0.5 * (1.0 - exp(-e * 2.0)) : e;
+  float d = e - prof - (1.0 - smoothstep(0.0, 0.08, hr)) * 0.08;
+  // клуби: 3D-шум (боки веж бугристі, а не вертикальні смуги); вдалині гасне — там без mip мерехтів би
+  if (fine && d > -0.3) {
+    vec3 q3 = vec3(p.x + uCloudOff.x, p.y * 1.25, p.z + uCloudOff.y) / 1500.0;
+    // mip зі сліду пікселя (вокс 1500/64 ≈ 23 м)
+    float l3 = clamp(log2(max(gFoot / 23.0, 1.0)), 0.0, 5.0);
+    float b3 = textureLod(uCloudN3, q3, l3).r * 0.7 + textureLod(uCloudN3, q3 * 2.3 + 0.31, l3 + 1.2).r * 0.3;
+    d += (b3 - 0.5) * 0.34 * smoothstep(0.04, 0.3, hr);
+  }
+  // ковадло купчасто-дощових: угорі вежа розтікається пласким дахом
+  float cb = smoothstep(0.75, 0.95, cv.a);
+  if (cb > 0.0 && hr > 0.7) {
+    float slab = smoothstep(0.72, 0.8, hr) * (1.0 - smoothstep(0.9, 0.98, hr));
+    float an = shapeLod(uv * 0.45 + 0.21, max(lod - 1.0, lodFor(uCloudLayer.z / 0.45))) - (1.0 - cv.r) + 0.12;
+    d = max(d, an * slab * cb);
+  }
+  return hr > 1.05 ? min(d, -0.01) : d;
+}
+
+// купчастий шар: адаптивний крок (дрібний поблизу, крупний удалині), без апскейлу;
+// світло — два семпли до сонця (близький — складки, далекий — тінь від сусідньої вежі)
 vec4 cumulus(vec3 ro, vec3 rd, vec3 L, out float tHit) {
   float base = uCloudLayer.x, top = uCloudLayer.y;
   tHit = 0.0;
   if (rd.y < 0.01) return vec4(0.0);
-  const float MAXD = 17000.0;
-  float t0 = (base - ro.y) / rd.y;
+  const float MAXD = 19000.0;
+  // у шторм низ шару (рвані шматки) може бути нижче камери — стартуємо від камери, не позаду неї
+  float t0 = max((base - ro.y) / rd.y, 0.0);
   if (t0 > MAXD) return vec4(0.0);
-  // шлях у шарі обмежений: на пологих променях кроки не розтягуються на кілометри (без «смуг»)
-  float t1 = min(min((top - ro.y) / rd.y, t0 + 2200.0), MAXD + 3000.0);
+  float t1 = min(min((top - ro.y) / rd.y, MAXD + 4000.0), t0 + 9000.0);
   tHit = t0;
   int N = int(uSteps);
-  float dt = (t1 - t0) / uSteps;
-  // низькорозбіжна послідовність R2 (не IGN — у тонких пасмах та дає штриховку; білий шум — зерно)
-  float t = t0 + dt * fract(dot(gl_FragCoord.xy, vec2(0.7548776662, 0.5698402910)));
-  float th = top - base;
-  // слід пікселя на шарі (м) → mip: ~0.0019 рад/піксель, на пологих променях слід витягнутий
+  // синій шум: ні штриховки R2/IGN, ні зерна білого шуму
+  float jit = texture2D(uCloudBN, gl_FragCoord.xy / 64.0).r;
   float lod = clamp(log2(max(t0 * 0.0019 / max(rd.y, 0.04), 1.0) / (uCloudLayer.z / 256.0)), 0.0, 6.0);
-  // срібляста облямівка проти сонця (Хеньї–Грінстейн, вперед)
   float mu = dot(rd, L);
   float g = 0.6;
   float hg = (1.0 - g * g) / pow(1.0 + g * g - 2.0 * g * mu, 1.5) * 0.08;
+  // крок: ~2.5 % відстані, але не грубіший за п'яту частину висоти хмари в цьому місці
+  vec4 cv0 = textureLod(uCloudCover, (ro.xz + rd.xz * t0 - uCloudRect.xy) * uCloudRect.zw, 0.0);
+  float t = t0 + clamp(t0 * 0.02, 22.0, clamp(towerH(cv0.a) * 0.15, 50.0, 240.0)) * jit;
   vec3 acc = vec3(0.0);
   float T = 1.0;
-  for (int i = 0; i < 24; i++) {
-    if (i >= N) break;
+  float low = 1.0 - smoothstep(0.03, 0.3, L.y);
+  float lk = mix(2.0, 6.0, smoothstep(0.04, 0.4, L.y));
+  for (int i = 0; i < 64; i++) {
+    if (i >= N || t > t1) break;
     vec3 p = ro + rd * t;
-    float h = clamp((p.y - base) / th, 0.0, 1.0);
-    vec3 cv = textureLod(uCloudCover, (p.xz - uCloudRect.xy) * uCloudRect.zw, 0.0).rgb * vec3(1.25, 1.0, 1.0);
+    vec4 cv = textureLod(uCloudCover, (p.xz - uCloudRect.xy) * uCloudRect.zw, 0.0) * vec4(1.25, 1.0, 1.0, 1.0);
+    float dt = clamp(t * 0.02, 22.0, clamp(towerH(cv.a) * 0.15, 50.0, 240.0));
+    // лише слід пікселя: грубший mip після порогу густини дає квадратні плями розміром у тексель
+    gFoot = t * 0.0019;
+    float hr;
+    // база — раз на крок (семпли світла беруть ту саму)
+    float cbase = cloudBaseAt(cloudUV(p.xz), cv.g);
+    float d = cloudDens(p, cv, cbase, lod, true, hr);
     vec2 uv = cloudUV(p.xz);
-    // купол: вгорі вужче (заокруглені верхівки), знизу пласке дно
-    // переріз хмари звужується з висотою — круглі «кульбабки», а не стовпи з прямовисними стінами
-    // (стіни в перспективі й давали радіальні смуги)
-    float d = shapeLod(uv, lod) - (1.0 - cv.r) - (h * 0.25 + h * h * 0.45) - (1.0 - smoothstep(0.0, 0.1, h)) * 0.08;
-    if (d > 0.0) {
-      d -= textureLod(uCloudNoise, uv * 9.0 + uCloudLayer.w * vec2(0.004, -0.002), lod + 3.2).g * 0.11 * (1.0 - 0.5 * cv.g);
+    if (d > 0.0 && d < 0.3) {
+      // ерозія кромки (лише біля поверхні — всередині її не видно): дрібні «кульбаби»; угорі сильніше — капустяний верх
+      float er = textureLod(uCloudNoise, uv * 4.6 + uCloudLayer.w * vec2(0.003, -0.0015), lodFor(uCloudLayer.z / 4.6) + 0.5).g;
+      d -= er * (0.08 + 0.07 * clamp(hr, 0.0, 1.0)) * (1.0 - 0.5 * cv.g);
     }
     if (d > 0.0) {
-      vec3 pl = p + L * th * 0.45;
-      float hl = clamp((pl.y - base) / th, 0.0, 1.0);
-      float dl = shapeLod(cloudUV(pl.xz), lod + 1.0) - (1.0 - cv.r) - (hl * 0.25 + hl * hl * 0.45);
-      // низьке сонце світить крізь бік хмари — м'якше загасання (рожеві/золоті хмари на заході)
-      float lt = exp(-max(dl, 0.0) * mix(2.2, 7.0, smoothstep(0.04, 0.4, L.y)) - d * 1.5);
+      float h = clamp(hr, 0.0, 1.0);
+      float hr1, hr2;
+      float f0 = gFoot;
+      gFoot = f0 * 2.0;
+      float dl1 = cloudDens(p + L * 140.0, cv, cbase, lod + 0.6, false, hr1);
+      float od = max(dl1, 0.0) * lk + d * 1.2;
+      // далекий семпл — завжди (поріг за od давав розрив яскравості → «квадрати»);
+      // у штормовій товщі плавно замінюємо оцінкою з ближнього — там він майже не видно
+      float sk = smoothstep(0.4, 0.6, cv.g);
+      float far2 = max(dl1, 0.0) * lk * 0.8;
+      if (sk < 1.0) {
+        gFoot = f0 * 5.0;
+        float dl2 = cloudDens(p + L * 520.0, cv, cbase, lod + 1.2, false, hr2);
+        far2 = mix(max(dl2, 0.0) * lk * 0.8, far2, sk);
+      }
+      od += far2;
+      gFoot = f0;
+      float lt = exp(-od);
       lt *= 1.0 - 0.65 * cv.g;
+      // рвані шматки під стелею — у її тіні: темно-сірі, не білі цятки
+      if (hr < 0.0) lt *= 0.15;
       float powder = 1.0 - exp(-d * 10.0);
       vec3 sh = mix(uCShade, uCStorm, cv.g);
+      // глибокі тіні в складках — нижче темніше
+      sh *= 0.75 + 0.35 * h;
       vec3 li = mix(uCLit, uCLit * 0.5 + uCStorm, cv.g * 0.7);
-      vec3 c = mix(sh, li, lt * (0.6 + 0.4 * powder));
+      vec3 c = mix(sh, li, lt * (0.55 + 0.45 * powder));
       // низьке сонце підсвічує хмари знизу (золота година, сутінки)
-      float low = 1.0 - smoothstep(0.03, 0.3, L.y);
       c = mix(c, li * (0.8 + 0.4 * lt), low * (1.0 - h) * 0.45 * (1.0 - cv.g));
       // штормова стеля не пласка: темні вали й світліші розриви
-      float sv = smoothstep(0.3, 0.72, shapeLod(uv * 0.55 + 0.13, max(lod - 0.8, 0.0)));
-      c *= mix(1.0, mix(0.5, 1.35, sv), cv.g * (1.0 - 0.5 * h));
-      c += uCAmb * (0.08 + 0.22 * h) * (1.0 - 0.6 * cv.g);
+      if (cv.g > 0.05) {
+        float sv = smoothstep(0.3, 0.72, shapeLod(uv * 0.55 + 0.13, max(lod - 0.8, 0.0)));
+        c *= mix(1.0, mix(0.5, 1.35, sv), cv.g * (1.0 - 0.5 * h));
+      }
+      // небо зверху, відсвіт води знизу
+      c += uCAmb * (0.06 + 0.24 * h) * (1.0 - 0.6 * cv.g);
+      c += vec3(0.05, 0.08, 0.11) * (1.0 - h) * (0.4 + 0.6 * uSunStrength) * (1.0 - cv.g);
       c += li * hg * lt * (1.0 - cv.g);
       c += vec3(0.75, 0.8, 1.0) * uFlash * (1.3 - h) * (0.6 + cv.g);
-      float a = 1.0 - exp(-d * dt * (0.024 + 0.03 * cv.g));
+      float a = 1.0 - exp(-d * dt * (0.026 + 0.05 * cv.g));
       acc += T * a * c;
       T *= 1.0 - a;
-      if (T < 0.015) break;
+      if (T < 0.04) break;
     }
-    t += dt;
+    // порожнеча — крок удвічі (синій шум зсуву ховає грубіший крок)
+    t += d < -0.2 ? dt * (1.0 + min(-d * 4.0, 1.0)) : dt;
   }
   float alpha = 1.0 - T;
   if (alpha <= 0.0) return vec4(0.0);
+  if (T < 0.04) alpha = 1.0;
   vec3 col = acc / alpha;
-  // повітряна перспектива: далекі хмари тонуть у серпанку обрію
-  float far = smoothstep(2500.0, 15000.0, t0);
-  col = mix(col, uHorizon * (0.7 + 0.3 * (1.0 - uCloudiness)), far * 0.7);
+  // повітряна перспектива: далекі хмари тонуть у серпанку — у тіні фронту він темний
+  float far = smoothstep(2500.0, 16000.0, t0);
+  float occ = airOcc(ro.xz, normalize(rd.xz + 1e-5), min(t0, 18000.0));
+  vec3 haze = mix(uHorizon * (0.7 + 0.3 * (1.0 - uCloudiness)), uCAir, occ * occ);
+  col = mix(col, haze, far * 0.7);
   alpha *= 1.0 - smoothstep(MAXD * 0.6, MAXD, t0);
   return vec4(col, alpha);
 }
@@ -161,22 +251,34 @@ void main() {
     vec3 cc = uCLit * 0.9 + uCAmb * 0.2;
     col = mix(col, cc, a * 0.32);
   }
-  // стовпи дощу під хмарами вдалині
-  if (d.y < 0.12 && d.y > -0.02) {
+  // «тінь у повітрі»: під стелею й під фронтом нижнє небо — темне повітря, а не світлий градієнт
+  if (d.y < 0.35) {
     vec2 hz = normalize(d.xz + 1e-5);
-    float veil = 0.0;
-    for (int k = 0; k < 2; k++) {
-      float D = k == 0 ? 3800.0 : 8000.0;
-      float y = uCamPos.y + d.y * D;
-      if (y < uCloudLayer.x) {
-        vec3 cv = cloudCoverAt(uCamPos.xz + hz * D);
-        float ang = atan(hz.y, hz.x);
-        // широкі м'які завіси (не «паркан»): плавний шум по азимуту
-        float streak = texture2D(uCloudNoise, vec2(ang * (k == 0 ? 0.32 : 0.55) + 0.2 * float(k), 0.37 + uCloudLayer.w * 0.0003), 2.0).r;
-        veil = max(veil, cv.b * smoothstep(0.35, 0.7, streak + 0.2 * cv.b) * (1.0 - y / uCloudLayer.x * 0.6));
+    float occ = airOcc(uCamPos.xz, hz, 18000.0);
+    float wEl = 1.0 - smoothstep(0.0, 0.35, d.y);
+    col = mix(col, uCAir, clamp(occ * wEl * 0.95, 0.0, 1.0));
+    // завіси дощу: від бази до води, м'які смуги
+    if (d.y < 0.16 && d.y > -0.03) {
+      float veil = 0.0;
+      for (int k = 0; k < 3; k++) {
+        float D = k == 0 ? 2200.0 : (k == 1 ? 4800.0 : 9500.0);
+        float y = uCamPos.y + d.y * D;
+        float cb0 = uCloudBase0;
+        if (y < cb0) {
+          vec3 cv = cloudCoverAt(uCamPos.xz + hz * D);
+          float ang = atan(hz.y, hz.x);
+          float yn = y / cb0;
+          float sx = ang * (k == 0 ? 2.2 : (k == 1 ? 3.4 : 5.0)) + yn * 0.25 + 0.17 * float(k);
+          float streak = texture2D(uCloudNoise, vec2(sx * 0.15, 0.37 + uCloudLayer.w * 0.0004), 1.5).r;
+          float fine = texture2D(uCloudNoise, vec2(sx * 0.9, 0.61 + yn * 0.08 + uCloudLayer.w * 0.002), 1.0).g;
+          float sh = smoothstep(0.3, 0.65, streak + 0.25 * cv.b) * (0.75 + 0.25 * fine);
+          // до бази дощ густішає, біля води розсіюється в серпанок
+          veil = max(veil, cv.b * sh * (0.55 + 0.45 * yn));
+        }
       }
+      vec3 rainC = uCAir * 0.85 + vec3(0.01, 0.015, 0.025);
+      col = mix(col, rainC, clamp(veil, 0.0, 1.0) * 0.8 * smoothstep(-0.03, 0.005, d.y));
     }
-    col = mix(col, mix(uCStorm * 1.5, uHorizon, 0.25), clamp(veil, 0.0, 1.0) * 0.5 * smoothstep(-0.02, 0.01, d.y));
   }
   // купчасті
   float tHit;
@@ -238,7 +340,7 @@ export class Sky {
         uStars: { value: 0 },
         uMoon: { value: 0 },
         uCirrus: { value: 0.5 },
-        uSteps: { value: 24 },
+        uSteps: { value: 64 },
         uZenith: { value: new THREE.Color(0x4a90d0) },
         uHorizon: { value: new THREE.Color(0xbcd8e6) },
         uSunDir: { value: new THREE.Vector3(0, 1, 0) },
