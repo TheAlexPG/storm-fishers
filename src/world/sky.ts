@@ -28,6 +28,9 @@ uniform float uStars;
 uniform float uMoon;
 uniform float uCirrus;
 uniform float uSteps;
+uniform float uGolden;
+uniform float uCoverK;
+uniform float uVeil;
 uniform sampler2D uCloudBN;
 uniform highp sampler3D uCloudN3;
 //CLOUDS//
@@ -67,6 +70,18 @@ float cloudDens(vec3 p, vec4 cv, float base, float lod, bool fine, out float hr)
   }
   // вежа нахиляється за вітром і на різних висотах має свої «кульбаби» — не видавлена 2D-пляма
   vec2 uv = uv0 + vec2(0.045, 0.02) * hr;
+  // високі вежі й стіна фронту: форма «пливе» з висотою (3D-шум у uv), інакше 2D-пляма,
+  // видавлена на кілометри, дає вертикальні смуги, коли дивишся вгору вздовж стіни
+  float tw = smoothstep(0.35, 0.9, cv.a) * clamp(hr + 0.15, 0.0, 1.2);
+  // лише на основному промені (семпли світла беруть ту саму форму без зсуву — різниця в тіні непомітна,
+  // а дві зайві 3D-вибірки на кожному семплі світла коштували ~10 % на ретіні); одна вибірка — кут зсуву
+  if (fine && tw > 0.01) {
+    // частота за висотою — в одиницях висоти вежі: у 10-км стіні форма міняється ~кожні 2.5 км
+    vec3 wq = vec3(uv0 * 0.9, hr * (1.5 + 2.5 * smoothstep(0.5, 1.0, cv.a)) + 0.17);
+    float wl = clamp(log2(max(gFoot / 60.0, 1.0)), 1.0, 4.0);
+    float wa = textureLod(uCloudN3, wq, wl).r * 12.566;
+    uv += vec2(cos(wa), sin(wa)) * (0.09 + 0.07 * smoothstep(0.6, 1.0, cv.a)) * tw;
+  }
   // високі вежі — з крупнішої плями: інакше дрібний візерунок, видавлений на кілометри, дає «стовпи»
   // (змішуємо два сталі масштаби: масштабувати uv на змінний множник не можна — великі uv
   //  тоді «стрибають» між клітинками карти покриву й дають квадратні блоки)
@@ -80,7 +95,8 @@ float cloudDens(vec3 p, vec4 cv, float base, float lod, bool fine, out float hr)
   // насичення: у суцільному фронті «надлишок» величезний — без цього висота вежі
   // повторює 2D-пляму (силует «міста»); так верхи однорідні, форму дають кульбаби
   e = e > 0.0 ? 0.5 * (1.0 - exp(-e * 2.0)) : e;
-  float d = e - prof - (1.0 - smoothstep(0.0, 0.08, hr)) * 0.08;
+  // округлий низ (пласка база, але не вертикальні «завіси» збоку)
+  float d = e - prof - (1.0 - smoothstep(0.0, 0.22, hr)) * 0.16;
   // клуби: 3D-шум (боки веж бугристі, а не вертикальні смуги); вдалині гасне — там без mip мерехтів би
   if (fine && d > -0.3) {
     vec3 q3 = vec3(p.x + uCloudOff.x, p.y * 1.25, p.z + uCloudOff.y) / 1500.0;
@@ -128,7 +144,7 @@ vec4 cumulus(vec3 ro, vec3 rd, vec3 L, out float tHit) {
   for (int i = 0; i < 64; i++) {
     if (i >= N || t > t1) break;
     vec3 p = ro + rd * t;
-    vec4 cv = textureLod(uCloudCover, (p.xz - uCloudRect.xy) * uCloudRect.zw, 0.0) * vec4(1.25, 1.0, 1.0, 1.0);
+    vec4 cv = textureLod(uCloudCover, (p.xz - uCloudRect.xy) * uCloudRect.zw, 0.0) * vec4(uCoverK, 1.0, 1.0, 1.0);
     float dt = clamp(t * 0.02, 22.0, clamp(towerH(cv.a) * 0.15, 50.0, 240.0));
     // лише слід пікселя: грубший mip після порогу густини дає квадратні плями розміром у тексель
     gFoot = t * 0.0019;
@@ -139,8 +155,8 @@ vec4 cumulus(vec3 ro, vec3 rd, vec3 L, out float tHit) {
     vec2 uv = cloudUV(p.xz);
     if (d > 0.0 && d < 0.3) {
       // ерозія кромки (лише біля поверхні — всередині її не видно): дрібні «кульбаби»; угорі сильніше — капустяний верх
-      float er = textureLod(uCloudNoise, uv * 4.6 + uCloudLayer.w * vec2(0.003, -0.0015), lodFor(uCloudLayer.z / 4.6) + 0.5).g;
-      d -= er * (0.08 + 0.07 * clamp(hr, 0.0, 1.0)) * (1.0 - 0.5 * cv.g);
+      float er = textureLod(uCloudNoise, uv * 4.6 + uCloudLayer.w * vec2(0.003, -0.0015), lodFor(uCloudLayer.z / 4.6) + 1.4).g;
+      d -= er * (0.055 + 0.06 * clamp(hr, 0.0, 1.0)) * (1.0 - 0.5 * cv.g);
     }
     if (d > 0.0) {
       float h = clamp(hr, 0.0, 1.0);
@@ -171,7 +187,9 @@ vec4 cumulus(vec3 ro, vec3 rd, vec3 L, out float tHit) {
       vec3 li = mix(uCLit, uCLit * 0.5 + uCStorm, cv.g * 0.7);
       vec3 c = mix(sh, li, lt * (0.55 + 0.45 * powder));
       // низьке сонце підсвічує хмари знизу (золота година, сутінки)
-      c = mix(c, li * (0.8 + 0.4 * lt), low * (1.0 - h) * 0.45 * (1.0 - cv.g));
+      c = mix(c, li * (1.0 + 0.45 * lt) + vec3(0.08, 0.02, 0.06) * uGolden, low * (1.0 - h * 0.7) * (0.5 + 0.4 * uGolden) * (1.0 - cv.g));
+      // кромки проти сонця — світлі «вали» (замість радіальних променів, яких без пост-процесу немає)
+      c += li * pow(max(mu, 0.0), 6.0) * (1.0 - lt) * 0.35 * (1.0 - cv.g) * (0.4 + uGolden);
       // штормова стеля не пласка: темні вали й світліші розриви
       if (cv.g > 0.05) {
         float sv = smoothstep(0.3, 0.72, shapeLod(uv * 0.55 + 0.13, max(lod - 0.8, 0.0)));
@@ -182,7 +200,9 @@ vec4 cumulus(vec3 ro, vec3 rd, vec3 L, out float tHit) {
       c += vec3(0.05, 0.08, 0.11) * (1.0 - h) * (0.4 + 0.6 * uSunStrength) * (1.0 - cv.g);
       c += li * hg * lt * (1.0 - cv.g);
       c += vec3(0.75, 0.8, 1.0) * uFlash * (1.3 - h) * (0.6 + cv.g);
-      float a = 1.0 - exp(-d * dt * (0.026 + 0.05 * cv.g));
+      // м'яка кромка: на межі густина плавно сходить до нуля — менше «зерна» від зсуву кроку
+      float de = d * smoothstep(0.0, 0.05, d);
+      float a = 1.0 - exp(-de * dt * (0.04 + 0.036 * cv.g));
       acc += T * a * c;
       T *= 1.0 - a;
       if (T < 0.04) break;
@@ -216,25 +236,48 @@ void main() {
     vec2 id = floor(sp);
     vec2 f = fract(sp) - 0.5;
     float r = hsh(id);
-    if (r > 0.972) {
+    if (r > 0.955) {
       vec2 o = vec2(hsh(id + 7.1), hsh(id + 3.3)) - 0.5;
       float s = 1.0 - smoothstep(0.06, 0.22, length(f - o * 0.6));
       col += vec3(0.85, 0.9, 1.0) * s * uStars * (0.4 + 0.6 * hsh(id + 1.7)) * smoothstep(0.0, 0.15, d.y);
     }
   }
+  // Чумацький Шлях: широка смуга по нахиленому великому колу з «хмарками» шуму
+  if (uStars > 0.0 && d.y > 0.0) {
+    vec3 mwN = normalize(vec3(0.35, 0.45, 0.82));
+    float mw = exp(-pow(dot(d, mwN) / 0.16, 2.0));
+    float mn = texture2D(uCloudNoise, vec2(atan(d.z, d.x) * 0.9, d.y * 1.7) * 1.3, 1.0).r;
+    col += vec3(0.42, 0.42, 0.62) * mw * (0.35 + 0.9 * mn) * 0.16 * uStars * smoothstep(0.0, 0.2, d.y);
+  }
   // сонце + ореол
   float sd = max(dot(d, sunD), 0.0);
-  col += vec3(1.0, 0.9, 0.7) * (pow(sd, 350.0) * 2.0 + smoothstep(0.99955, 0.9998, sd) * 1.6) * uSunStrength;
-  col += vec3(1.0, 0.75, 0.5) * pow(sd, 18.0) * 0.22 * uSunStrength;
-  col += vec3(1.0, 0.85, 0.6) * pow(sd, 5.0) * 0.10 * uSunStrength;
+  col += vec3(1.0, 0.9, 0.7) * (pow(sd, 350.0) * 2.0 + smoothstep(0.99955, 0.9998, sd) * 1.6) * uSunStrength * (1.0 - 0.6 * uVeil);
+  col += vec3(1.0, 0.75, 0.5) * pow(sd, 18.0) * 0.3 * uSunStrength;
+  col += vec3(1.0, 0.82, 0.55) * pow(sd, 5.0) * 0.16 * uSunStrength;
+  // золота година: обрій з боку сонця розжарений, протилежний — рожево-фіолетовий
+  if (uGolden > 0.0) {
+    vec2 sh2 = normalize(sunD.xz + 1e-5);
+    float side = dot(normalize(d.xz + 1e-5), sh2) * 0.5 + 0.5;
+    float band = exp(-h * 5.0);
+    col += vec3(1.0, 0.45, 0.18) * pow(side, 3.0) * band * 0.45 * uGolden;
+    col = mix(col, col * vec3(0.95, 0.75, 1.1) + vec3(0.06, 0.02, 0.08), (1.0 - side) * band * 0.5 * uGolden);
+  }
+  // пелена перистих перед фронтом: небо молочнішає, сонце тьмяніє в ореолі (а не стіна одразу)
+  if (uVeil > 0.0) {
+    float vh = smoothstep(-0.02, 0.35, d.y);
+    vec3 milk = mix(uHorizon, vec3(0.72, 0.76, 0.8) * (0.25 + 0.75 * uSunStrength), 0.55);
+    col = mix(col, milk, uVeil * 0.5 * vh);
+    col += vec3(1.0, 0.95, 0.85) * pow(sd, 40.0) * 0.25 * uVeil * uSunStrength;
+  }
   // місяць (навпроти сонця, як moonLight у main.ts)
   vec3 md = normalize(vec3(-sunD.x, max(-sunD.y, 0.2), -sunD.z));
   float mdd = dot(d, md);
-  col += vec3(0.85, 0.9, 1.0) * (smoothstep(0.99935, 0.99965, mdd) * 0.9 + pow(max(mdd, 0.0), 80.0) * 0.12) * uMoon;
+  col += vec3(0.85, 0.9, 1.0) * (smoothstep(0.99935, 0.99965, mdd) * 1.1 + pow(max(mdd, 0.0), 80.0) * 0.16 + pow(max(mdd, 0.0), 12.0) * 0.06) * uMoon;
   // хмарність: небо сіріє (у шторм небо майже ховається за стелею хмар)
   float cl = clamp(uCloudiness, 0.0, 1.0);
-  vec3 greyHor = vec3(0.30, 0.33, 0.38);
-  vec3 greyTop = vec3(0.20, 0.22, 0.27);
+  // шторм — холодний зеленувато-сірий (як у SoT)
+  vec3 greyHor = vec3(0.27, 0.33, 0.33);
+  vec3 greyTop = vec3(0.17, 0.21, 0.22);
   vec3 grey = mix(greyHor, greyTop, pow(h, 0.55)) * (0.25 + 0.75 * uSunStrength);
   col = mix(col, grey, clamp(cl * 0.55, 0.0, 1.0));
 
@@ -341,6 +384,9 @@ export class Sky {
         uMoon: { value: 0 },
         uCirrus: { value: 0.5 },
         uSteps: { value: 64 },
+        uGolden: { value: 0 },
+        uCoverK: { value: 1.25 },
+        uVeil: { value: 0 },
         uZenith: { value: new THREE.Color(0x4a90d0) },
         uHorizon: { value: new THREE.Color(0xbcd8e6) },
         uSunDir: { value: new THREE.Vector3(0, 1, 0) },
@@ -392,6 +438,11 @@ export class Sky {
     scene.add(this.group);
   }
 
+  /** пелена високих хмар перед фронтом 0..1 (від Clouds) */
+  setVeil(v: number) {
+    this.domeMat.uniforms.uVeil.value = v;
+  }
+
   setFlash(v: number) {
     this.flash = Math.max(this.flash, v);
   }
@@ -418,8 +469,14 @@ export class Sky {
     (u.uCamPos.value as THREE.Vector3).copy(camPos);
     u.uStars.value = clamp((-sunDir.y - 0.1) * 3.5, 0, 0.9);
     u.uMoon.value = clamp(-sunDir.y * 3, 0, 0.9);
+    // золота година й сутінки: тепле сяйво обрію; покрив трохи рідший — більше розривів,
+    // нижні шари не зливаються в суцільну стелю
+    const sy = sunDir.y;
+    const golden = clamp((0.4 - sy) / 0.35, 0, 1) * clamp((sy + 0.25) / 0.25, 0, 1);
+    u.uGolden.value = golden;
+    u.uCoverK.value = 1.25 - 0.22 * golden * (1 - clamp((cloudiness - 0.5) * 2, 0, 1));
     // пір'ясті — у ясну й вітряну погоду; під штормовою стелею їх не видно
-    u.uCirrus.value = 0.75 * (1 - clamp((cloudiness - 0.55) * 2.5, 0, 1));
+    u.uCirrus.value = Math.min(1.2, 0.75 * (1 - clamp((cloudiness - 0.55) * 2.5, 0, 1)) + u.uVeil.value * 0.6);
     // дощ: риски, нахилені вітром; камера — центр коробки (group уже в camPos)
     const rainO = clamp(rain * 0.9, 0, 0.55);
     this.rainMat.opacity = damp(this.rainMat.opacity, rainO, 1.2, dt);

@@ -265,7 +265,9 @@ float towerH(float a) {
 // під штормом — провислі «грудки» стелі (ще ±200 м)
 float cloudBaseAt(vec2 uv, float storm) {
   // mip 0: грубий mip — білінійні «фасетки» сітки текселів видно на освітленні як прямокутники
-  float b = uCloudBase0 + (textureLod(uCloudNoise, uv * 0.13 + vec2(0.71, 0.33), 0.0).r - 0.5) * 350.0;
+  // дві шкали з однієї вибірки (G — дрібніша ерозія того ж тайла): база нерівна і великими, і середніми плямами
+  vec4 bn = textureLod(uCloudNoise, uv * 0.13 + vec2(0.71, 0.33), 0.0);
+  float b = uCloudBase0 + (bn.r - 0.5) * 420.0 + (bn.a - 0.5) * 220.0;
   if (storm > 0.4) b += (textureLod(uCloudNoise, uv * 0.3 + vec2(0.27, 0.81), 0.0).r - 0.5) * 400.0 * smoothstep(0.4, 0.8, storm);
   return b;
 }
@@ -393,6 +395,22 @@ export class Clouds {
   private cover: THREE.DataTexture;
   private coverData: Uint8Array<ArrayBuffer>;
   private coverT = 0;
+  /** поточна (згладжена в часі) карта покриву — float, щоб малі кроки не губились у 8 бітах */
+  private cur = new Float32Array(COVER * COVER * 4);
+  private tgt = new Float32Array(COVER * COVER * 4);
+  private curX0 = NaN;
+  private curZ0 = NaN;
+  /** секунд з останньої перебудови карти */
+  private coverDt = 0;
+  /** пелена високих хмар перед фронтом 0..1 (затягує сонце) */
+  veil = 0;
+  private veilT = 0;
+  /** фронт поруч 0..1 — туман над водою густішає */
+  frontNear = 0;
+  private frontNearT = 0;
+  private towerT = 600;
+  /** карта щойно «стрибнула» (завантаження, телепорт) — решту параметрів теж одразу */
+  private snap = true;
   private t = 0;
   /** штормовість над камерою (для висоти шару) */
   private darkCam = 0;
@@ -434,7 +452,7 @@ export class Clouds {
     const frontOn = eta != null ? 1 - smooth(380, 420, eta) : 0;
     const F = (eta ?? 0) * 22;
     const ux = -Math.sin(inp.windDir), uz = Math.cos(inp.windDir);
-    const d = this.coverData;
+    const d = this.tgt;
     let maxA = 0;
     let occ = 0, occW = 0;
     for (let j = 0; j < COVER; j++) {
@@ -452,20 +470,24 @@ export class Clouds {
         const vv = value((x + 50000) / 6500, (z + 50000) / 6500, 1024, 1024, 41) * 0.65 + value((x + 50000) / 2300, (z + 50000) / 2300, 1024, 1024, 42) * 0.35;
         let tw = clamp(twW + (vv - 0.45) * (0.75 - 0.35 * twW), 0, 1);
         if (frontOn > 0) {
+          // фронт — не стіна, а шари, що насуваються по черзі (як у природі):
+          // попереду густіша пласка стеля (шарувата, без веж), за нею низька темна
+          // розірвана хмарність і дощові завіси, а грозові вежі — глибше всередині
           const s = (x - inp.camPos.x) * ux + (z - inp.camPos.z) * uz;
-          const wall = smooth(F - 900, F + 2200, s) * frontOn;
-          cov = Math.max(cov, cov + (1.12 - cov) * wall);
-          dark = Math.max(dark, wall * 0.85);
-          rain = Math.max(rain, wall * smooth(F + 600, F + 3500, s) * 0.8);
-          // передній край фронту — вежі купчасто-дощових з ковадлами
-          tw = Math.max(tw, smooth(F - 1500, F + 800, s) * frontOn);
+          const deck = smooth(F - 6000, F + 2500, s) * frontOn;
+          cov = Math.max(cov, cov + (1.1 - cov) * deck);
+          // поки стеля попереду — вежі там нижчі (шаруваті хмари, а не одразу високі)
+          tw *= 1 - 0.6 * deck * (1 - smooth(F + 1500, F + 5000, s));
+          dark = Math.max(dark, smooth(F - 2500, F + 3500, s) * frontOn * 0.85);
+          rain = Math.max(rain, smooth(F + 1000, F + 5500, s) * frontOn * 0.8);
+          tw = Math.max(tw, smooth(F + 1500, F + 7000, s) * frontOn * 0.95);
         }
         maxA = Math.max(maxA, tw);
         const k = (j * COVER + i) * 4;
-        d[k] = Math.round(clamp(cov / 1.25, 0, 1) * 255);
-        d[k + 1] = Math.round(dark * 255);
-        d[k + 2] = Math.round(rain * 255);
-        d[k + 3] = Math.round(clamp(tw, 0, 1) * 255);
+        d[k] = clamp(cov / 1.25, 0, 1);
+        d[k + 1] = dark;
+        d[k + 2] = rain;
+        d[k + 3] = clamp(tw, 0, 1);
         // повітря під хмарами біля камери (~4 км)
         const dx = x - inp.camPos.x, dz = z - inp.camPos.z;
         const r2 = dx * dx + dz * dz;
@@ -476,9 +498,61 @@ export class Clouds {
         }
       }
     }
-    this.cover.needsUpdate = true;
-    this.maxTower = towerH(maxA) * 1.08;
+    this.blendCover(x0, z0);
+    this.towerT = towerH(maxA) * 1.08;
     this.airCamT = occW > 0 ? occ / occW : 0;
+    // пелена перед фронтом: з'являється задовго (≈7 хв), густішає з наближенням
+    this.veilT = eta != null ? smooth(430, 120, eta) * 0.9 : 0;
+    this.frontNearT = eta != null ? smooth(260, 30, eta) : 0;
+  }
+
+  /**
+   * Плавна зміна погоди: поточна карта тягнеться до нової з постійною часу ~25 с
+   * (покрив/темрява/дощ/вежі), а не замінюється раз на 0.4 с. Коли карта зсувається
+   * за камерою на клітинку — старий стан зсуваємо разом із нею (світ не «пливе»);
+   * при телепорті (зсув понад пів карти) і першому кадрі — одразу ціль.
+   */
+  private blendCover(x0: number, z0: number) {
+    const cell = COVER_SIZE / COVER;
+    const cur = this.cur, tgt = this.tgt;
+    const di = Math.round((x0 - this.curX0) / cell), dj = Math.round((z0 - this.curZ0) / cell);
+    const jump = !(Math.abs(di) < COVER / 2 && Math.abs(dj) < COVER / 2);
+    if (jump) {
+      cur.set(tgt);
+      this.snap = true;
+    }
+    else if (di !== 0 || dj !== 0) {
+      const old = cur.slice();
+      for (let j = 0; j < COVER; j++)
+        for (let i = 0; i < COVER; i++) {
+          const si = i + di, sj = j + dj;
+          const k = (j * COVER + i) * 4;
+          if (si >= 0 && si < COVER && sj >= 0 && sj < COVER) {
+            const ks = (sj * COVER + si) * 4;
+            cur[k] = old[ks]; cur[k + 1] = old[ks + 1]; cur[k + 2] = old[ks + 2]; cur[k + 3] = old[ks + 3];
+          } else {
+            cur[k] = tgt[k]; cur[k + 1] = tgt[k + 1]; cur[k + 2] = tgt[k + 2]; cur[k + 3] = tgt[k + 3];
+          }
+        }
+    }
+    this.curX0 = x0;
+    this.curZ0 = z0;
+    // покрив і вежі — повільніше (~30 с), темрява й дощ — трохи швидше (~18 с)
+    const dt = Math.min(this.coverDt, 2);
+    const aC = jump ? 1 : 1 - Math.exp(-dt / 30);
+    const aD = jump ? 1 : 1 - Math.exp(-dt / 18);
+    const out = this.coverData;
+    for (let k = 0; k < cur.length; k += 4) {
+      cur[k] += (tgt[k] - cur[k]) * aC;
+      cur[k + 1] += (tgt[k + 1] - cur[k + 1]) * aD;
+      cur[k + 2] += (tgt[k + 2] - cur[k + 2]) * aD;
+      cur[k + 3] += (tgt[k + 3] - cur[k + 3]) * aC;
+      out[k] = Math.round(cur[k] * 255);
+      out[k + 1] = Math.round(cur[k + 1] * 255);
+      out[k + 2] = Math.round(cur[k + 2] * 255);
+      out[k + 3] = Math.round(cur[k + 3] * 255);
+    }
+    this.cover.needsUpdate = true;
   }
 
   update(dt: number, inp: CloudInput) {
@@ -494,14 +568,27 @@ export class Clouds {
     if (Math.abs(off.y) > NOISE_SCALE * 40) off.y %= NOISE_SCALE;
 
     this.coverT -= dt;
+    this.coverDt += dt;
     if (this.coverT <= 0) {
       this.coverT = 0.4;
       this.rebuildCover(inp);
+      this.coverDt = 0;
     }
+    // верх шару: росте одразу (вежі в карті ростуть плавно), опускається повільно — без стрибків
+    this.maxTower = this.towerT > this.maxTower ? this.towerT : this.maxTower + (this.towerT - this.maxTower) * Math.min(1, dt / 20);
+    if (this.snap) {
+      this.maxTower = this.towerT;
+      this.veil = this.veilT;
+      this.frontNear = this.frontNearT;
+      this.airCam = this.airCamT;
+    }
+    this.veil += (this.veilT - this.veil) * Math.min(1, dt / 25);
+    this.frontNear += (this.frontNearT - this.frontNear) * Math.min(1, dt / 25);
 
     // шар: у шторм — нижче й товщий
     const dark = smooth(0.55, 0.95, inp.cloudiness);
-    this.darkCam += (dark - this.darkCam) * Math.min(1, dt * 0.5);
+    this.darkCam += (dark - this.darkCam) * (this.snap ? 1 : Math.min(1, dt / 20));
+    this.snap = false;
     // низ шару: з запасом під нерівну базу (−175 м) і рвані шматки під штормовою стелею
     const base0 = 950 - this.darkCam * 420;
     u.uCloudBase0.value = base0;
@@ -509,7 +596,7 @@ export class Clouds {
     // верх шару — найвища вежа на карті (у штиль промінь не марнує кроки на порожнечу)
     const top = base + Math.max(520 + this.darkCam * 700, this.maxTower);
     (u.uCloudLayer.value as THREE.Vector4).set(base, top, NOISE_SCALE, this.t);
-    this.airCam += (this.airCamT - this.airCam) * Math.min(1, dt * 0.8);
+    this.airCam += (this.airCamT - this.airCam) * Math.min(1, dt / 15);
 
     // світло: сонце вдень, місяць уночі (як moonLight у main.ts)
     const s = inp.sunDir;
@@ -527,18 +614,19 @@ export class Clouds {
     const golden = smooth(0.38, 0.06, s.y) * cday;
     const sunK = 0.45 + 0.7 * inp.sunStrength;
     const lit = u.uCLit.value as THREE.Color;
-    lit.setRGB(1.0, 0.97, 0.93).lerp(this._warm.setRGB(1.0, 0.52, 0.32), golden).multiplyScalar(sunK);
+    lit.setRGB(1.0, 0.98, 0.95).lerp(this._warm.setRGB(1.0, 0.5, 0.3), golden).multiplyScalar(sunK * 1.06);
     lit.lerp(this._night.setRGB(0.13, 0.15, 0.22), 1 - cday);
     const shade = u.uCShade.value as THREE.Color;
     shade.copy(inp.zenith).multiplyScalar(0.55).add(this._tmp.copy(inp.horizon).multiplyScalar(0.4));
-    shade.lerp(this._tmp.setRGB(0.36, 0.42, 0.55), 0.35 * day);
-    shade.lerp(this._tmp.setRGB(0.5, 0.28, 0.36), golden * 0.55);
+    // SoT: тіні хмар — блакитні від неба, а не сірі
+    shade.lerp(this._tmp.setRGB(0.42, 0.52, 0.72), 0.45 * day);
+    shade.lerp(this._tmp.setRGB(0.55, 0.3, 0.45), golden * 0.6);
     if (cday < 1) shade.lerp(this._tmp.setRGB(0.032, 0.042, 0.075), 1 - cday);
-    (u.uCStorm.value as THREE.Color).setRGB(0.13, 0.145, 0.17).multiplyScalar(0.12 + 0.88 * day);
+    (u.uCStorm.value as THREE.Color).setRGB(0.12, 0.15, 0.155).multiplyScalar(0.12 + 0.88 * day);
     (u.uCAmb.value as THREE.Color).copy(inp.zenith).lerp(inp.horizon, 0.45);
     // повітря в тіні хмар: розсіяне світло крізь товщу — темне сіро-синє (уночі майже чорне)
     const air = u.uCAir.value as THREE.Color;
-    air.setRGB(0.17, 0.19, 0.225).multiplyScalar(0.1 + 0.9 * day).lerp(this._tmp.copy(inp.horizon).multiplyScalar(0.45), 0.18);
+    air.setRGB(0.16, 0.195, 0.205).multiplyScalar(0.1 + 0.9 * day).lerp(this._tmp.copy(inp.horizon).multiplyScalar(0.45), 0.18);
     if (golden > 0) air.lerp(this._tmp.setRGB(0.3, 0.2, 0.22), golden * 0.3 * day);
     this.airColor.copy(air);
   }
