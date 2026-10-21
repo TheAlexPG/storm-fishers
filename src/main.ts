@@ -96,6 +96,7 @@ import { Traders } from './world/traders';
 import { glowTex } from './world/textures';
 import { cargoHtml, bindCargo, baseHtml } from './ui/cargoBoard';
 import { baitHtml, bindBait } from './ui/baitShop';
+import { chartOffers, chartmakerHtml, bindChartmaker } from './ui/chartmaker';
 import { GOODS_BY_ID, DOCK_BY_ID, cargoSlots, dockName, type CargoOrder } from './game/cargo';
 import { continentRegion } from './world/continents';
 import { PORT_SITES, PORT_SITE_BY_ID, PORT_SERVICE_HANDLERS, pierRect, siteBerths, type Berth } from './world/portSites';
@@ -373,6 +374,9 @@ class Game {
     this.stalls = new BuyerStalls(this.scene, this.port);
     this.ordersChip = new OrdersChip();
     this.ports = new Ports(this.scene, this.port.platforms, this.port.solids);
+    // Гавань Зорі: дзвін каплиці й репліки мешканців
+    this.ports.onBell = (v) => this.audio.bell(v * 0.9, 262);
+    this.ports.onSay = (s) => this.hud.toast(s, 'good', 4500);
     this.continents = new ContinentScenery(this.scene);
     this.traders = new Traders(this.scene, glowTex());
     this.moorDock = this.port.quay;
@@ -527,6 +531,8 @@ class Game {
     PORT_SERVICE_HANDLERS.cookshop = () => this.kitchen.openMarinaShop();
     // наживка Орисі в Рибальському Куті (portSites: svc 'bait')
     PORT_SERVICE_HANDLERS.bait = () => this.openBait();
+    // картограф Гавані Зорі (portSites: svc 'chartmaker')
+    PORT_SERVICE_HANDLERS.chartmaker = () => this.openChartmaker();
 
     this.reticle = document.createElement('div');
     this.reticle.id = 'reticle';
@@ -2774,6 +2780,24 @@ class Game {
     });
   }
 
+  private openChartmaker() {
+    const g = this.game;
+    const [fx, fz] = [this.player.head.x, this.player.head.z];
+    this.phase = 'dialog';
+    this.expectUnlock = true;
+    document.exitPointerLock();
+    const offers = chartOffers(g, fx, fz);
+    this.dialogs.custom(chartmakerHtml(g, offers), 'shop cargo', (panel) =>
+      bindChartmaker(panel, g, offers, (o, route) => {
+        this.audio.discover();
+        this.chart.markDirty();
+        this.saveGame();
+        this.hud.toast(route ? L(`🗺 «${o.name}» — на лоції, курс проложено`, `🗺 “${o.name}” is on your chart — course plotted`) : L(`🗺 «${o.name}» — тепер на твоїй лоції`, `🗺 “${o.name}” is now on your chart`), 'good', 3500);
+        this.openChartmaker();
+      }),
+    );
+  }
+
   private openBase(site: string) {
     const g = this.game;
     const price = 6000;
@@ -2900,7 +2924,7 @@ class Game {
     this.port.setNight(1 - time.daylight);
     this.port.update(simDt, t, this.camera.position);
     this.ports.setNight(1 - time.daylight);
-    this.ports.update(t, this.camera.position);
+    this.ports.update(t, this.camera.position, time.hours);
     this.continents.setNight(1 - time.daylight);
     this.continents.update(t, this.camera.position);
     this.syncCargo();

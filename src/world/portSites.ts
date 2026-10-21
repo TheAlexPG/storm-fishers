@@ -112,6 +112,8 @@ const RAW_SITES: PortSite[] = [
       { kind: 'yard', a: -5, b: -19, name: L('Верф', `Shipyard`), icon: '🔧', label: L('Верф Гавані Зорі — ремонт корпусу', `Dawn Harbour shipyard — hull repairs`) },
       { kind: 'exchange', a: -5, b: -4, name: L('Біржа', `Exchange`), icon: '🐟', label: L('Біржа Гавані Зорі — продати улов', `Dawn Harbour exchange — sell your catch`) },
       { kind: 'sleep', a: -17, b: 10, name: L('Заїжджий двір', `Coaching inn`), icon: '🛏', label: L('Заїжджий двір (сон)', `Coaching inn (sleep)`) },
+      // картограф (ui/chartmaker.ts, обробник — main): точні лоції невідкритих місць
+      { kind: 'chartmaker', a: -5, b: -11.5, name: L('Картограф', `Chartmaker`), icon: '🗺', label: L('Картограф — точні лоції рибних місць і островів', `Chartmaker — true charts of fishing grounds and islands`) },
     ],
   },
   {

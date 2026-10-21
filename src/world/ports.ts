@@ -6,6 +6,7 @@ import { PORT_SITES, siteGround as siteHeight, siteRect, siteToWorld, worldToSit
 import type { Platform, Solid } from './port';
 import { mergeStatic } from './staticMerge';
 import { buildKutVillage, type VillageLife } from './kutVillage';
+import { ZORYA_ID, ZoryaLife, buildZoryaStatic, zoryaPlan, type TownCtx } from './zoryaTown';
 
 // ─────────────────────────────────────────────────────────────
 // Інші гавані світу (дані — portSites.ts): суходіл, кам'яна набережна,
@@ -94,6 +95,8 @@ interface Built {
   phase: number;
   /** життя гавані (люди, тварини, дим) — лише поблизу */
   life?: VillageLife;
+  /** живе містечко (Гавань Зорі): мешканці, дзвін, прапорці */
+  zorya?: ZoryaLife;
 }
 
 export class Ports {
@@ -103,6 +106,9 @@ export class Ports {
   private glowMat: THREE.SpriteMaterial;
   private lampGlows: THREE.Sprite[] = [];
   private night = 0;
+  /** удар дзвона каплиці (гучність 0..1) і репліка мешканця — ставить main */
+  onBell: ((vol: number) => void) | null = null;
+  onSay: ((text: string) => void) | null = null;
 
   /** platforms/solids — спільні з домашнім Port (ходьба й зіткнення гравця) */
   constructor(scene: THREE.Scene, platforms: Platform[], solids: Solid[]) {
@@ -229,6 +235,18 @@ export class Ports {
       }
       solidBox(hx, hz, (p.ox ? d : w) + 0.3, (p.ox ? w : d) + 0.3, 0);
     }
+
+    // ── план містечка (Гавань Зорі): сходи, каплиця, площа — до загальної забудови ──
+    const zPlan = p.id === ZORYA_ID ? zoryaPlan(p, H) : null;
+    if (zPlan) used.push(...zPlan.reserved);
+    const town: TownCtx = {
+      p, g, batch, M: M as unknown as TownCtx['M'], ry, rng, H,
+      house: (o) => this.house(batch, g, o, rng),
+      lampPost: (x, z, y0) => this.lampPost(batch, g, x, z, y0),
+      glow: (x, y, z, size) => this.glow(g, x, y, z, size),
+      solidBox: (x, z, w, d) => solidBox(x, z, w, d, 0),
+      solidCircle,
+    };
 
     // ── забудова за характером: будинки вглиб плато й на схилах ──
     const free = (a: number, b: number, r: number) => used.every(([ua, ub, ur]) => Math.hypot(a - ua, b - ub) > r + ur);
@@ -385,6 +403,7 @@ export class Ports {
     if (p.id === 'port-kut') {
       life = buildKutVillage({ p, g, batch, M, H, platforms, solids, rng, lampPost: (x, z, y0) => this.lampPost(batch, g, x, z, y0), glow: (x, y, z, s) => this.glow(g, x, y, z, s) });
     }
+    if (zPlan) buildZoryaStatic(town, zPlan);
 
     // ── злити ──
     batch.build(g);
@@ -394,8 +413,16 @@ export class Ports {
     });
     // решту окремих мешів (вивіски, ліхтарі, дрібниці з власними матеріалами) — теж докупи
     mergeStatic(g, { skip: [lantern] });
+    // живе — після злиття (рухається), окремою групою
+    let zorya: ZoryaLife | undefined;
+    if (zPlan) {
+      zorya = new ZoryaLife(town, zPlan);
+      zorya.onBell = (v) => this.onBell?.(v);
+      zorya.onSay = (s) => this.onSay?.(s);
+      g.add(zorya.group);
+    }
     this.group.add(g);
-    return { site: p, group: g, lantern, lanternPos, phase: rng() * 6, life };
+    return { site: p, group: g, lantern, lanternPos, phase: rng() * 6, life, zorya };
   }
 
   /** точка для маяка: на краю суходолу поруч із гаванню, на сухому */
@@ -603,7 +630,7 @@ export class Ports {
 
   private lastT = -1;
 
-  update(t: number, cam: THREE.Vector3) {
+  update(t: number, cam: THREE.Vector3, hours = 12) {
     const dt = this.lastT < 0 ? 0 : Math.min(0.1, Math.max(0, t - this.lastT));
     this.lastT = t;
     for (const b of this.built) {
@@ -620,10 +647,13 @@ export class Ports {
         b.group.children.forEach((c) => (c.visible = c === b.lantern));
         b.lantern.scale.setScalar(Math.min(60, 9 + d * 0.02));
       } else {
-        // userData.hide — дитина сама ховається (життя гавані далеко від камери)
-        b.group.children.forEach((c) => (c.visible = !c.userData.hide));
+        // userData.hide — дитина сама ховається; ореоли ліхтарів — лише вночі (удень прозорі, а виклик малювання коштують)
+        const glowOn = this.night > 0.02;
+        b.group.children.forEach((c) => (c.visible = !c.userData.hide && ((c as THREE.Sprite).isSprite && c !== b.lantern ? glowOn : true)));
         b.lantern.scale.setScalar(Math.min(40, 9 + d * 0.015));
       }
+      // містечко живе (і дзвонить) лише поки гавань видно
+      if (b.zorya && b.group.visible && d < 1500) b.zorya.update(t, cam, hours, this.night);
     }
   }
 
