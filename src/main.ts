@@ -1849,10 +1849,14 @@ class Game {
     this.ocean.net = this.coop.oceanNet();
     // небо, яке відбиває вода: хмари роблять його сірішим (як туман)
     const cl = this.weather.cloudiness;
-    this._reflGrey.setRGB(0.3, 0.33, 0.38).multiplyScalar(0.35 + 0.65 * this.time.daylight);
+    this._reflGrey.setRGB(0.27, 0.33, 0.33).multiplyScalar(0.35 + 0.65 * this.time.daylight);
     this.reflHorizon.copy(this.time.skyHorizon).lerp(this._reflGrey, cl * 0.6);
     this.reflZenith.copy(this.time.skyZenith).lerp(this._reflGrey, cl * 0.75);
-    this.ocean.update(dt, t, this.camera.position, this.time.sunDir, this.reflHorizon, this.fogRaw, this.fogDensity(), this.time.sunStrength * (1 - cl * 0.65), this.weather.flash, this.reflZenith);
+    // під важкою стелею вода відбиває темне небо, а не світлий обрій (і сонячний блиск гасне)
+    const heavy = Math.max(this.clouds.airCam, this.clouds.frontNear * 0.6);
+    this.reflHorizon.lerp(this.clouds.airColor, heavy * 0.85);
+    this.reflZenith.lerp(this.clouds.airColor, heavy * 0.9);
+    this.ocean.update(dt, t, this.camera.position, this.time.sunDir, this.reflHorizon, this.fogRaw, this.fogDensity(), this.time.sunStrength * (1 - cl * 0.65) * (1 - heavy * 0.85), this.weather.flash, this.reflZenith);
 
     // паливо
     // повний газ — непропорційно дорожче: економний хід і паруси окупаються
@@ -3020,7 +3024,8 @@ class Game {
     const cl = climate(cp.x, cp.z);
     // «Край світу»: холодна вода відкритого океану — туман сідає частіше й густіше
     const kf = krayFog(cp.x, cp.z) * (0.3 + 0.55 * Math.max(0, Math.sin(this.simTime * 0.0085 + 2.1)));
-    return (base + storm) * (1 + cl.north * (0.55 + 0.45 * Math.sin(this.simTime * 0.011)) - cl.med * 0.18 + kf);
+    // фронт поруч — над водою наростає серпанок (разом із хмарами, а не стіна одразу)
+    return (base + storm) * (1 + cl.north * (0.55 + 0.45 * Math.sin(this.simTime * 0.011)) - cl.med * 0.18 + kf + this.clouds.frontNear * 0.9);
   }
 
   private render() {
@@ -3045,6 +3050,7 @@ class Game {
       horizon: time.skyHorizon,
     });
     // небо і світло
+    this.sky.setVeil(this.clouds.veil);
     this.sky.update(
       simDt,
       this.camera.position,
@@ -3076,7 +3082,7 @@ class Game {
     // fogRaw — у тих самих «сирих» числах, що їх пишуть шейдери неба й океану (без sRGB-кодування);
     // three.js кодує fog.color у sRGB при завантаженні, тож для мешів даємо зворотне перетворення —
     // інакше далека суша й острови завжди світліші за небо позаду
-    this.fogRaw.copy(time.skyHorizon).lerp(time.fogColor, 0.25).lerp(this._fogGrey.setRGB(0.3, 0.33, 0.38).multiplyScalar(0.35 + 0.65 * time.daylight), this.weather.cloudiness * 0.8);
+    this.fogRaw.copy(time.skyHorizon).lerp(time.fogColor, 0.25).lerp(this._fogGrey.setRGB(0.27, 0.33, 0.33).multiplyScalar(0.35 + 0.65 * time.daylight), this.weather.cloudiness * 0.8);
     // під стелею хмар повітря в тіні — туман темнішає (той самий колір, що й обрій неба під фронтом)
     this.fogRaw.lerp(this.clouds.airColor, this.clouds.airCam * 0.75);
     const fog = this.scene.fog as THREE.FogExp2;
