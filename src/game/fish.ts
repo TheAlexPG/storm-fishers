@@ -64,6 +64,12 @@ export const HOTSPOTS: Hotspot[] = [
   { id: 'hot-reef', name: L('Палтусова яма', `Halibut Hole`), sub: L('за рифами Мушлевого: палтус і тріска-велетні, але рифи ловлять хвилю', `past the Shell reefs: giant halibut and cod, but the reefs catch the swell`), x: -1330, z: 820, r: 150, kg: 1.9, trophy: 0.16, risk: 2 },
   { id: 'hot-belt', name: L('Тунцева банка', `Tuna Bank`), sub: L('посеред штормового поясу: тунець і акула вдвічі важчі — тікай, щойно падає барометр', `in the middle of the storm belt: tuna and sharks twice the weight — run as soon as the glass falls`), x: 1480, z: 620, r: 170, kg: 2.3, trophy: 0.22, risk: 3 },
   { id: 'hot-deep', name: L('Акулячий жолоб', `Shark Trench`), sub: L('край відкритого океану: найбільші трофеї й найвищі хвилі', `the edge of the open ocean: the biggest trophies and the highest seas`), x: 380, z: 1480, r: 180, kg: 2.5, trophy: 0.25, risk: 3 },
+  // ── біля континентів і в Великому океані ──
+  { id: 'hot-lagoon', name: L('Бірюзова лагуна', `Turquoise Lagoon`), sub: L('мілко й тепло: риба ситіша, а шторми сюди майже не доходять', `shallow and warm: well-fed fish, and storms hardly reach in here`), x: 4290, z: 3610, r: 120, kg: 1.35, trophy: 0.06, risk: 1 },
+  { id: 'hot-gulf', name: L('Кальмарова западина', `Squid Hollow`), sub: L('глибоко в Гольфо: уночі піднімається велика риба', `deep in the Golfo: big fish rise at night`), x: 4700, z: 2800, r: 150, kg: 1.6, trophy: 0.1, risk: 1 },
+  { id: 'hot-fjord', name: L('Водоспадний фіорд', `Waterfall Fjord`), sub: L('лосось і палтус біля водоспаду — але фіорд вузький, а туман густий', `salmon and halibut by the falls — but the fjord is narrow and the fog thick`), x: -4500, z: 2880, r: 140, kg: 1.8, trophy: 0.14, risk: 2 },
+  { id: 'hot-seals', name: L('Тюленяча бухта', `Seal Cove`), sub: L('де тюлені — там і тріска: холодно, хвиля з півночі', `where there are seals there's cod: cold, with a northern swell`), x: -4160, z: 1160, r: 130, kg: 1.6, trophy: 0.12, risk: 2 },
+  { id: 'hot-birds', name: L('Пташиний котел', `The Bird Cauldron`), sub: L('птахи над водою — тунець женеться за сардиною; посеред Великого океану', `birds over the water — tuna chasing sardines; in the middle of the Great Ocean`), x: -420, z: 2300, r: 170, kg: 2.4, trophy: 0.22, risk: 3 },
 ];
 
 /** сила гарячої точки в місці 0..1 і яка саме */

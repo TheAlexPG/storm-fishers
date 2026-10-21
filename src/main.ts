@@ -81,6 +81,7 @@ import { DECK_Y as Y_DECK, HOUSE as L_HOUSE, RIG as L_RIG, SOLE_Y as Y_SOLE } fr
 import { HELM_DZ } from './world/yachtModel';
 import { PLANS, applySinkToUpgrades, dailyPremium, type SinkReport } from './game/insurance';
 import { Landmarks, LANDMARKS } from './world/landmarks';
+import { FarPlaces } from './world/farPlaces';
 import { Islands, FINDS } from './world/islands';
 import { ISLANDS, islandNear } from './world/islandShape';
 import { seabedDepth, ANCHOR_MAX_DEPTH, type AnchorResult } from './world/anchor';
@@ -255,6 +256,8 @@ class Game {
   private _ray = new THREE.Raycaster();
   private _c0 = new THREE.Vector2();
   private landmarks: Landmarks;
+  /** далекі місця біля континентів і в океані */
+  private farPlaces: FarPlaces;
   private islands: Islands;
   /** інші гавані світу (world/ports.ts) */
   private ports: Ports;
@@ -360,6 +363,7 @@ class Game {
     for (let i = 0; i < 3; i++) this.schoolJumps.push(new FishJump(this.scene));
     this.scene.add(this.moorMark);
     this.landmarks = new Landmarks(this.scene, this.port.rocks);
+    this.farPlaces = new FarPlaces(this.scene, this.port.rocks);
     this.islands = new Islands(this.scene);
     // скупники риби — після островів (хижа Остапа шукає вільне місце серед дерев)
     this.stalls = new BuyerStalls(this.scene, this.port);
@@ -2150,6 +2154,7 @@ class Game {
 
     // пам'ятки: дзвоновий буй, відкриття місць
     const ring = this.landmarks.update(dt, t, this.ocean);
+    this.farPlaces.update(dt, t, this.ocean, this.camera.position, 1 - this.time.daylight);
     this.islands.update(dt, t, g.finds, this.camera.position);
     this.bellCd -= dt;
     if (ring > 0.9 && this.bellCd <= 0) {
@@ -2246,7 +2251,7 @@ class Game {
         this.hud.titleCard(L('Пляшка із запискою', `A bottle with a note`), f.note ?? '');
         // записка на Мушлевому острові — ще й рецепт ухи
         if (fid === 'bottle:shell') this.kitchen.learnFromNote('ukha');
-      } else this.hud.titleCard(L('Піратська скриня!', `A pirate chest!`), L(`старі монети · +${f.money} ₴`, `old coins · +${f.money} ₴`));
+      } else this.hud.titleCard(f.title ?? L('Піратська скриня!', `A pirate chest!`), `${f.note ?? L('старі монети', 'old coins')} · +${f.money} ₴`);
       this.hud.toast(`+${f.money} ₴`, 'good', 3000);
     }
     this.saveGame();

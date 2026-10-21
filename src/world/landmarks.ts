@@ -37,6 +37,12 @@ export const LANDMARKS: Landmark[] = [
   { id: 'arch', name: L('Кам\'яна арка', `Stone Arch`), sub: L('пропливи крізь неї', `sail right through it`), x: 150, z: 660, r: 50 },
   { id: 'bell', name: L('Дзвоновий буй', `Bell Buoy`), sub: L('слухай його в тумані', `listen for it in the fog`), x: -650, z: 250, r: 45 },
   ].map((l) => ({ ...l, x: Math.round(l.x * WS), z: Math.round(l.z * WS) })),
+  // далекі пам'ятки біля континентів і в океані (декор — world/farPlaces.ts)
+  { id: 'med-galley', name: L('Затонула галера', `Sunken Galley`), sub: L('весла й амфори під бірюзовою водою', `oars and amphorae under turquoise water`), x: 2470, z: 3380, r: 90 },
+  { id: 'north-light', name: L('Маяк Гранітного Зуба', `Granite Tooth Light`), sub: L('світить рибалкам Сідар-Гарбор', `shines for the fishermen of Cedar Harbor`), x: -2450, z: 2850, r: 95 },
+  { id: 'north-trawler', name: L('Затонулий траулер', `Sunken Trawler`), sub: L('рубка ще над водою — не підходь у шторм', `her wheelhouse is still above water — keep off in a storm`), x: -2700, z: 3700, r: 90 },
+  { id: 'ocean-buoy', name: L('Метеобуй «Дельта»', `Weather Buoy “Delta”`), sub: L('міряє вітер посеред Великого океану', `measures the wind in the middle of the Great Ocean`), x: -900, z: 2600, r: 85 },
+  { id: 'ocean-reef', name: L('Риф Розбитих Щогл', `Broken Masts Reef`), sub: L('щогли старих кораблів стирчать із рифу', `the masts of old ships stick out of the reef`), x: 1100, z: 3700, r: 95 },
   // рибні місця в бурхливих районах (fish.ts HOTSPOTS) — відкриваються, коли запливеш
   ...HOTSPOTS.map((h) => ({ id: h.id, name: h.name, sub: h.sub, x: h.x, z: h.z, r: h.r * 0.8 })),
   // острови (islandShape.ts) — на них можна зійти

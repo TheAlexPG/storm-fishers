@@ -16,7 +16,7 @@ import { mulberry32 } from '../core/math';
 // ~20 викликів малювання на персонажа.
 // ─────────────────────────────────────────────────────────────
 
-export type HatKind = 'sou' | 'cap' | 'beanie' | 'captain' | 'bucket' | 'ushanka' | 'straw' | 'tricorn' | 'crown' | 'none';
+export type HatKind = 'sou' | 'cap' | 'beanie' | 'captain' | 'bucket' | 'ushanka' | 'straw' | 'tricorn' | 'crown' | 'laurel' | 'boater' | 'coonskin' | 'viking' | 'none';
 export type HairKind = 'short' | 'bun' | 'bald' | 'long' | 'buzz';
 export type BeardKind = 'none' | 'full' | 'mustache' | 'goatee';
 export type JacketKind = 'rain' | 'knit' | 'coat';
@@ -440,6 +440,51 @@ function addHat(P: Parts, head: THREE.Object3D, hatK: HatKind, hc: number, acc: 
       const shell = P.mat(k % 2 ? acc : 0xfaf1e4, 0.45, 0.1);
       P.add(head, new THREE.ConeGeometry(0.045, 0.1, 6), shell, x, C + 0.165, z, { ry: a, sz: 0.45 });
       P.add(head, new THREE.SphereGeometry(0.014, 6, 4), P.mat(0xffffff, 0.15, 0.3), x * 1.04, C + 0.12, z * 1.04);
+    }
+  } else if (hatK === 'laurel') {
+    // лавровий вінок: тонкий обруч і два ряди листочків, що сходяться над чолом
+    const leaf = P.mat(hc, 0.6);
+    const leafL = P.mat(acc, 0.6);
+    P.add(head, new THREE.TorusGeometry(0.168, 0.008, 4, 20), P.mat(shade(hc, 0.7), 0.7), 0, C + 0.09, -0.005, { rx: Math.PI / 2 - 0.12 });
+    for (let k = 0; k < 14; k++) {
+      const side = k < 7 ? -1 : 1;
+      const t = (k % 7) / 6;
+      const a = side * (0.25 + t * 2.4);
+      const x = Math.sin(a) * 0.17, z = Math.cos(a) * 0.17;
+      P.add(head, new THREE.SphereGeometry(0.03, 6, 4), k % 2 ? leaf : leafL, x, C + 0.1 + (1 - t) * 0.012, z - 0.005, { sx: 0.45, sy: 0.35, sz: 1.3, ry: a + side * 0.6 });
+    }
+  } else if (hatK === 'boater') {
+    // канотьє: пласка тулія, рівні поля, темна стрічка з бантом
+    const m = P.mat(hc, 0.9);
+    P.add(head, new THREE.CylinderGeometry(0.158, 0.162, 0.1, 18), m, 0, C + 0.13, -0.005);
+    P.add(head, new THREE.CylinderGeometry(0.158, 0.158, 0.012, 18), P.mat(shade(hc, 1.08), 0.9), 0, C + 0.185, -0.005);
+    P.add(head, new THREE.CylinderGeometry(0.29, 0.29, 0.014, 22), m, 0, C + 0.08, -0.005);
+    P.add(head, new THREE.CylinderGeometry(0.163, 0.165, 0.04, 18, 1, true), P.mat(acc, 0.6), 0, C + 0.1, -0.005);
+    P.add(head, new THREE.BoxGeometry(0.05, 0.035, 0.03), P.mat(acc, 0.6), 0.16, C + 0.1, 0.02, { ry: 0.3 });
+  } else if (hatK === 'coonskin') {
+    // хутряна шапка траппера: кругла тулія з хутра й смугастий хвіст на потилиці
+    const fur = P.mat(hc, 0.98);
+    const ring = P.mat(acc, 0.98);
+    P.add(head, new THREE.SphereGeometry(0.175, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), fur, 0, C + 0.025, -0.006, { sy: 1.05 });
+    P.add(head, new THREE.CylinderGeometry(0.178, 0.18, 0.05, 14), P.mat(shade(hc, 0.85), 0.98), 0, C + 0.03, -0.006);
+    for (let k = 0; k < 6; k++) {
+      const y = C + 0.0 - k * 0.055;
+      P.add(head, new THREE.CylinderGeometry(0.045 - k * 0.004, 0.048 - k * 0.004, 0.055, 8), k % 2 ? ring : fur, 0, y, -0.2 - k * 0.012, { rx: 0.25 });
+    }
+  } else if (hatK === 'viking') {
+    // шолом конунга: залізна чаша з наносником і два роги
+    const iron = P.mat(hc, 0.35, 0.75);
+    const horn = P.mat(acc, 0.6);
+    P.add(head, new THREE.SphereGeometry(0.172, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), iron, 0, C + 0.02, -0.006, { sy: 1.05 });
+    P.add(head, new THREE.CylinderGeometry(0.176, 0.178, 0.035, 14), P.mat(shade(hc, 0.8), 0.4, 0.75), 0, C + 0.03, -0.006);
+    P.add(head, new THREE.BoxGeometry(0.026, 0.11, 0.02), iron, 0, C - 0.02, 0.17);
+    for (const sx of [-1, 1]) {
+      const pts: THREE.Vector3[] = [];
+      for (let i = 0; i <= 6; i++) {
+        const t = i / 6;
+        pts.push(new THREE.Vector3(sx * (0.15 + t * 0.12), C + 0.08 + t * 0.07 + t * t * 0.1, -0.01 + t * 0.03));
+      }
+      P.add(head, new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 8, 0.024, 6), horn, 0, 0, 0);
     }
   } else if (hatK === 'bucket') {
     const m = P.mat(hc, 0.9);

@@ -24,6 +24,10 @@ export const HATS: HatDef[] = [
   { id: 'straw', name: L('Солом\'яний бриль', `Straw hat`), icon: '👒', kind: 'straw', color: 0xe3c77a, accent: 0xc0392b, hint: L('Пальмова коса', `Palm Spit`) },
   { id: 'tricorn', name: L('Піратська треуголка', `Pirate tricorne`), icon: '🏴‍☠️', kind: 'tricorn', color: 0x24211f, accent: 0xd9b24a, hint: L('Піратська бухта', `Pirate Cove`) },
   { id: 'crown', name: L('Корона з мушель', `Seashell crown`), icon: '👑', kind: 'crown', color: 0xf3d9c4, accent: 0xe98b8b, hint: L('Мушлевий острів', `Shell Island`) },
+  { id: 'laurel', name: L('Лавровий вінок', `Laurel wreath`), icon: '🌿', kind: 'laurel', color: 0x5f7f3a, accent: 0x86a24f, hint: L('Мис Посейдона, серед колон храму', `Poseidon's Cape, among the temple columns`) },
+  { id: 'boater', name: L('Канотьє', `Straw boater`), icon: '🎩', kind: 'boater', color: 0xe8d39a, accent: 0x1f3b6b, hint: L('Оливковий острів, біля криниці', `Olive Island, by the well`) },
+  { id: 'coonskin', name: L('Шапка траппера', `Trapper's coonskin cap`), icon: '🦝', kind: 'coonskin', color: 0x6a5240, accent: 0x2f2620, hint: L('Хижка траппера на півночі', `the trapper's cabin up north`) },
+  { id: 'viking', name: L('Шолом конунга', `King's horned helm`), icon: '⚔️', kind: 'viking', color: 0x8a8d90, accent: 0xe9dfc8, hint: L('Гранітні Брати', `the Granite Brothers`) },
   { id: 'beanie', name: L('Шапка з помпоном', `Bobble hat`), icon: '🧶', kind: 'beanie', color: 0xb8362c, accent: 0xf4efe4, hint: L('відкрий усі острови', `discover all the islands`) },
 ];
 
