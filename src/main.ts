@@ -2768,7 +2768,6 @@ class Game {
     this.dialogs.custom(cargoHtml(opts), 'shop cargo', (panel) => bindCargo(panel, opts));
   }
 
-  /** дім-база на континенті: купити / поспати */
   /** Наживка Орисі (Рибальський Кут): баф клювання на кілька хвилин */
   private openBait() {
     const g = this.game;
@@ -2840,6 +2839,7 @@ class Game {
     });
   }
 
+  /** дім-база на континенті: купити / поспати */
   private openBase(site: string) {
     const g = this.game;
     const price = 6000;
