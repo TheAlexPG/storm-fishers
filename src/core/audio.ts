@@ -388,11 +388,10 @@ export class AudioEngine {
     }
   }
 
-  bell(vol: number) {
+  bell(vol: number, f0 = 392) {
     const ctx = this.ensure();
     if (!ctx || !this.master || vol <= 0.01) return;
     const t = ctx.currentTime;
-    const f0 = 392;
     for (const [m, a, d] of [[1, 1, 4], [2.76, 0.5, 2.6], [5.4, 0.25, 1.6], [8.93, 0.12, 0.9], [0.5, 0.3, 5]] as const) {
       const o = ctx.createOscillator();
       o.type = 'sine';
