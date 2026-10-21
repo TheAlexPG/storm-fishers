@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 
 // ─────────────────────────────────────────────────────────────
-// Час доби. 1 доба = 600 с реального часу (10 хв).
+// Час доби. Базова доба = 600 с реального часу (10 хв); множник scale
+// (темп гри, game/pace.ts dayScale) робить її довшою — за замовчуванням 20 хв.
 // Сонце: сходять 6:00, заходять 18:00.
 // ─────────────────────────────────────────────────────────────
 
-export const DAY_SECONDS = 600; // реальних секунд на добу
+export const DAY_SECONDS = 600; // реальних секунд на базову добу (без множника темпу)
 
 // Палітра «теплої листівки»: м'який пастельний день, довга золота година,
 // фіолетово-рожеві сутінки й синя (не чорна) місячна ніч.
@@ -41,13 +42,21 @@ export class TimeCycle {
   sunStrength = 1;
   isNight = false;
 
+  /** у скільки разів доба довша за базову (ставить main із темпу гри) */
+  scale = 1;
+
+  /** реальних секунд на поточну добу */
+  get daySeconds(): number {
+    return DAY_SECONDS * this.scale;
+  }
+
   constructor(startHours = 8.0) {
     this.hours = startHours;
     this.recalc();
   }
 
   update(dt: number, speed = 1) {
-    const dh = (dt / DAY_SECONDS) * 24 * speed;
+    const dh = (dt / this.daySeconds) * 24 * speed;
     this.hours += dh;
     if (this.hours >= 24) {
       this.hours -= 24;
@@ -92,6 +101,6 @@ export class TimeCycle {
 
   /** години дня (для свіжості тощо) */
   gameHourDelta(dt: number): number {
-    return (dt / DAY_SECONDS) * 24;
+    return (dt / this.daySeconds) * 24;
   }
 }

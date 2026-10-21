@@ -5,7 +5,10 @@ import { localIntensity, offshore as regionOffshore } from './region';
 
 // ─────────────────────────────────────────────────────────────
 // Погода: Тиша → Повіє → Вітер → Шторм — довгими фазами, щоб встигнути
-// вийти в море й відчути шторм (реальні хвилини; доба = 10 хв):
+// вийти в море й відчути шторм. Цикл рахується в «секундах погоди» — це
+// реальні секунди базової доби (10 хв); timeScale (темп гри) розтягує їх
+// разом із добою: за замовчуванням ×2, тобто всі фази нижче вдвічі довші.
+// Тривалості в секундах погоди:
 //   ясно 8–14 хв (тиша/легкий бриз, міняються раз на 2–4 хв)
 //   → фронт 2,5–4 хв (вітер наростає; за ~4 хв до нього — штормове попередження)
 //   → шторм 5–8 хв (65 %) або просто вітряно 4–7 хв
@@ -59,6 +62,8 @@ export class Weather {
   private windDirTarget = 0;
   /** секунд до наступного кроку погоди (тести «заморожують» великим числом) */
   private holdTimer = 0;
+  /** реальних секунд на секунду погоди (= множник доби з темпу гри; ставить main) */
+  timeScale = 1;
   /** фаза погодного циклу і скільки їй лишилось (реальні секунди) */
   phase: 'fair' | 'front' | 'storm' | 'windy' | 'ease' = 'fair';
   private phaseLeft = 0;
@@ -77,15 +82,17 @@ export class Weather {
   }
 
   update(dt: number) {
+    // цикл погоди йде разом із добою (темп гри); спалахи й блискавки — у реальному часі
+    const wdt = dt / Math.max(0.1, this.timeScale);
     if (this.holdTimer < 1e8) {
-      this.holdTimer -= dt;
-      this.phaseLeft -= dt;
+      this.holdTimer -= wdt;
+      this.phaseLeft -= wdt;
       if (this.phaseLeft <= 0) this.nextPhase();
       else if (this.holdTimer <= 0) this.wobble();
     }
-    // плавний перехід (стала ~40 с: шторм наростає хвилинами, а не стрибком)
-    this.base = damp(this.base, this.target, 0.025, dt);
-    this.windDir = damp(this.windDir, this.windDirTarget, 0.08, dt);
+    // плавний перехід (стала ~40 с погоди: шторм наростає хвилинами, а не стрибком)
+    this.base = damp(this.base, this.target, 0.025, wdt);
+    this.windDir = damp(this.windDir, this.windDirTarget, 0.08, wdt);
     this.flash = Math.max(0, this.flash - dt * 2.2);
 
     // блискавки в шторм
@@ -108,7 +115,8 @@ export class Weather {
    */
   advance(sec: number) {
     if (this.holdTimer >= 1e8 || !(sec > 0)) return;
-    let left = sec;
+    // sec — реальні секунди; цикл погоди йде в секундах погоди
+    let left = sec / Math.max(0.1, this.timeScale);
     while (left > 0) {
       const step = Math.min(left, 2);
       this.holdTimer -= step;
@@ -198,7 +206,12 @@ export class Weather {
     }
   }
 
-  /** через скільки реальних секунд почнеться шторм (null — не очікується найближчим часом) */
+  /** секунди погоди → реальні секунди (для тостів «через N хв») */
+  realSec(s: number): number {
+    return s * this.timeScale;
+  }
+
+  /** через скільки секунд погоди почнеться шторм (null — не очікується найближчим часом); реальні — realSec() */
   get stormEta(): number | null {
     if (this.holdTimer >= 1e8) return this.netEta;
     if (!this.nextStorm) return null;

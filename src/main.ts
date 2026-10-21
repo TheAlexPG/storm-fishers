@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { Input } from './core/input';
 import { installFastMatrix } from './core/fastMatrix';
 import { explainMerge, perfReport } from './world/staticMerge';
-import { TimeCycle, DAY_SECONDS } from './core/time';
+import { TimeCycle } from './core/time';
 import { seaMul, Weather } from './core/weather';
 import { WORLD, HOME_RECT, climate, nearestHaven, roughAt, seaDist, shoreRes } from './core/region';
 import { Ocean, UNDERWATER_LAYER } from './core/ocean';
@@ -54,7 +54,7 @@ const ZONE_SUB: Record<string, string> = { shore: L('тихі води біля 
 import { Coop, type BoatAction } from './net/coop';
 import { CameraRig } from './world/cameraRig';
 import { loadSettings, saveSettings, type Settings } from './game/settings';
-import { setPace } from './game/pace';
+import { setPace, dayScale } from './game/pace';
 import { WindLines } from './world/windLines';
 import { FoamTrail } from './world/foamTrail';
 import { Jellies } from './world/jellies';
@@ -1732,7 +1732,9 @@ class Game {
   private update(dt: number, t: number, input: Input, locked: boolean) {
     const g = this.game;
 
-    // час
+    // час: тривалість доби й погодних циклів — з темпу гри (у кімнаті — як у господаря)
+    this.time.scale = dayScale();
+    this.weather.timeScale = this.time.scale;
     this.time.update(dt);
     if (this.time.dayCount !== this.lastDay) {
       this.lastDay = this.time.dayCount;
@@ -1764,7 +1766,7 @@ class Game {
     const eta = this.weather.stormEta;
     if (eta != null && eta > 60 && !this.stormWarned) {
       this.stormWarned = true;
-      this.hud.toast(L(`📻 Штормове попередження: шторм приблизно за ${Math.max(1, Math.round(eta / 60))} хв (≈${Math.max(1, Math.round(eta / 25))} год гри). Рибалки вертаються в порт${this.boat.doorOpen || this.boat.hatchOpen ? L(' · зачини двері каюти й люк трюму', ` · close the cabin doors and the hold hatch`) : ''}`, `📻 Storm warning: a storm in about ${Math.max(1, Math.round(eta / 60))} min (≈${Math.max(1, Math.round(eta / 25))} game hours). Fishermen are heading back to port${this.boat.doorOpen || this.boat.hatchOpen ? L(' · зачини двері каюти й люк трюму', ` · close the cabin doors and the hold hatch`) : ''}`), 'warn', 6500);
+      this.hud.toast(L(`📻 Штормове попередження: шторм приблизно за ${Math.max(1, Math.round(this.weather.realSec(eta) / 60))} хв (≈${Math.max(1, Math.round(eta / 25))} год гри). Рибалки вертаються в порт${this.boat.doorOpen || this.boat.hatchOpen ? L(' · зачини двері каюти й люк трюму', ` · close the cabin doors and the hold hatch`) : ''}`, `📻 Storm warning: a storm in about ${Math.max(1, Math.round(this.weather.realSec(eta) / 60))} min (≈${Math.max(1, Math.round(eta / 25))} game hours). Fishermen are heading back to port${this.boat.doorOpen || this.boat.hatchOpen ? L(' · зачини двері каюти й люк трюму', ` · close the cabin doors and the hold hatch`) : ''}`), 'warn', 6500);
     } else if (eta == null && this.weather.state() !== 'storm') this.stormWarned = false;
     // бурхливий район: фронт без шторму тут однаково стане штормом — попереджаємо так само заздалегідь
     {
@@ -1775,7 +1777,7 @@ class Game {
       const le = fe;
       if (le != null && le > 45 && !this.localStormWarned) {
         this.localStormWarned = true;
-        this.hud.toast(L(`📻 Фронт приблизно за ${Math.max(1, Math.round(le / 60))} хв. Тут, ${ra.area ? `у районі «${ra.area.name}»` : 'у відкритому морі'}, він принесе шторм — рушай до гавані чи ближче до берега`, `📻 A front in about ${Math.max(1, Math.round(le / 60))} min. Out here${ra.area ? ` in ${ra.area.name}` : ' in the open sea'} it will bring a storm — head for a harbour or closer to shore`), 'warn', 7000);
+        this.hud.toast(L(`📻 Фронт приблизно за ${Math.max(1, Math.round(this.weather.realSec(le) / 60))} хв. Тут, ${ra.area ? `у районі «${ra.area.name}»` : 'у відкритому морі'}, він принесе шторм — рушай до гавані чи ближче до берега`, `📻 A front in about ${Math.max(1, Math.round(this.weather.realSec(le) / 60))} min. Out here${ra.area ? ` in ${ra.area.name}` : ' in the open sea'} it will bring a storm — head for a harbour or closer to shore`), 'warn', 7000);
       } else if (this.weather.frontEta == null && this.weather.state() !== 'storm') this.localStormWarned = false;
       // увійшли в бурхливий район — підказка, де найближчий затишок
       if (!this.inRough && ra.v > 0.35 && ra.area) {
@@ -1783,7 +1785,7 @@ class Game {
         const nh = nearestHaven(wp.x, wp.z);
         const port = nh.h.name ?? L('«Шторм»', `Storm Harbour`);
         const fNow = this.weather.frontEta;
-        const soon = fNow != null ? L(` · ⛈ фронт ${fNow < 30 ? 'уже йде' : `за ${Math.max(1, Math.round(fNow / 60))} хв`}!`, ` · ⛈ front ${fNow < 30 ? 'is already here' : `in ${Math.max(1, Math.round(fNow / 60))} min`}!`) : '';
+        const soon = fNow != null ? L(` · ⛈ фронт ${fNow < 30 ? 'уже йде' : `за ${Math.max(1, Math.round(this.weather.realSec(fNow) / 60))} хв`}!`, ` · ⛈ front ${fNow < 30 ? 'is already here' : `in ${Math.max(1, Math.round(this.weather.realSec(fNow) / 60))} min`}!`) : '';
         this.hud.toast(L(`⚠ ${ra.area.name}: хвиля вища, шторм тут лютіший — зате риба більша. Найближча гавань — ${port} (${(nh.d / 1000).toFixed(1).replace('.', ',')} км)${soon}`, `⚠ ${ra.area.name[0].toUpperCase() + ra.area.name.slice(1)}: higher seas and fiercer storms — but bigger fish. Nearest harbour: ${port} (${(nh.d / 1000).toFixed(1)} km)${soon}`), 'warn', 6500);
       } else if (this.inRough && ra.v < 0.12) this.inRough = false;
     }
@@ -2114,7 +2116,8 @@ class Game {
 
     // свіжість
     g.decayFreshness(this.time.gameHourDelta(dt));
-    g.tickMarket(this.time.gameHourDelta(dt), this.marketCtx());
+    // ринок живе в реальному часі (боти здають улов у реальному часі) — години базової доби
+    g.tickMarket(this.time.gameHourDelta(dt) * this.time.scale, this.marketCtx());
     this.tickTrade(this.time.gameHourDelta(dt));
     this.stalls.update(dt, g.trade, g.clockH, 1 - this.time.daylight, this.player.mode === 'boat' ? undefined : this.player.head);
     this.ordersT -= dt;
@@ -2982,12 +2985,12 @@ class Game {
     setTimeout(() => {
       const delta = this.time.sleepToDawn();
       // погода живе далі, поки спиш: стільки ж «реальних» секунд, скільки годин минуло
-      this.weather.advance((delta / 24) * DAY_SECONDS);
+      this.weather.advance((delta / 24) * this.time.daySeconds);
       this.nets.advanceHours(delta);
       this.lastHours = this.time.hours;
       this.game.addEnergy(100);
       this.game.decayFreshness(delta);
-      this.game.tickMarket(delta, this.marketCtx(this.time.hours - delta));
+      this.game.tickMarket(delta * this.time.scale, this.marketCtx(this.time.hours - delta));
       this.tickTrade(delta);
       this.fade.classList.remove('on');
       this.dawnCard();

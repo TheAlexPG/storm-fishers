@@ -52,7 +52,7 @@ explore islands, outrun Beaufort‑scale storms and come home with a hold full o
 ### 🌊 The sea
 - **Living ocean** — Gerstner waves that grow from harbour ripples to 14‑metre swells offshore, refractive transparent water, foam, spray and rain.
 - **Weather that matters** — wind and sea state on the Beaufort scale and a day/night cycle with sunsets, a lighthouse and running lights.
-- **Long, readable weather cycles** — 8–14 minutes of fair weather, a front that builds for a few minutes, then a 5–8 minute storm that slowly eases. The radio warns you about 8–9 minutes before it hits, so there's time to reef and run for port.
+- **Long, readable days and weather cycles** — at the normal pace a day lasts 20 real minutes: 16–28 minutes of fair weather, a front that builds for 5–8 minutes, then a 10–16 minute storm that slowly eases. The radio warns you about 15 minutes before it hits, so there's time to reef and run for port. The **game pace** setting stretches or shortens it all (relaxed — 30‑minute days, lively — ~13).
 - **Rough waters** — three dangerous regions (the Storm Belt, the Shell Reefs and the Open Ocean) have higher seas and turn every front into a real storm. One weather system covers the whole sea, so between storms they are calm enough to fish; you get a warning about 7–9 minutes ahead, and every harbour is a safe haven.
 - **Wave slamming** — punch head‑on into big seas at full throttle and the hull takes damage; take them at an angle like a real sailor.
 
