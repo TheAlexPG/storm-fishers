@@ -1,5 +1,6 @@
 import { bakeryHtml, eatPastry, ostapLine, petCat } from './ui/bakery';
 import { gelatoHtml as gelateriaHtml, eatGelato } from './ui/gelato';
+import { mapleHtml, eatTreat } from './ui/mapleStore';
 import * as THREE from 'three';
 import { Input } from './core/input';
 import { installFastMatrix } from './core/fastMatrix';
@@ -546,6 +547,13 @@ class Game {
     PORT_SERVICE_HANDLERS.whalerstore = () => this.openKrayStore();
     // джелатерія «Стелла» Порто-Аццурро (portSites: svc 'gelateria')
     PORT_SERVICE_HANDLERS.gelateria = () => this.openGelateria();
+    // «Кленова лавка» Ерла в Сідар-Гарбор (portSites: svc 'maple')
+    PORT_SERVICE_HANDLERS.maple = () => {
+      this.phase = 'dialog';
+      this.expectUnlock = true;
+      document.exitPointerLock();
+      this.openMaple();
+    };
 
     this.reticle = document.createElement('div');
     this.reticle.id = 'reticle';
@@ -2763,6 +2771,19 @@ class Game {
         this.audio.click();
         this.saveGame();
         this.openBakery(msg);
+      }));
+    });
+  }
+
+  /** «Кленова лавка» (Сідар-Гарбор): смаколики їдять одразу — енергія й бафи */
+  private openMaple(note = '') {
+    this.dialogs.custom(mapleHtml(this.game, note), 'shop cargo', (panel) => {
+      panel.querySelectorAll<HTMLElement>('[data-treat]').forEach((b) => b.addEventListener('click', () => {
+        const msg = eatTreat(this.game, b.dataset.treat!);
+        if (!msg) return;
+        this.audio.click();
+        this.saveGame();
+        this.openMaple(msg);
       }));
     });
   }
