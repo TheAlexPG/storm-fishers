@@ -65,6 +65,7 @@ explore islands, outrun Beaufort‑scale storms and come home with a hold full o
 - **Chart table** — lean over a paper chart in the cabin, zoom it and plot your course with a pencil.
 - **Upgrades you can see** — hull, sails, hold, rods, nets: every level physically changes the boat.
 - **Helm instruments & autopilot** — from a brass compass and wind gauge to a teak-and-brass gauge console, depth sounder, GPS chartplotter, fish finder and radar; the **autopilot** is a separate module (needs the GPS chartplotter) that sails your route by itself.
+- **Hands on the wheel** — waves (especially from astern), gusts and weather helm slowly push the bow off course, so you keep correcting: barely in a calm, every few seconds in a fresh breeze, constantly in a storm. A cheap **wind-vane self-steering** gear on the transom (no GPS needed) gently holds the course you set; the autopilot holds it tighter and follows the route.
 - **Mooring & gangway** — step ashore and back aboard without climbing over the rails.
 
 ### 🎣 Fishing
@@ -155,6 +156,7 @@ explore islands, outrun Beaufort‑scale storms and come home with a hold full o
 | **N** | minimap range: near · medium · far (the badge under it tells you if you're on a fishing ground or a school) |
 | **Radio** | aim at a button or knob · **LMB** press · **RMB** back · **wheel** turn |
 | **T** | autopilot on/off at the wheel (autopilot module) |
+| **G** | wind-vane self-steering on/off at the wheel — holds the current course |
 | **V** | stern chase camera / first person at the wheel |
 | **P** · **H** | photo mode · hide the interface |
 | **Enter** | co‑op chat |

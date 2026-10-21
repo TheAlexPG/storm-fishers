@@ -416,6 +416,8 @@ void main() {
   // вода не заходить у корпус (салон нижче ватерлінії, кокпіт, трап)
   vec3 hl = (uHullInv * vec4(vWorldPos, 1.0)).xyz;
   if (abs(hl.z) < 4.68 && hl.y < 1.05 && abs(hl.x) < hullXAtY(hl.y, hl.z) - 0.02) discard;
+  // гребінь, що накрив палубу на сильному крені, не має з'являтися всередині рубки (салон під дахом)
+  if (abs(hl.x) < 0.9 && hl.z > -0.58 && hl.z < 2.58 && hl.y < 1.76) discard;
 
   vec3 V = normalize(uCamPos - vWorldPos);
   float dist = length(uCamPos - vWorldPos);

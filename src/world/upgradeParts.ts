@@ -158,6 +158,34 @@ function bilgeOutlet(k: PartKit): THREE.Object3D {
   return g;
 }
 
+// ── вітровий авторульовий: кронштейни до транця, вертикальний вал, лакований флюгер угорі, перо у воді ──
+function selfSteerVane(k: PartKit): THREE.Object3D {
+  const g = new THREE.Group();
+  const st = k.mat(STEEL, 0.2, 0.95);
+  const wood = k.mat(0xb7793e, 0.5, 0.05);
+  const orange = k.mat(0xe2672f, 0.6, 0.05);
+  // кронштейни: від транця (z>0) до валу
+  for (const y of [0.05, -0.55]) {
+    box(g, st, 0.04, 0.04, 0.26, 0, y, 0.11);
+    box(g, st, 0.22, 0.03, 0.03, 0, y, 0.24);
+  }
+  // вертикальний вал і голова-шестерня
+  cyl(g, st, 0.025, 0.025, 1.55, 0, 0.1, 0, 10);
+  cyl(g, k.mat(DARK, 0.4, 0.6), 0.06, 0.06, 0.1, 0, 0.88, 0, 14);
+  // флюгер: тонка дерев'яна лопать з помаранчевою смугою
+  const vane = new THREE.Group();
+  vane.position.set(0, 0.95, 0);
+  // лопать трохи розвернута за вітром — з корми її видно, а не ребро
+  vane.rotation.y = 0.75;
+  box(vane, wood, 0.014, 0.66, 0.32, 0, 0.38, -0.08);
+  box(vane, orange, 0.016, 0.12, 0.32, 0, 0.64, -0.08);
+  cyl(vane, st, 0.012, 0.012, 0.25, 0, 0.05, 0, 8);
+  g.add(vane);
+  // маятникове перо внизу (у воді)
+  box(g, k.mat(0xe9e4d8, 0.5, 0.1), 0.03, 0.42, 0.16, 0, -0.85, -0.02);
+  return g;
+}
+
 function alarmLamp(k: PartKit): THREE.Object3D {
   const g = new THREE.Group();
   cyl(g, k.mat(DARK, 0.5, 0.3), 0.04, 0.045, 0.03, 0, 0.015, 0);
@@ -956,6 +984,8 @@ export const PART_SPECS: Record<UpgradeId, PartSpec[]> = {
   instr: [1, 2, 3, 4, 5].map((l) => ({ model: (k: PartKit) => instrShelfModel(l, k), view: -0.25, onBoat: () => new THREE.Group() })),
   // автопілот: на яхті блок живе в HelmInstruments (кнопка, лампа) — тут лише коробка для полиці
   autopilot: [{ model: autopilotShelfModel, view: -0.25, onBoat: () => new THREE.Group() }],
+  // вітровий авторульовий: флюгер і маятникове перо на транці (лівий борт)
+  vane: [{ model: selfSteerVane, view: 2.4, mounts: [{ p: [0.55, DECK_Y - 0.05, AFT - 0.22] }] }],
   // тент живе в CanvasTop (полотна, складання, штори) — тут лише згортки для полиці
   tent: [1, 2, 3, 4, 5].map((l) => ({ model: (k: PartKit) => tentShelfModel(l, k), view: -0.25, onBoat: () => new THREE.Group() })),
   // помпа — біля рукояті штатної помпи в кокпіті (станція pump: x −0.62, z −4.05)

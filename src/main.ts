@@ -224,6 +224,9 @@ class Game {
   private chart!: ChartTable;
   /** прилади штурвала (апгрейд «Прилади») */
   private instruments!: HelmInstruments;
+  /** вітровий авторульовий: курс, який тримає, і попередній курс (для швидкості повороту) */
+  private vaneHold = 0;
+  private vanePrevH = 0;
   private apHold = 0;
   private apPrevH = 0;
   private shallowToastT = 0;
@@ -973,6 +976,9 @@ class Game {
       case 'ap':
         this.setAutopilot(act.v === 1, act.v === 1 ? '' : nick);
         break;
+      case 'vane':
+        this.setVane(act.v === 1, act.v === 1 ? '' : nick);
+        break;
       // спільний трюм: екіпаж кладе / продає / варить рибу
       case 'store':
         if (act.f && g.hold.length < g.holdCap && !g.hold.some((f) => f.uid === act.f.uid)) g.hold.push({ ...act.f });
@@ -1706,6 +1712,8 @@ class Game {
     // V — вид з-за корми / від першої особи (за штурвалом)
     // T за штурвалом — автопілот (окремий модуль)
     if (input.pressed('KeyT') && this.phase === 'play' && !this.dialogs.isOpen && this.player.mode === 'boat' && this.player.wheeling && (this.game.upgrades.autopilot ?? 0) >= 1) this.toggleAutopilot();
+    // G за штурвалом — вітровий авторульовий (тримає поточний курс; без автопілота — ще й T)
+    if ((input.pressed('KeyG') || (input.pressed('KeyT') && (this.game.upgrades.autopilot ?? 0) < 1)) && this.phase === 'play' && !this.dialogs.isOpen && this.player.mode === 'boat' && this.player.wheeling && (this.game.upgrades.vane ?? 0) >= 1) this.toggleVane();
     if (input.pressed('KeyV') && this.phase === 'play' && !this.dialogs.isOpen) {
       this.chasePref = !this.chasePref;
       try {
@@ -1949,6 +1957,7 @@ class Game {
       this.hud.toast(L('💰 Капітан пішов — каса яхти заморожена в нього. Твої власні гроші — на своїй яхті.', `💰 The captain left — the yacht's purse is frozen with them. Your own money is on your own yacht.`), 'warn', 6000);
     if (this.coop.crewing) {
       this.autopilotStep(dt);
+      this.vaneStep(dt);
       if (this.player.wheeling) {
         this.boat.throttle = this.coop.myHelm[0];
         this.boat.rudder = this.coop.myHelm[1];
@@ -1957,6 +1966,7 @@ class Game {
     } else {
       this.coop.ownerApply(dt, this.boat, this.player);
       this.autopilotStep(dt);
+      this.vaneStep(dt);
       // інші яхти флотилії — теж перешкоди (зіткнення бортами)
       const others = [...(this.coop.active ? this.coop.fleetObstacles() : []), ...this.bots.obstacles()];
       this.boat.update(dt, t, this.ocean, this.weather, g, this.particles, this.audio, others.length ? [...this.port.rocks, ...others] : this.port.rocks, this.moorDock);
@@ -1978,6 +1988,7 @@ class Game {
     // камера й маска води в корпусі — від пози човна саме цього кадру
     this.player.syncHead(this.boat);
     this.ocean.setHull(this.boat.group, this.boat.vel.length());
+    this.particles.setHull(this.boat.group);
     // слід піни за кормою
     this.foamTrail.update(dt, t, this.boat.localToWorld(0, 0, -4.9, this._v), this.boat.heading, this.boat.vel.length(), this.ocean, this.camera.position, clamp(this.time.daylight + 0.15, 0, 1), clamp(this.weather.intensity - 0.4, 0, 1));
     // нічне цвітіння медуз
@@ -3776,6 +3787,7 @@ class Game {
     if (on === this.boat.autopilot) return;
     if (on && ((this.game.upgrades.autopilot ?? 0) < 1 || (this.game.upgrades.instr ?? 0) < 3)) return;
     this.boat.autopilot = on;
+    if (on) this.boat.vane = false;
     this.apHold = this.boat.heading;
     this.apPrevH = this.boat.heading;
     const wp = this.game.waypoint;
@@ -3785,6 +3797,50 @@ class Game {
       2600,
     );
     if (!on && why) this.audio.instrBeep('apOff');
+  }
+
+  /** вітровий авторульовий: увімк./вимк. (екіпаж просить власника яхти) */
+  private toggleVane(on = !this.boat.vane) {
+    if (this.coop.crewing) {
+      this.coop.sendAction({ a: 'vane', v: on ? 1 : 0 });
+      this.boat.vane = on;
+    } else this.setVane(on);
+    this.audio.click();
+  }
+
+  private setVane(on: boolean, why = '') {
+    if (on === this.boat.vane) return;
+    if (on && (this.game.upgrades.vane ?? 0) < 1) return;
+    this.boat.vane = on;
+    if (on) this.boat.autopilot = false;
+    this.vaneHold = this.boat.heading;
+    this.vanePrevH = this.boat.heading;
+    this.hud.toast(
+      on ? L('🪁 Авторульовий тримає курс. Кермо (A/D) чи G — вимкнути', `🪁 Wind vane is holding course. Rudder (A/D) or G — off`) : L(`🪁 Авторульовий вимкнено${why ? ' — ' + why : ''}`, `🪁 Wind vane off${why ? ' — ' + why : ''}`),
+      on ? 'good' : 'warn',
+      2400,
+    );
+  }
+
+  /** вітровий авторульовий (симулює власник): м'яко тримає курс, який був при ввімкненні */
+  private vaneStep(dt: number) {
+    const b = this.boat;
+    if (!b.vane) return;
+    const steering = this.player.wheeling && this.phase === 'play' && (Input.instance.down('KeyA') || Input.instance.down('KeyD'));
+    if (this.coop.crewing) {
+      if (steering) this.toggleVane(false);
+      return;
+    }
+    if (steering || (this.game.upgrades.vane ?? 0) < 1 || b.autopilot) {
+      this.setVane(false, steering ? L('кермо в руках', `hands on the wheel`) : '');
+      return;
+    }
+    const err = Math.atan2(Math.sin(this.vaneHold - b.heading), Math.cos(this.vaneHold - b.heading));
+    const rate = dt > 0 ? Math.atan2(Math.sin(b.heading - this.vanePrevH), Math.cos(b.heading - this.vanePrevH)) / dt : 0;
+    this.vanePrevH = b.heading;
+    // перу потрібен хід: на малому ходу майже не тримає; слабше за автопілот і з обмеженим кутом керма
+    const auth = clamp((b.vel.length() - 0.8) / 2.2, 0, 1);
+    b.rudder = clamp((err * 1.5 - rate * 1.1) * auth, -0.6, 0.6);
   }
 
   /** автопілот (симулює власник яхти): кермо на точку маршруту або тримати курс */

@@ -92,6 +92,7 @@ export type BoatAction =
   | { a: 'cook'; uid: number }
   | { a: 'nets' }
   | { a: 'ap'; v: number }
+  | { a: 'vane'; v: number }
   | { a: 'ign' }
   | { a: 'tent'; v: number }
   | { a: 'curtain'; v: number }
@@ -567,6 +568,7 @@ export class Coop {
       up: g.fittedUpgrades(),
       helm: this.helmOwner,
       ap: boat.autopilot ? 1 : 0,
+      vn: boat.vane ? 1 : 0,
       rd: this.radioState?.(),
     };
     // трюм — коли змінився (або раз на 2 с для тих, хто щойно прийшов)
@@ -635,6 +637,7 @@ export class Coop {
       g.upgrades = { ...g.upgrades, ...(last.up as Record<UpgradeId, number>) };
       this.helmOwner = (last.helm as number | null) ?? null;
       boat.autopilot = last.ap === 1;
+      boat.vane = last.vn === 1;
       if (Array.isArray(last.rd)) this.onRadio?.(last.rd as number[]);
       if (Array.isArray(last.hold)) g.hold = (last.hold as FishItem[]).map((x) => ({ ...x }));
     }

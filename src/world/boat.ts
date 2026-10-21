@@ -101,6 +101,12 @@ const ADDED_MASS = 1.8;    // приєднана маса по горизонт�
 const RUDDER_K = 2200;
 const PROP_WASH = 4;       // «еквівалентна швидкість» струменя гвинта на кермі, м/с
 const YAW_DAMP_V = 0.22;   // демпфування рисканням, що росте з ходом
+/** нерівне море: амплітуда моменту рискання (Н·м) при інтенсивності 1 */
+const YAW_NOISE = 1600;
+/** хвиля: момент рискання на одиницю різниці бічного схилу ніс−корма */
+const YAW_WAVE_K = 3800;
+/** «рука» вітрила: центр парусності позаду центру опору кіля → яхта приводиться до вітру (weather helm) */
+const HELM_ARM = 0.025;
 /** сила сплеску від швидкості удару хвилі: легкий ~0.6 (бризки до метра), слемінг — до 3 (вище щогли рубки) */
 const hitPower = (vImp: number) => Math.min(3, 0.25 + vImp * 0.4);
 
@@ -180,6 +186,9 @@ export class Boat {
   private readonly buoyDamp = 500;
   private readonly wavePushK = 800;
 
+  /** збурення курсу: час і випадкова фаза (у кожної яхти своя) */
+  private yawT = 0;
+  private yawPhase = Math.random() * 6.28;
   private gridLocal: THREE.Vector3[] = [];
   private _v = new THREE.Vector3();
   private _fwd = new THREE.Vector3();
@@ -360,6 +369,8 @@ export class Boat {
   apOwned = false;
   /** автопілот увімкнено (симулює власник яхти, екіпаж бачить зі знімка) */
   autopilot = false;
+  /** вітровий авторульовий тримає курс (керує власник яхти, синхронізується як автопілот) */
+  vane = false;
   /** прилади пульта (yachtModel) — їх показує HelmInstruments за рівнем */
   panelParts: Record<string, THREE.Object3D[]> = {};
   /** станція доступна (стійки — лише куплені) */
@@ -619,6 +630,31 @@ export class Boat {
 
     // вітрила: тяга від вітру (безкоштовно) + крен
     this.applySails(dt, weather);
+
+    // ── збурення курсу: без керма яхта не йде «як влита» ──
+    // хвилі (різниця схилу під носом і кормою; з корми — брочинг), нерівне море
+    // й пориви. У штиль — ледь-ледь, у свіжий вітер треба підправляти кожні 5–15 с,
+    // у шторм — кермувати весь час. Швартування й якір перекривають (вони сильніші).
+    if (!this.mooredNow) {
+      const sea = clamp(weather.intensity, 0, 1.2);
+      this.yawT += dt;
+      const T = this.yawT;
+      const ph = this.yawPhase;
+      // повільна «нерівність моря»: кілька некратних періодів (4.5 с … 4.5 хв)
+      const noise =
+        0.8 * Math.sin(T * 0.071 + ph) + 0.55 * Math.sin(T * 0.137 + ph * 2.3) + 0.35 * Math.sin(T * 0.29 + ph * 0.7) + 0.6 * Math.sin(T * 0.023 + ph * 1.7);
+      this._t.y += noise * YAW_NOISE * Math.pow(sea, 1.5);
+      // хвиля: бічний нахил поверхні під носом мінус під кормою → момент рискання
+      const bow = this.physicsToLocal(0, 0, 3.4, this._v);
+      ocean.normalAt(bow.x, bow.z, t, this._n);
+      const nb = this._n.x * side.x + this._n.z * side.z;
+      const stern2 = this.physicsToLocal(0, 0, -3.4, this._v);
+      ocean.normalAt(stern2.x, stern2.z, t, this._n);
+      const ns = this._n.x * side.x + this._n.z * side.z;
+      // хвилі біжать за вітром: корма до хвилі (кормовий кут) — розвертає найсильніше
+      const following = Math.max(0, Math.cos(this.heading - weather.windDir));
+      this._t.y += (nb - ns) * YAW_WAVE_K * (1 + 1.4 * following) * clamp(sea * 1.4, 0, 1);
+    }
 
     // якірний ланцюг тягне ніс до якоря (яхта стає носом до вітру)
     if (this.anchor.force(dt, this, weather.wind, weather.windDir, this._af)) {
@@ -1092,6 +1128,13 @@ export class Boat {
     this._f.x += sf.fx;
     this._f.z += sf.fz;
     this._t.z += sf.torqueRoll;
+    // weather helm: бічна сила вітрила прикладена позаду центру опору — ніс тягне до вітру,
+    // сильніше на крені й у пориви (на ходу кермо легко тримає; без керма яхта поволі приводиться)
+    const fSide = sf.fx * this._side.x + sf.fz * this._side.z;
+    // плече працює, лише коли кіль має хід (на місці — без приведення, інакше не відійти від причалу)
+    const uFwd = this.vel.x * Math.sin(this.heading) + this.vel.z * Math.cos(this.heading);
+    const keel = clamp((uFwd - 0.8) / 2.2, 0, 1);
+    this._t.y += -fSide * (HELM_ARM + 0.12 * Math.abs(this.roll)) * keel * (1 + 0.35 * Math.sin(this.yawT * 0.9 + this.yawPhase));
     this.sails.updateMeshes(dt, performance.now() / 1000);
     this.sails.updateWindex(this.heading, this.vel, weather.windDir);
     this.tentK = this.canvas.update(dt, this.tentClosed, this.tentFolded, weather.wind, this.night ? 1 : 0);
