@@ -567,6 +567,8 @@ export function buildGrizzlyPost(c: VillageCtx): VillageLife {
       // сяйво: лише вночі, видно здалеку (гавань сама ховається далі ~1.5 км)
       const aur = Math.max(0, (night - 0.35) / 0.65);
       aurora.visible = aur > 0.01;
+      // ports.update щокадру вмикає дітей гавані — поважає лише userData.hide
+      aurora.userData.hide = !aurora.visible;
       if (aurora.visible) {
         auroraMat.opacity = aur * 0.62 * (0.75 + 0.25 * Math.sin(t * 0.21) * Math.sin(t * 0.13 + 1.3));
         if (auroraMat.map) auroraMat.map.offset.x = t * 0.005;
