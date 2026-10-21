@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { Input } from './core/input';
+import { installFastMatrix } from './core/fastMatrix';
+import { explainMerge } from './world/staticMerge';
 import { TimeCycle, DAY_SECONDS } from './core/time';
 import { seaMul, Weather } from './core/weather';
 import { WORLD, HOME_RECT, climate, nearestHaven, roughAt, seaDist, shoreRes } from './core/region';
@@ -3041,7 +3043,10 @@ class Game {
     // прозора вода: спершу підводна частина сцени (корпус, дно, скелі) у текстуру
     if (!this.underwaterMarked) this.markUnderwater();
     this.ocean.renderRefraction(this.renderer, this.scene, this.camera);
+    // матриці вже оновив прохід переломлення в цьому ж кадрі — вдруге сцену не обходимо
+    this.scene.matrixWorldAutoUpdate = false;
     this.renderer.render(this.scene, this.camera);
+    this.scene.matrixWorldAutoUpdate = true;
   }
 
   private underwaterMarked = false;
@@ -3699,9 +3704,12 @@ class Game {
 }
 
 // ── старт ──
+// матриці об'єктів — лише коли щось справді змінилось (нерухоме не перераховуємо щокадру)
+installFastMatrix();
 const game = new Game();
 // debug-хук для інструментів / headless-тестів
 (window as unknown as Record<string, unknown>).__debug = {
   game,
   input: Input.instance,
+  explainMerge,
 };
