@@ -5,6 +5,8 @@ import { cobbleTex, corrugatedTex, glowTex, groundDetailTex, planksTex, plasterT
 import { PORT_SITES, siteGround as siteHeight, siteRect, siteToWorld, worldToSite, siteBerths, siteServices, pierRect, type PortSite } from './portSites';
 import type { Platform, Solid } from './port';
 import { mergeStatic } from './staticMerge';
+import { buildResort, type ResortLife } from './marinaResort';
+import type { RockObstacle } from './boat';
 
 // ─────────────────────────────────────────────────────────────
 // Інші гавані світу (дані — portSites.ts): суходіл, кам'яна набережна,
@@ -91,6 +93,8 @@ interface Built {
   lantern: THREE.Sprite;
   lanternPos: THREE.Vector3;
   phase: number;
+  /** курорт: відпочивальники й гітарист (оживають поблизу) */
+  life?: ResortLife;
 }
 
 export class Ports {
@@ -101,8 +105,8 @@ export class Ports {
   private lampGlows: THREE.Sprite[] = [];
   private night = 0;
 
-  /** platforms/solids — спільні з домашнім Port (ходьба й зіткнення гравця) */
-  constructor(scene: THREE.Scene, platforms: Platform[], solids: Solid[]) {
+  /** platforms/solids — спільні з домашнім Port (ходьба й зіткнення гравця); rocks — колізія човнів (понтони, яхти-сусіди) */
+  constructor(scene: THREE.Scene, platforms: Platform[], solids: Solid[], private rocks?: RockObstacle[]) {
     this.M = makeMats();
     this.glowMat = new THREE.SpriteMaterial({ map: glowTex(), color: 0xffc677, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
     for (const site of PORT_SITES) this.built.push(this.build(site, platforms, solids));
@@ -274,19 +278,16 @@ export class Ports {
       }
       return null;
     };
+    let resortLife: ResortLife | undefined;
     if (p.style === 'resort') {
       // пальми, парасольки на пляжі
       for (let i = 0; i < 16; i++) {
         const s = landSpot(0.5, 6);
         if (s) { this.palm(batch, s[0], s[1], H(s[0], s[1]), 0.8 + rng() * 0.5, rng); solidCircle(s[0], s[1], 0.35); }
       }
-      for (let i = 0; i < 6; i++) {
-        const s = landSpot(0.3, 1.4, true);
-        if (!s) continue;
-        const y = H(s[0], s[1]);
-        batch.add(cylGeo(0.04, 0.04, 2.2, 6), M.iron, T(s[0], y + 1.1, s[1]));
-        batch.add(new THREE.ConeGeometry(1.3, 0.5, 8, 1, true), i % 3 === 0 ? M.canvasA : i % 3 === 1 ? M.canvasB : M.canvasC, T(s[0], y + 2.3, s[1]));
-      }
+      // пляж із шезлонгами, понтон з яхтами-сусідами, гірлянди, кафе, кіоск морозива (marinaResort.ts)
+      resortLife = buildResort({ p, batch, g, M: M as unknown as Record<string, THREE.Material>, ry, rng, platforms, solids, rocks: this.rocks, landSpot, palm: (x, z, y, s) => this.palm(batch, x, z, y, s, rng) });
+      g.add(resortLife.group);
       // у містечку — кадки з пальмами вздовж набережної
       for (let b = -hw + 8; b < hw - 6; b += 16) {
         if (Math.abs(b) < p.pierW / 2 + 3) continue;
@@ -379,9 +380,9 @@ export class Ports {
       if (m.isMesh) m.receiveShadow = true;
     });
     // решту окремих мешів (вивіски, ліхтарі, дрібниці з власними матеріалами) — теж докупи
-    mergeStatic(g, { skip: [lantern] });
+    mergeStatic(g, { skip: [lantern, resortLife?.group] });
     this.group.add(g);
-    return { site: p, group: g, lantern, lanternPos, phase: rng() * 6 };
+    return { site: p, group: g, lantern, lanternPos, phase: rng() * 6, life: resortLife };
   }
 
   /** точка для маяка: на краю суходолу поруч із гаванню, на сухому */
@@ -580,9 +581,19 @@ export class Ports {
     this.M.lamp.emissiveIntensity = 0.05 + night * 1.6;
     this.M.lens.emissiveIntensity = 0.3 + night * 1.8;
     this.glowMat.opacity = night * 0.85;
+    for (const b of this.built) b.life?.setNight(night);
+  }
+
+  private lastT = -1;
+
+  /** курорт: точка вуличного музиканта (для тихого звуку поблизу) */
+  get busker(): THREE.Vector3 | null {
+    return this.built.find((b) => b.life)?.life?.busker ?? null;
   }
 
   update(t: number, cam: THREE.Vector3) {
+    const dt = this.lastT < 0 ? 0 : Math.min(0.1, Math.max(0, t - this.lastT));
+    this.lastT = t;
     for (const b of this.built) {
       const d = Math.hypot(cam.x - b.site.x, cam.z - b.site.z);
       // далеко за туманом — не малюємо (вогник маяка лишається видно)
@@ -596,9 +607,11 @@ export class Ports {
         b.group.children.forEach((c) => (c.visible = c === b.lantern));
         b.lantern.scale.setScalar(Math.min(60, 9 + d * 0.02));
       } else {
-        b.group.children.forEach((c) => (c.visible = true));
+        b.group.children.forEach((c) => (c.visible = c !== b.life?.group || c.visible));
         b.lantern.scale.setScalar(Math.min(40, 9 + d * 0.015));
       }
+      // курорт: люди й гітарист — лише поблизу (сам ховає групу далеко)
+      if (b.life && d < 1500) b.life.update(dt, cam);
     }
   }
 

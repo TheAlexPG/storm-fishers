@@ -1,0 +1,13 @@
+/* кіоск «Морозиво й сувеніри» (Сонячна Марина) */
+.gl-scoops { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.gl-scoop { display: grid; grid-template-columns: 34px 1fr; grid-template-rows: auto auto; column-gap: 10px; align-items: center; text-align: left; background: #fff; border: 0; border-radius: 12px; padding: 10px 12px; cursor: pointer; font: inherit; color: inherit; box-shadow: 0 1px 0 rgba(34,48,59,0.08); transition: transform 0.12s ease; }
+.gl-scoop:hover:not(:disabled) { transform: translateY(-1px); }
+.gl-scoop:disabled { opacity: 0.5; cursor: default; }
+.gl-scoop i { grid-row: 1 / span 2; width: 30px; height: 30px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.7), transparent 45%), var(--c); box-shadow: inset 0 -3px 0 rgba(0,0,0,0.08); }
+.gl-scoop b { font-size: 14px; }
+.gl-scoop small { color: var(--text-soft); font-weight: 600; font-size: 12px; }
+.gl-h { margin: 16px 0 6px; font-size: 14px; }
+.gl-hats { display: flex; flex-direction: column; gap: 8px; }
+.gl-hat { display: flex; align-items: center; gap: 12px; background: #fff; border-radius: 12px; padding: 10px 14px; }
+.gl-hat > div { flex: 1; min-width: 0; }
+.gl-hat-ico { font-size: 26px; }

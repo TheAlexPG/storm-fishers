@@ -125,6 +125,8 @@ const RAW_SITES: PortSite[] = [
       { kind: 'office', a: -19, b: -17, name: L('Контора марини', `Marina office`), icon: '🛡', label: L('Контора марини — страховка', `Marina office — insurance`) },
       { kind: 'cookshop', a: -19, b: 0, name: L('Кулінарна лавка', `Cook's shop`), icon: '🍳', label: L('Кулінарна лавка — рис, лимони, трави й рецепт паельї', `Cook's shop — rice, lemons, herbs and the paella recipe`) },
       { kind: 'sleep', a: -19, b: 17, name: L('Готель «Хвиля»', `Hotel “Wave”`), icon: '🛏', label: L('Готель «Хвиля» (сон)', `Hotel “Wave” (sleep)`) },
+      // кіоск на набережній (marinaResort.ts GELATO_AT; вікно — ui/gelatoKiosk.ts)
+      { kind: 'gelato', a: -5, b: -17.5, name: L('Морозиво', `Gelato`), icon: '🍦', label: L('Кіоск «Морозиво й сувеніри» — сили й курортні шапки', `Gelato & souvenir kiosk — energy and resort hats`) },
     ],
   },
   {

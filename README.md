@@ -109,6 +109,8 @@ explore islands, outrun Beaufort‑scale storms and come home with a hold full o
 - **Fish exchange** — a scrolling price ticker, cards for every species with sparklines and trend arrows, a big 6‑day price chart on graph paper, demand bars (sell too much of one species and its price sinks, then slowly recovers), market events, and a hold panel with your catch's projected value.
 - **Local fishing fleet** — five NPC boats («Ластівка», «Стара Марта», «Дельфін», «Чайка», «Бриз») leave port, fish the grounds and come back. When a storm is forecast they all run for the harbour. They steer around rocks, islands and you, sound their horns as they pass and chat on the radio.
 
+- **Sunny Marina, the resort** — a beach of loungers under striped umbrellas, a guest pontoon with neighbours' yachts, string lights over the promenade and a café terrace with a quiet street guitarist, holiday-makers strolling with ice cream — and a **gelato & souvenir kiosk**: a scoop restores your energy, and two resort hats (a sun hat and a marina cap) are sold only here.
+
 ### 👥 Co‑op
 - **Play with friends over the internet** — no server, no accounts: browsers connect peer‑to‑peer (WebRTC). Share a 4‑letter room code or an invite link.
 - **A fleet, not just one boat** — everyone can come on their own yacht with their own progress, or join someone's crew. Four friends? Two boats, two sailors each.
