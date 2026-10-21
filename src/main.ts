@@ -79,7 +79,7 @@ import { BUYER_BY_ID, contractTitle, shortName, type BuyerId } from './game/buye
 import { describeSave } from './game/saveTransfer';
 import { Highlighter } from './world/highlight';
 import { HOLDER_MOUNTS, RACK_SLOTS } from './world/upgradeParts';
-import { DECK_Y as Y_DECK, HOUSE as L_HOUSE, RIG as L_RIG, SOLE_Y as Y_SOLE } from './world/yachtLayout';
+import { DECK_Y as Y_DECK, HOUSE as L_HOUSE, RIG as L_RIG, SOLE_Y as Y_SOLE, hullBottomY, hullXAt } from './world/yachtLayout';
 import { HELM_DZ } from './world/yachtModel';
 import { PLANS, applySinkToUpgrades, dailyPremium, type SinkReport } from './game/insurance';
 import { Landmarks, LANDMARKS } from './world/landmarks';
@@ -3066,26 +3066,40 @@ class Game {
       }
       return box.min.y;
     };
+    const boatParts = new Set<THREE.Object3D>();
+    this.boat.group.traverse((o) => boatParts.add(o));
     this.scene.traverse((o) => {
       if ((o as THREE.Light).isLight) {
         o.layers.enable(UNDERWATER_LAYER);
         return;
       }
       const m = o as THREE.Mesh;
-      if (!m.isMesh || o === this.ocean.mesh) return;
+      // яхту розмічає окреме правило нижче (у її власних координатах)
+      if (!m.isMesh || o === this.ocean.mesh || boatParts.has(o)) return;
       const mat = m.material as THREE.Material;
       if (!mat || (mat as THREE.Material).transparent || (m.geometry.attributes.position?.count ?? 0) === 0) return;
       if (lowest(m) < 0.8) m.layers.enable(UNDERWATER_LAYER);
     });
     // яхта хитається й кренится: беремо все, що нижче палуби (корпус, кіль, перо, транець)
     const inv = new THREE.Matrix4().copy(this.boat.group.matrixWorld).invert();
+    // усе, що цілком усередині корпусу (меблі салону, камбуз, койки), з-під води закриває
+    // сам корпус — у прохід переломлення його не беремо (вигляд той самий, менше викликів)
+    const corner = new THREE.Vector3();
+    const insideHull = (b: THREE.Box3) => {
+      for (let i = 0; i < 8; i++) {
+        corner.set(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z);
+        if (corner.y < hullBottomY(corner.z) + 0.05) return false;
+        if (Math.abs(corner.x) > hullXAt(Math.min(corner.y, Y_DECK), corner.z) - 0.06) return false;
+      }
+      return true;
+    };
     this.boat.group.traverse((o) => {
       const m = o as THREE.Mesh;
       if (!m.isMesh) return;
       if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
       box.copy(m.geometry.boundingBox!).applyMatrix4(m.matrixWorld).applyMatrix4(inv);
       const mat = m.material as THREE.Material;
-      if (box.min.y < 0.9 && !(mat && mat.transparent)) m.layers.enable(UNDERWATER_LAYER);
+      if (box.min.y < 0.9 && !(mat && mat.transparent) && !insideHull(box)) m.layers.enable(UNDERWATER_LAYER);
     });
   }
 
