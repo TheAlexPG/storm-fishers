@@ -106,6 +106,7 @@ explore islands, outrun Beaufort‑scale storms and come home with a hold full o
 
 ### 🏪 The harbour economy
 - **A real harbour, not one magic menu** — each service has its own place on the quay: the **fish exchange** (the only place that buys fish), the **chandlery** for gear and upgrades, the **fuel kiosk**, the **shipyard** for hull repairs and the **harbour office** for insurance.
+- **Fisher's Nook** — a village on stilts: huts over the shallows linked by boardwalks, fish drying on racks, punts on the sand, villagers who chat when you walk up, and **Orysia's Bait** — worms, bloodworms or live bait for a few minutes of faster (or bigger) bites.
 - **Fish exchange** — a scrolling price ticker, cards for every species with sparklines and trend arrows, a big 6‑day price chart on graph paper, demand bars (sell too much of one species and its price sinks, then slowly recovers), market events, and a hold panel with your catch's projected value.
 - **Local fishing fleet** — five NPC boats («Ластівка», «Стара Марта», «Дельфін», «Чайка», «Бриз») leave port, fish the grounds and come back. When a storm is forecast they all run for the harbour. They steer around rocks, islands and you, sound their horns as they pass and chat on the radio.
 

@@ -80,6 +80,8 @@ const tmpS = new THREE.Vector3();
 type Xf = { rx?: number; ry?: number; rz?: number; sx?: number; sy?: number; sz?: number; s?: number };
 
 class Parts {
+  /** грубі класи матеріалу (дві шорсткості, без металу) — далекі статисти: ~2 меші замість ~10 */
+  constructor(private coarse = false) {}
   private buckets = new Map<THREE.Object3D, Map<THREE.Material, THREE.BufferGeometry[]>>();
   private mats = new Map<string, THREE.MeshStandardMaterial>();
 
@@ -124,9 +126,11 @@ class Parts {
       parents.push(parent);
       for (const [mat, list] of b) {
         const sm = mat as THREE.MeshStandardMaterial;
-        const key = `${sm.roughness}|${sm.metalness}`;
+        const rough = this.coarse ? (sm.roughness < 0.6 ? 0.45 : 0.85) : sm.roughness;
+        const metal = this.coarse ? 0 : sm.metalness;
+        const key = `${rough}|${metal}`;
         let c = classes.get(key);
-        if (!c) classes.set(key, (c = { rough: sm.roughness, metal: sm.metalness, parts: [] }));
+        if (!c) classes.set(key, (c = { rough, metal, parts: [] }));
         for (const g0 of list) {
           const g = g0.index ? g0.toNonIndexed() : g0;
           if (g !== g0) g0.dispose();
@@ -262,8 +266,8 @@ function jacketProfile(kind: JacketKind): THREE.Vector2[] {
   ];
 }
 
-export function buildCharacter(look: CharacterLook): CharacterRig {
-  const P = new Parts();
+export function buildCharacter(look: CharacterLook, opts: { coarse?: boolean } = {}): CharacterRig {
+  const P = new Parts(opts.coarse);
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
