@@ -107,28 +107,114 @@ class Parts {
     list.push(geo);
   }
 
+  /**
+   * Злити частини моделі. Колір кожної частини йде у вершинні кольори, тож
+   * частини з однаковою шорсткістю/металевістю ділять спільний матеріал.
+   * Модель із кількома рухомими сегментами (тулуб, руки, ноги, голова) стає
+   * кількома SkinnedMesh із жорсткою прив'язкою до тих самих сегментів-«кісток»:
+   * анімація (повороти сегментів) — точно як була, але замість ~38 мешів на
+   * людину — кілька (у рази менше викликів малювання й тіней).
+   */
   finish(): number {
     let tris = 0;
+    // клас матеріалу (шорсткість|металевість) → частини по сегментах
+    const classes = new Map<string, { rough: number; metal: number; parts: Array<{ parent: THREE.Object3D; geo: THREE.BufferGeometry }> }>();
+    const parents: THREE.Object3D[] = [];
     for (const [parent, b] of this.buckets) {
+      parents.push(parent);
       for (const [mat, list] of b) {
-        const anyNon = list.some((g) => !g.index);
-        const src = anyNon ? list.map((g) => (g.index ? g.toNonIndexed() : g)) : list;
-        for (const g of src) {
+        const sm = mat as THREE.MeshStandardMaterial;
+        const key = `${sm.roughness}|${sm.metalness}`;
+        let c = classes.get(key);
+        if (!c) classes.set(key, (c = { rough: sm.roughness, metal: sm.metalness, parts: [] }));
+        for (const g0 of list) {
+          const g = g0.index ? g0.toNonIndexed() : g0;
+          if (g !== g0) g0.dispose();
           // однаковий набір атрибутів для злиття
           for (const name of Object.keys(g.attributes)) if (name !== 'position' && name !== 'normal' && name !== 'uv') g.deleteAttribute(name);
-          if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array((g.attributes.position.count) * 2), 2));
+          if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+          // колір матеріалу (лінійний, як у шейдері) — у кожну вершину
+          const n = g.attributes.position.count;
+          const col = new Float32Array(n * 3);
+          for (let i = 0; i < n; i++) {
+            col[i * 3] = sm.color.r;
+            col[i * 3 + 1] = sm.color.g;
+            col[i * 3 + 2] = sm.color.b;
+          }
+          g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+          c.parts.push({ parent, geo: g });
         }
-        const merged = src.length === 1 ? src[0] : mergeGeometries(src, false)!;
-        if (src.length > 1) for (const g of src) g.dispose();
-        merged.computeBoundingSphere();
-        tris += merged.index ? merged.index.count / 3 : merged.attributes.position.count / 3;
-        const mesh = new THREE.Mesh(merged, mat);
-        mesh.castShadow = true;
-        parent.add(mesh);
       }
+    }
+    this.buckets.clear();
+    if (!parents.length) return 0;
+    const mergeParts = (parts: Array<{ geo: THREE.BufferGeometry }>) => {
+      const geo = parts.length === 1 ? parts[0].geo : mergeGeometries(parts.map((p) => p.geo), false)!;
+      if (parts.length > 1) for (const p of parts) p.geo.dispose();
+      geo.computeBoundingSphere();
+      tris += geo.attributes.position.count / 3;
+      return geo;
+    };
+
+    // один сегмент (окремий капелюх) — звичайні меші
+    if (parents.length === 1) {
+      for (const c of classes.values()) {
+        const mesh = new THREE.Mesh(mergeParts(c.parts), sharedMat(c.rough, c.metal));
+        mesh.castShadow = true;
+        parents[0].add(mesh);
+      }
+      return tris;
+    }
+
+    // корінь моделі — спільний предок усіх сегментів
+    let root: THREE.Object3D = parents[0];
+    while (root.parent) root = root.parent;
+    root.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+    const rel = new THREE.Matrix4();
+    const boneIdx = new Map(parents.map((p, i) => [p, i]));
+    const skeleton = new THREE.Skeleton(parents as THREE.Bone[]);
+    for (const c of classes.values()) {
+      for (const p of c.parts) {
+        rel.multiplyMatrices(inv, p.parent.matrixWorld);
+        p.geo.applyMatrix4(rel);
+        const n = p.geo.attributes.position.count;
+        const si = new Uint16Array(n * 4);
+        const sw = new Float32Array(n * 4);
+        const bi = boneIdx.get(p.parent)!;
+        for (let i = 0; i < n; i++) {
+          si[i * 4] = bi;
+          sw[i * 4] = 1;
+        }
+        p.geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4));
+        p.geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
+      }
+      const geo = mergeParts(c.parts);
+      const mesh = new THREE.SkinnedMesh(geo, sharedMat(c.rough, c.metal));
+      mesh.castShadow = true;
+      root.add(mesh);
+      mesh.updateMatrixWorld(true);
+      mesh.bind(skeleton, mesh.matrixWorld);
+      // межа для відсікання — з запасом на розмах рук і ніг
+      const bs = geo.boundingSphere!.clone();
+      bs.radius *= 1.6;
+      mesh.boundingSphere = bs;
     }
     return tris;
   }
+}
+
+/** спільні матеріали персонажів: колір — у вершинах, тут лише шорсткість і металевість */
+const SHARED = new Map<string, THREE.MeshStandardMaterial>();
+function sharedMat(rough: number, metal: number): THREE.MeshStandardMaterial {
+  const k = `${rough}|${metal}`;
+  let m = SHARED.get(k);
+  if (!m) {
+    m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: rough, metalness: metal });
+    m.userData.shared = true;
+    SHARED.set(k, m);
+  }
+  return m;
 }
 
 function shade(c: number, k: number): number {

@@ -337,7 +337,8 @@ export class Avatar {
       const m = o as THREE.Mesh;
       if (m.geometry) m.geometry.dispose();
       const mat = (m as unknown as { material?: THREE.Material }).material;
-      if (mat) {
+      // спільні матеріали персонажів (character.ts) — лишаємо іншим
+      if (mat && !mat.userData.shared) {
         (mat as THREE.MeshStandardMaterial).map?.dispose();
         mat.dispose();
       }
