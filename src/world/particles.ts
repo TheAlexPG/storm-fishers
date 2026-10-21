@@ -41,6 +41,8 @@ export class ParticlePool {
   private parts: Particle[] = [];
   private readonly count: number;
   private tmpColor = new THREE.Color();
+  /** зворотна матриця групи яхти — маска «всередині корпусу» для бризок */
+  private hullInv = new THREE.Matrix4();
 
   constructor(scene: THREE.Scene, count = 900) {
     this.count = count;
@@ -76,17 +78,34 @@ export class ParticlePool {
     const mat = new THREE.ShaderMaterial({
       transparent: true,
       depthWrite: false,
+      uniforms: { uHullInv: { value: this.hullInv } },
       vertexShader: /* glsl */ `
         attribute vec3 aColor;
         attribute float aSize;
         attribute float aAlpha;
+        uniform mat4 uHullInv;
         varying vec3 vColor;
         varying float vAlpha;
+        // обрис корпусу (дзеркало hullHalfWidth у yachtLayout.ts)
+        float hullHalfW(float z) {
+          float t = z / 4.7;
+          if (t < 0.0) return 1.8 - 0.25 * t * t;
+          return 1.8 * pow(max(0.0, 1.0 - pow(t, 2.2)), 0.75);
+        }
         void main() {
           vColor = aColor;
           vAlpha = aAlpha;
+          // бризка всередині яхти (під палубою або в рубці) — не малюємо:
+          // спрайт поруч із камерою в каюті розростався на пів екрана «водяною плівкою»
+          vec3 hl = (uHullInv * vec4(position, 1.0)).xyz;
+          bool below = abs(hl.z) < 4.7 && hl.y < 1.08 && hl.y > -1.2 && abs(hl.x) < hullHalfW(hl.z);
+          bool house = abs(hl.x) < 0.98 && hl.z > -0.75 && hl.z < 2.75 && hl.y < 1.85 && hl.y > 0.9;
+          if (below || house) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; return; }
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
-          gl_PointSize = aSize * (300.0 / -mv.z);
+          float z = -mv.z;
+          // впритул до камери — менша й прозоріша (не «плівка» на весь екран)
+          vAlpha *= smoothstep(0.35, 1.2, z);
+          gl_PointSize = min(aSize * (300.0 / max(z, 0.05)), 160.0);
           gl_Position = projectionMatrix * mv;
         }
       `,
@@ -107,6 +126,11 @@ export class ParticlePool {
     this.points = new THREE.Points(geo, mat);
     this.points.frustumCulled = false;
     scene.add(this.points);
+  }
+
+  /** кожен кадр: де яхта (бризки всередині корпусу й рубки не малюються) */
+  setHull(group: THREE.Object3D) {
+    this.hullInv.copy(group.matrixWorld).invert();
   }
 
   private cursor = 0;

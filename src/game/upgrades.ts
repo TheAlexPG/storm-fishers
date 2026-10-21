@@ -286,6 +286,20 @@ export const UPGRADES: UpgradeDef[] = [
       { label: L('Автокерування', `Self-steering`), value: (l) => (l >= 1 ? 1 : 0), fmt: (v) => (v ? L('так', `yes`) : '—') },
     ],
   },
+  {
+    // простий авторульовий: тримає ПОТОЧНИЙ курс (без маршруту й GPS), слабший за автопілот
+    id: 'vane',
+    name: L('Вітровий авторульовий', `Wind-vane self-steering`),
+    role: L('сам тримає поточний курс — без GPS і маршруту', `holds your current course by itself — no GPS or route`),
+    desc: (l) => (l >= 1 ? L('флюгер на транці: G за штурвалом — увімк./вимк.', `vane on the transom: G at the wheel — on/off`) : L('без нього яхту зносить хвиля й вітер — підправляй кермом', `without it waves and wind push you off course — keep correcting`)),
+    costs: [1400],
+    parts: [
+      { name: L('Флюгер-керма на транці', `Transom wind vane`), blurb: L('Дерев\'яний флюгер і маятникове перо у воді: тримає курс, який був, коли ти його ввімкнув. М\'якший за автопілот — у шторм ще треба допомагати кермом. G за штурвалом або кермо (A/D) — вимкнути.', `A wooden vane and a pendulum blade in the water: holds the course you had when you engaged it. Gentler than the autopilot — in a storm you still have to help with the wheel. G at the wheel or the rudder (A/D) — off.`) },
+    ],
+    stats: [
+      { label: L('Тримає курс', `Holds course`), value: (l) => (l >= 1 ? 1 : 0), fmt: (v) => (v ? L('так', `yes`) : '—') },
+    ],
+  },
 ];
 
 /** помпа: множник ручного качання (швидкість і менше сил на хід) */
@@ -402,7 +416,7 @@ export const MAX_LEVEL = 5;
 export const maxLevel = (id: UpgradeId): number => UPGRADE_BY_ID[id]?.costs.length ?? MAX_LEVEL;
 
 export function defaultUpgrades(): UpgradeLevels {
-  return { engine: 0, hull: 0, hold: 0, rod: 0, fuel: 0, lights: 0, stab: 0, holders: 0, sails: 0, nets: 0, instr: 0, tent: 0, pump: 0, autopilot: 0 };
+  return { engine: 0, hull: 0, hold: 0, rod: 0, fuel: 0, lights: 0, stab: 0, holders: 0, sails: 0, nets: 0, instr: 0, tent: 0, pump: 0, autopilot: 0, vane: 0 };
 }
 
 export function upgradeCost(id: UpgradeId, currentLevel: number): number | null {
