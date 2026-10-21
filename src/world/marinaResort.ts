@@ -376,13 +376,13 @@ function menuTex(): THREE.CanvasTexture {
 // ───────────────────────── запікання пози ─────────────────────────
 
 /** запечені люди: колір у вершинах, одна шорсткість на всіх — один виклик малювання */
-const BAKED_MAT = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0 });
+export const BAKED_MAT = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0 });
 const _m = new THREE.Matrix4();
 const _nm = new THREE.Matrix3();
 const _v = new THREE.Vector3();
 
 /** скінований персонаж у поточній позі → звичайні меші в into (жорстка прив'язка: одна кістка на вершину) */
-function bakePose(root: THREE.Object3D, into: THREE.Group, out: Map<THREE.Material, THREE.BufferGeometry[]>) {
+export function bakePose(root: THREE.Object3D, into: THREE.Group, out: Map<THREE.Material, THREE.BufferGeometry[]>) {
   root.updateMatrixWorld(true);
   into.updateMatrixWorld(true);
   const toInto = new THREE.Matrix4().copy(into.matrixWorld).invert();

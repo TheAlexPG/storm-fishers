@@ -8,6 +8,7 @@ import { mergeStatic } from './staticMerge';
 import { buildKutVillage, type VillageLife } from './kutVillage';
 import { ZORYA_ID, ZoryaLife, buildZoryaStatic, zoryaPlan, type TownCtx } from './zoryaTown';
 import { buildResort, type ResortLife } from './marinaResort';
+import { NIKOS_ID, NikosLife, buildNikos, nikosPlan } from './nikosVillage';
 import type { RockObstacle } from './boat';
 import { KRAY_ID, KrayLife, buildKrayStatic, type KrayCtx, type KrayPlan } from './krayStation';
 import { AZZURRO_ID, AzzurroLife, azzurroPlan, buildAzzurroStatic } from './azzurroTown';
@@ -108,6 +109,8 @@ interface Built {
   kray?: KrayLife;
   /** живе містечко Порто-Аццурро: мешканці, гоцо, мандоліна */
   azzurro?: AzzurroLife;
+  /** грецьке село (Айос-Нікос): вітряки, віслюк, кіт, репліки */
+  nikos?: NikosLife;
 }
 
 export class Ports {
@@ -117,11 +120,15 @@ export class Ports {
   private glowMat: THREE.SpriteMaterial;
   private lampGlows: THREE.Sprite[] = [];
   private night = 0;
+  /** будується Айос-Нікос: будинки з пласким білим дахом і синіми дверима */
+  private greek = false;
   /** удар дзвона каплиці (гучність 0..1) і репліка мешканця — ставить main */
   onBell: ((vol: number) => void) | null = null;
   onSay: ((text: string) => void) | null = null;
   /** нота мандоліни в Порто-Аццурро (гучність 0..1, частота) — ставить main */
   onMandolin: ((vol: number, hz: number) => void) | null = null;
+  /** голова гравця — для реплік мешканців (камера буває за кормою) */
+  listener: THREE.Vector3 | null = null;
 
   /** platforms/solids — спільні з домашнім Port (ходьба й зіткнення гравця); rocks — колізія човнів (понтони, яхти-сусіди) */
   constructor(scene: THREE.Scene, platforms: Platform[], solids: Solid[], private rocks?: RockObstacle[]) {
@@ -141,6 +148,7 @@ export class Ports {
   private build(p: PortSite, platforms: Platform[], solids: Solid[]): Built {
     const M = this.M;
     const rng = mulberry32(p.seed * 131 + 7);
+    this.greek = p.id === NIKOS_ID;
     const g = new THREE.Group();
     const batch = new Batch();
     const ry = Math.atan2(p.ox, p.oz); // локальний +Z будинку → у море
@@ -257,6 +265,9 @@ export class Ports {
     if (azPlan) used.push(...azPlan.reserved);
     // Сідар-Гарбор: лісопилка, склад, струмок, ґанок лавки — не забудовувати
     if (p.id === CEDAR_ID) used.push(...CEDAR_ZONES);
+    // Айос-Нікос: церква, вітряки, сходи, віслюк — місця заздалегідь
+    const nPlan = this.greek ? nikosPlan(p) : null;
+    if (nPlan) used.push(...nPlan.reserved);
     const town: TownCtx = {
       p, g, batch, M: M as unknown as TownCtx['M'], ry, rng, H,
       house: (o) => this.house(batch, g, o, rng),
@@ -353,7 +364,7 @@ export class Ports {
       }
       // куполи: на кількох «службових» будинках (над дахом — синя напівсфера на барабані)
       for (const [i, s] of p.svc.entries()) {
-        if (i % 2) continue;
+        if (i % 2 || this.greek) continue;
         const d = s.kind === 'fuel' ? 2.6 : 5;
         const [x, z] = W(s.a - 1.2 - d / 2, s.b);
         const y = Math.min(H(x, z), p.plY) + 5.6;
@@ -430,6 +441,12 @@ export class Ports {
     if (p.id === CEDAR_ID) {
       life = buildCedarTown({ p, g, batch, M, H, platforms, solids, rng, lampPost: (x, z, y0) => this.lampPost(batch, g, x, z, y0), glow: (x, y, z, s) => this.glow(g, x, y, z, s), house: (o) => this.house(batch, g, o, rng) });
     }
+    // ── Айос-Нікос: будиночки-кубики, церква, вітряки, тераса мезе, каїки (nikosVillage.ts) ──
+    let nikos: NikosLife | undefined;
+    if (nPlan) {
+      nikos = buildNikos({ p, g, batch, M: M as unknown as Record<string, THREE.Material>, ry, solids, rocks: this.rocks, free, reserve: (a, b, r) => used.push([a, b, r]), lampPost: (x, z, y0) => this.lampPost(batch, g, x, z, y0), glow: (x, y, z, s) => this.glow(g, x, y, z, s) }, nPlan);
+      nikos.onSay = (s) => this.onSay?.(s);
+    }
 
     // ── злити ──
     batch.build(g);
@@ -461,7 +478,7 @@ export class Ports {
       g.add(azzurro.group);
     }
     this.group.add(g);
-    return { site: p, group: g, lantern, lanternPos, phase: rng() * 6, life, zorya, resort: resortLife, kray, azzurro };
+    return { site: p, group: g, lantern, lanternPos, phase: rng() * 6, life, zorya, resort: resortLife, kray, azzurro, nikos };
   }
 
   /** точка для маяка: на краю суходолу поруч із гаванню, на сухому */
@@ -551,31 +568,40 @@ export class Ports {
     const { w, d, h, rh } = o;
     const B = 0.3;
     batch.add(boxGeo(w + 0.3, 0.9, d + 0.3, 1.5), M.stoneDark, at(0, B - 0.45, 0));
-    batch.add(gableBodyGeo(w, d, h, rh, 2), o.wall, at(0, B, 0));
+    if (this.greek) {
+      // Айос-Нікос: білий куб із пласким дахом і бортиком
+      batch.add(boxGeo(w, h, d, 2), M.plWhite, at(0, B + h / 2, 0));
+      batch.add(boxGeo(w + 0.3, 0.2, d + 0.3), M.plWhite, at(0, B + h + 0.1, 0));
+      for (const [u, v, ww, dd] of [[0, d / 2 + 0.1, w + 0.3, 0.12], [0, -d / 2 - 0.1, w + 0.3, 0.12], [w / 2 + 0.1, 0, 0.12, d + 0.3], [-w / 2 - 0.1, 0, 0.12, d + 0.3]] as const) batch.add(boxGeo(ww, 0.35, dd), M.plWhite, at(u, B + h + 0.35, v));
+    } else batch.add(gableBodyGeo(w, d, h, rh, 2), o.wall, at(0, B, 0));
     const a = Math.atan2(rh, d / 2);
     const ov = 0.4, t = 0.16, Wd = w + 0.6;
     const L = Math.hypot(d / 2, rh) + ov;
     const slab = roofSlabGeo(L, t, Wd, 2).rotateY(-Math.PI / 2);
     const ridgeY = B + h + rh;
-    for (const s of [1, -1]) {
-      const cz = s * Math.cos(a) * (L / 2) + s * Math.sin(a) * (t / 2);
-      const cy = ridgeY - Math.sin(a) * (L / 2) + Math.cos(a) * (t / 2);
-      batch.add(slab, o.roof, at(0, cy, cz, 0, s * a));
-      if (o.snow) {
-        // сніг шаром на верхніх 80% схилу (Північ)
-        const L2 = L * 0.8;
-        const sz = s * Math.cos(a) * (L2 / 2) + s * Math.sin(a) * (t + 0.05);
-        const sy = ridgeY - Math.sin(a) * (L2 / 2) + Math.cos(a) * (t + 0.05);
-        batch.add(roofSlabGeo(L2, 0.1, Wd - 0.2, 2).rotateY(-Math.PI / 2), M.whitePaint, at(0, sy, sz, 0, s * a));
+    if (!this.greek) {
+      for (const s of [1, -1]) {
+        const cz = s * Math.cos(a) * (L / 2) + s * Math.sin(a) * (t / 2);
+        const cy = ridgeY - Math.sin(a) * (L / 2) + Math.cos(a) * (t / 2);
+        batch.add(slab, o.roof, at(0, cy, cz, 0, s * a));
+        if (o.snow) {
+          // сніг шаром на верхніх 80% схилу (Північ)
+          const L2 = L * 0.8;
+          const sz = s * Math.cos(a) * (L2 / 2) + s * Math.sin(a) * (t + 0.05);
+          const sy = ridgeY - Math.sin(a) * (L2 / 2) + Math.cos(a) * (t + 0.05);
+          batch.add(roofSlabGeo(L2, 0.1, Wd - 0.2, 2).rotateY(-Math.PI / 2), M.whitePaint, at(0, sy, sz, 0, s * a));
+        }
       }
+      batch.add(boxGeo(Wd + 0.04, 0.16, 0.3), o.snow ? M.whitePaint : o.roof, at(0, ridgeY + 0.1, 0));
     }
-    batch.add(boxGeo(Wd + 0.04, 0.16, 0.3), o.snow ? M.whitePaint : o.roof, at(0, ridgeY + 0.1, 0));
     // вікна фасаду й заду
     const rows = h >= 4.6 ? [B + 1.4, B + h - 1.2] : [B + h * 0.55 + 0.05];
     const win = (lx: number, ly: number, lz: number, r: number) => {
       const m = at(lx, ly, lz, r);
       batch.add(boxGeo(0.95, 1.25, 0.08), M.trim, m);
       batch.add(new THREE.PlaneGeometry(0.78, 1.08), rng() < 0.6 ? M.glassLit : M.glassDark, m.clone().multiply(T(0, 0, 0.045)), false);
+      // сині віконниці (Айос-Нікос)
+      if (this.greek) for (const k of [-1, 1]) batch.add(boxGeo(0.42, 1.25, 0.05), M.domeBlue, m.clone().multiply(T(k * 0.7, 0, 0.05)), false);
     };
     const nW = Math.max(1, Math.floor((w - 1.2) / 2.2));
     for (const ly of rows) {
@@ -588,7 +614,7 @@ export class Ports {
     }
     if (o.door != null) {
       batch.add(boxGeo(1.25, 2.2, 0.07), M.trim, at(o.door, B + 1.07, d / 2));
-      batch.add(boxGeo(1.0, 2.0, 0.1), M.woodDark, at(o.door, B + 1.0, d / 2 + 0.02));
+      batch.add(boxGeo(1.0, 2.0, 0.1), this.greek ? M.domeBlue : M.woodDark, at(o.door, B + 1.0, d / 2 + 0.02));
       const lpm = at(o.door + 0.85, B + 2.1, d / 2 + 0.15);
       batch.add(boxGeo(0.15, 0.22, 0.15), M.lamp, lpm, false);
       const wp = new THREE.Vector3().setFromMatrixPosition(lpm);
@@ -710,6 +736,7 @@ export class Ports {
       // курорт: люди й гітарист — лише поблизу (сам ховає групу далеко)
       if (b.resort && d < 1500) b.resort.update(dt, cam);
       if (b.azzurro && b.group.visible && d < 1500) b.azzurro.update(t, cam, hours, this.night);
+      if (b.nikos && b.group.visible && d < 1500) b.nikos.update(dt, cam, this.night, this.listener ?? cam);
     }
   }
 
