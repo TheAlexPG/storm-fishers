@@ -481,7 +481,7 @@ export class Dialogs {
         <label class="chk"><input type="checkbox" data-k="invertY"><span>Інвертувати мишу по вертикалі</span></label>
         <label class="chk"><input type="checkbox" data-k="easyFish"><span>Легка риболовля — більше часу на підсічку й помилки</span></label>
         <label>Темп гри<input type="range" min="-100" max="100" step="25" data-k="pace"><output></output></label>
-        <p class="sub">Динамічний — клює частіше, але риба дешевша; спокійний — рідше, але дорожче. У кооп-кімнаті діє темп господаря.</p>
+        <p class="sub">Спокійний — довша доба й довші погодні цикли (більше часу на плавання між штормами), клює рідше, але риба дорожча; динамічний — доба коротша, клює частіше, риба дешевша. У кооп-кімнаті діє темп господаря.</p>
       </div>
       <h2>Керування</h2>
       <div class="intro-keys">
@@ -570,7 +570,7 @@ export class Dialogs {
         <label class="chk"><input type="checkbox" data-k="invertY"><span>Invert mouse Y</span></label>
         <label class="chk"><input type="checkbox" data-k="easyFish"><span>Easy fishing — more time to strike and to make mistakes</span></label>
         <label>Game pace<input type="range" min="-100" max="100" step="25" data-k="pace"><output></output></label>
-        <p class="sub">Lively — more bites, but cheaper fish; relaxed — fewer bites, but pricier. In a co-op room the host's pace applies.</p>
+        <p class="sub">Relaxed — longer days and weather cycles (more time to sail between storms), fewer bites but pricier fish; lively — shorter days, more bites, cheaper fish. In a co-op room the host's pace applies.</p>
       </div>
       <h2>Controls</h2>
       <div class="intro-keys">
@@ -659,9 +659,11 @@ export class Dialogs {
       // клювання в рази частіше/рідше, ціна — та сама частка
       pace: (v) => {
         const k = Math.pow(1.6, v);
-        if (Math.abs(v) < 0.01) return L('звичайний', `normal`);
+        // доба: 10 хв × dayScale (game/pace.ts)
+        const day = `${L('доба', 'day')} ${Math.round(10 * 2 * Math.pow(1.5, -v))} ${L('хв', 'min')}`;
+        if (Math.abs(v) < 0.01) return L('звичайний', `normal`) + ` · ${day}`;
         const x = (n: number) => `×${n.toFixed(2).replace('.', L(',', '.'))}`;
-        return (v > 0 ? L('динамічний', `lively`) : L('спокійний', `relaxed`)) + ` · ${L('клює', 'bites')} ${x(k)} · ${L('ціна', 'price')} ${x(1 / k)}`;
+        return (v > 0 ? L('динамічний', `lively`) : L('спокійний', `relaxed`)) + ` · ${day} · ${L('клює', 'bites')} ${x(k)} · ${L('ціна', 'price')} ${x(1 / k)}`;
       },
     };
     const scale: Record<string, number> = { volume: 100, music: 100, sens: 100, fov: 1, scale: 100, pace: 100 };

@@ -2,6 +2,7 @@ import { mulberry32 } from '../core/math';
 import { L } from '../core/i18n';
 import { seaMul } from '../core/region';
 import { DAY_SECONDS } from '../core/time';
+import { dayScale } from './pace';
 import { PORT_SITES, PORT_SITE_BY_ID, siteServices, siteToWorld } from '../world/portSites';
 import { CONTINENT_BY_ID } from '../world/continents';
 
@@ -139,9 +140,10 @@ function routeRisk(a: Dock, b: Dock): number {
   return 0.55 + 0.6 * (s / (n - 1));
 }
 
-/** скільки ігрових годин іде рейс під вітрилами (~4,5 м/с) */
+/** скільки ігрових годин іде рейс під вітрилами (~4,5 м/с) — з поточною тривалістю доби (темп гри),
+ *  тож реальний запас часу на доставку не залежить від того, наскільки довга доба */
 export function travelHours(dist: number): number {
-  return (dist / 4.5 / DAY_SECONDS) * 24;
+  return (dist / 4.5 / (DAY_SECONDS * dayScale())) * 24;
 }
 
 /** скільки ящиків уміщає яхта: лави кокпіту, з трюмом — ще й носова каюта */

@@ -6,6 +6,7 @@ import { PORT_SITE_BY_ID } from './portSites';
 import { farFog } from './continentMesh';
 import type { Ocean } from '../core/ocean';
 import type { BotMarker } from './bots';
+import { dayScale } from '../game/pace';
 
 // ─────────────────────────────────────────────────────────────
 // Торгові судна між континентами: невеликі каботажники з контейнерами
@@ -17,7 +18,7 @@ import type { BotMarker } from './bots';
 
 const SPEED = 6; // м/с
 const PAUSE = 70; // с біля гавані
-/** реальних секунд на ігрову годину (time.ts: доба = 600 с) */
+/** реальних секунд на ігрову годину при базовій добі (time.ts: 600 с); множиться на dayScale() */
 const SEC_PER_H = 25;
 
 /** точка підходу до гавані: трохи в морі перед причалом */
@@ -96,7 +97,8 @@ export class Traders {
   update(dt: number, clockH: number, ocean: Ocean, t: number, player: THREE.Vector3, night: number) {
     for (const s of this.ships) {
       const cycle = (2 * s.r.len) / SPEED + 2 * PAUSE;
-      let u = ((clockH * SEC_PER_H) / cycle + s.phase) % 1;
+      // судна йдуть з реальною швидкістю незалежно від тривалості доби
+      let u = ((clockH * SEC_PER_H * dayScale()) / cycle + s.phase) % 1;
       if (u < 0) u += 1;
       // туди → пауза → назад → пауза
       const T = u * cycle;
