@@ -298,6 +298,16 @@ export class Bots {
 
   /** курс на точку шляху з обходом берега, скель, причалів і човнів */
   private steer(b: Bot, dt: number, others: Array<{ x: number; z: number }>, cruise: number) {
+    // стан прийшов із кооп-знімка без маршруту (гість щойно вийшов з кімнати) — прокладаємо свій
+    if (!b.path.length) {
+      if (b.state === 'return') this.goHome(b);
+      else {
+        b.state = 'transit';
+        b.path = [this.fishingSpot(b)];
+        b.lastD = 1e9;
+      }
+      return;
+    }
     const [tx, tz] = b.path[0];
     const dx = tx - b.x, dz = tz - b.z;
     const dist = Math.hypot(dx, dz);
