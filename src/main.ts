@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Input } from './core/input';
 import { installFastMatrix } from './core/fastMatrix';
-import { explainMerge } from './world/staticMerge';
+import { explainMerge, perfReport } from './world/staticMerge';
 import { TimeCycle, DAY_SECONDS } from './core/time';
 import { seaMul, Weather } from './core/weather';
 import { WORLD, HOME_RECT, climate, nearestHaven, roughAt, seaDist, shoreRes } from './core/region';
@@ -3726,4 +3726,10 @@ const game = new Game();
   game,
   input: Input.instance,
   explainMerge,
+  /** виклики малювання/трикутники останнього кадру + меші по групах сцени */
+  perf: () => {
+    const g = game as unknown as { renderer: THREE.WebGLRenderer; scene: THREE.Scene };
+    const i = g.renderer.info;
+    return { calls: i.render.calls, triangles: i.render.triangles, programs: i.programs?.length ?? 0, geometries: i.memory.geometries, groups: perfReport(g.renderer, g.scene) };
+  },
 };
