@@ -4,6 +4,7 @@ import { Batch, T, boxGeo, cylGeo, gableBodyGeo, roofSlabGeo, fbm, noise2, smoot
 import { cobbleTex, corrugatedTex, glowTex, groundDetailTex, planksTex, plasterTex, roofTilesTex, sidingTex, stoneTex, windowGlowTex, windowTex } from './textures';
 import { PORT_SITES, siteGround as siteHeight, siteRect, siteToWorld, worldToSite, siteBerths, siteServices, pierRect, type PortSite } from './portSites';
 import type { Platform, Solid } from './port';
+import { mergeStatic } from './staticMerge';
 
 // ─────────────────────────────────────────────────────────────
 // Інші гавані світу (дані — portSites.ts): суходіл, кам'яна набережна,
@@ -377,6 +378,8 @@ export class Ports {
       const m = o as THREE.Mesh;
       if (m.isMesh) m.receiveShadow = true;
     });
+    // решту окремих мешів (вивіски, ліхтарі, дрібниці з власними матеріалами) — теж докупи
+    mergeStatic(g, { skip: [lantern] });
     this.group.add(g);
     return { site: p, group: g, lantern, lanternPos, phase: rng() * 6 };
   }

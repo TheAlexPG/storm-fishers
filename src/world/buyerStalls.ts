@@ -8,6 +8,7 @@ import { ISLANDS, ISLAND_SOLIDS, islandHeight, islandInside } from './islandShap
 import { BUYER_BY_ID, FishTrade, MAX_CONTRACTS, type BuyerId } from '../game/buyers';
 import type { Port } from './port';
 import { L } from '../core/i18n';
+import { mergeStatic } from './staticMerge';
 
 // ─────────────────────────────────────────────────────────────
 // Прилавки скупників: таверна, коптильня, ресторан, консервний завод
@@ -123,6 +124,8 @@ export class BuyerStalls {
       this.extras(s, d, port);
     }
     this.buildHermit();
+    // нерухомі кіоски — у кілька мешів; продавці, вогонь коптильні й дим лишаються живими
+    mergeStatic(this.group, { skip: this.stalls.flatMap((st) => [st.npc.root, st.fire]) });
   }
 
   // ───────────── кіоск ─────────────

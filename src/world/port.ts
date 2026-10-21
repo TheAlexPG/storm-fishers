@@ -1,4 +1,5 @@
 import { PortLife } from './portLife';
+import { mergeStatic } from './staticMerge';
 import { WS } from '../core/region';
 import * as THREE from 'three';
 import { mulberry32 } from '../core/math';
@@ -160,7 +161,9 @@ export class Port {
 
   // анімація
   private bobbers: Bobber[] = [];
-  private flag!: { geo: THREE.BufferGeometry; base: Float32Array };
+  /** скільки мешів злито (налагодження) */
+  mergeStats: { before: number; merged: number; out: number } | null = null;
+  private flag!: { geo: THREE.BufferGeometry; base: Float32Array; mesh: THREE.Mesh };
   private smoke: Array<{ s: THREE.Sprite; mat: THREE.SpriteMaterial; k: number }> = [];
   private smokeOrigin = new THREE.Vector3();
 
@@ -489,6 +492,12 @@ export class Port {
 
     // трава, квіти, мешканці, чайки (після будівель — щоб знати тверді перешкоди)
     this.life = new PortLife(this.group, this);
+
+    // решта нерухомого (будинки, палі, ліхтарі, огорожі…) — у кілька мешів на клітинку:
+    // той самий матеріал, ті самі тіні — лише в рази менше викликів малювання
+    this.mergeStats = mergeStatic(this.group, {
+      skip: [this.life.group, this.beamPivot, this.flag.mesh, ...this.bobbers.map((b) => b.obj)],
+    });
   }
 
   /** кам'яна набережна, бруківка, вулички, межові мури */
@@ -1312,7 +1321,7 @@ export class Port {
     flag.rotation.y = -0.6;
     flag.castShadow = true;
     this.group.add(flag);
-    this.flag = { geo, base: Float32Array.from(geo.attributes.position.array as Float32Array) };
+    this.flag = { geo, base: Float32Array.from(geo.attributes.position.array as Float32Array), mesh: flag };
   }
 
   /** буї: вхідна пара (червоний / зелений), швартовні, поплавки пасток */

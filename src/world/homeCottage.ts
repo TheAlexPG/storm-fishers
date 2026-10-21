@@ -3,6 +3,7 @@ import { boxGeo, gableBodyGeo, roofSlabGeo } from './portKit';
 import { GROUND_Y } from './portTerrain';
 import { planksTex, plasterTex, roofTilesTex, stoneTex, windowGlowTex, windowTex } from './textures';
 import { COTTAGE, COTTAGE_BED, COTTAGE_BOARD } from './cottageLayout';
+import { mergeStatic } from './staticMerge';
 
 // ─────────────────────────────────────────────────────────────
 // Хата рибалки, у яку можна зайти: кремові стіни, червона черепиця,
@@ -365,6 +366,8 @@ export class HomeCottage {
     }
 
     g.updateMatrixWorld(true);
+    // нерухоме (стіни, меблі, дах) — у кілька мешів; вікна, лампа й вогонь світять через матеріали, як були
+    mergeStatic(g, { skip: [this.boardMesh], cell: 1000 });
   }
 
   private inWinMats: THREE.MeshStandardMaterial[] = [];
