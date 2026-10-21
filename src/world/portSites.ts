@@ -208,6 +208,7 @@ const CONT_SITES: PortSite[] = [
       { kind: 'exchange', a: -5, b: -8, name: L('Факторія', `Trading post`), icon: '🐟', label: L('Факторія — купує рибу', `Trading post — buys fish`) },
       { kind: 'cargo', a: -12, b: 5, name: L('Склад', `Cargo office`), icon: '📦', label: L('Склад факторії — хутро й риб\'ячий жир', `Trading post store — furs and fish oil`) },
       { kind: 'yard', a: -14, b: -10, name: L('Слип', `Slipway`), icon: '🔧', label: L('Слип факторії — ремонт (дорого)', `Trading post slipway — repairs (expensive)`) },
+      { kind: 'trapper', a: -6, b: 19, name: L('Лавка траппера', `Trapper's Store`), icon: '🧤', label: L('Лавка траппера Сайласа — пемікан, чай з морошкою, хутряні рукавиці й оберіг (бафи)', `Silas's Trapper's Store — pemmican, cloudberry tea, fur mittens and a charm (buffs)`) },
     ],
   },
 ];

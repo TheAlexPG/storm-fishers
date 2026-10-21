@@ -1,6 +1,7 @@
 import { bakeryHtml, eatPastry, ostapLine, petCat } from './ui/bakery';
 import { gelatoHtml as gelateriaHtml, eatGelato } from './ui/gelato';
 import { mapleHtml, eatTreat } from './ui/mapleStore';
+import { trapperHtml, buyWare } from './ui/trapperStore';
 import * as THREE from 'three';
 import { Input } from './core/input';
 import { installFastMatrix } from './core/fastMatrix';
@@ -548,6 +549,13 @@ class Game {
     // джелатерія «Стелла» Порто-Аццурро (portSites: svc 'gelateria')
     PORT_SERVICE_HANDLERS.gelateria = () => this.openGelateria();
     // «Кленова лавка» Ерла в Сідар-Гарбор (portSites: svc 'maple')
+    // «Лавка траппера» Сайласа в Бухті Гризлі (portSites: svc 'trapper')
+    PORT_SERVICE_HANDLERS.trapper = () => {
+      this.phase = 'dialog';
+      this.expectUnlock = true;
+      document.exitPointerLock();
+      this.openTrapper();
+    };
     PORT_SERVICE_HANDLERS.maple = () => {
       this.phase = 'dialog';
       this.expectUnlock = true;
@@ -2771,6 +2779,19 @@ class Game {
         this.audio.click();
         this.saveGame();
         this.openBakery(msg);
+      }));
+    });
+  }
+
+  /** «Лавка траппера» (Бухта Гризлі): провізія й теплі речі з бафами */
+  private openTrapper(note = '') {
+    this.dialogs.custom(trapperHtml(this.game, note), 'shop cargo', (panel) => {
+      panel.querySelectorAll<HTMLElement>('[data-ware]').forEach((b) => b.addEventListener('click', () => {
+        const msg = buyWare(this.game, b.dataset.ware!);
+        if (!msg) return;
+        this.audio.click();
+        this.saveGame();
+        this.openTrapper(msg);
       }));
     });
   }
