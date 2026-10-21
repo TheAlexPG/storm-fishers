@@ -191,6 +191,7 @@ const CONT_SITES: PortSite[] = [
       { kind: 'cargo', a: -5, b: -12, name: L('Склад', `Cargo office`), icon: '📦', label: L('Склад порту — деревина, хутро й сироп', `Port warehouse — timber, furs and syrup`) },
       { kind: 'yard', a: -5, b: -28, name: L('Верф', `Shipyard`), icon: '🔧', label: L('Верф Сідар-Гарбор — ремонт (дешево)', `Cedar Harbor shipyard — repairs (cheap)`) },
       { kind: 'shop', a: -20, b: 6, name: L('Яхтова крамниця', `Yacht chandlery`), icon: '🛠', label: L('Яхтова крамниця — каталог речей', `Yacht chandlery — item catalogue`) },
+      { kind: 'maple', a: -20, b: 22, name: L('Кленова лавка', `Maple General Store`), icon: '🍁', label: L('Кленова лавка Ерла — млинці з сиропом, какао й сніданок лісоруба (бафи)', `Earl's Maple General Store — pancakes with syrup, cocoa and a logger's breakfast (buffs)`) },
       BASE_SVC(-20, -18, L('Хатина з колод', `Log cabin`)),
     ],
   },

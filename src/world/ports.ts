@@ -7,6 +7,7 @@ import type { Platform, Solid } from './port';
 import { mergeStatic } from './staticMerge';
 import { buildKutVillage, type VillageLife } from './kutVillage';
 import { ZORYA_ID, ZoryaLife, buildZoryaStatic, zoryaPlan, type TownCtx } from './zoryaTown';
+import { CEDAR_ID, CEDAR_ZONES, buildCedarTown } from './cedarTown';
 
 // ─────────────────────────────────────────────────────────────
 // Інші гавані світу (дані — portSites.ts): суходіл, кам'яна набережна,
@@ -231,7 +232,7 @@ export class Ports {
           batch.add(cylGeo(0.32, 0.32, 0.9, 10), i % 2 ? M.redPaint : M.metalRust, T(bx, y0 + 0.45, bz));
         }
       } else {
-        this.house(batch, g, { x: hx, z: hz, y0, ry, w, d, h: big ? 4.8 : 3.2, rh: big ? 1.8 : 1.4, wall: pick(STYLE_WALLS[p.style]), roof: pick(STYLE_ROOFS[p.style]), door: 0, sign: `${s.icon} ${s.name}` }, rng);
+        this.house(batch, g, { x: hx, z: hz, y0, ry, w, d, h: big ? 4.8 : 3.2, rh: big ? 1.8 : 1.4, wall: pick(STYLE_WALLS[p.style]), roof: pick(STYLE_ROOFS[p.style]), door: 0, sign: `${s.icon} ${s.name}`, snow: p.id === CEDAR_ID }, rng);
       }
       solidBox(hx, hz, (p.ox ? d : w) + 0.3, (p.ox ? w : d) + 0.3, 0);
     }
@@ -239,6 +240,8 @@ export class Ports {
     // ── план містечка (Гавань Зорі): сходи, каплиця, площа — до загальної забудови ──
     const zPlan = p.id === ZORYA_ID ? zoryaPlan(p, H) : null;
     if (zPlan) used.push(...zPlan.reserved);
+    // Сідар-Гарбор: лісопилка, склад, струмок, ґанок лавки — не забудовувати
+    if (p.id === CEDAR_ID) used.push(...CEDAR_ZONES);
     const town: TownCtx = {
       p, g, batch, M: M as unknown as TownCtx['M'], ry, rng, H,
       house: (o) => this.house(batch, g, o, rng),
@@ -267,7 +270,7 @@ export class Ports {
       if (lo < 0.8 || hi - lo > 1.4 || hi > 14) continue;
       used.push([a, b, r]);
       const tall = p.size !== 'tiny' && rng() < 0.4;
-      this.house(batch, g, { x: hx, z: hz, y0: lo, ry, w, d, h: tall ? 5.2 : 3.2, rh: 1.3 + rng() * 0.6, wall: pick(STYLE_WALLS[p.style]), roof: pick(STYLE_ROOFS[p.style]), door: (rng() - 0.5) * (w - 2) }, rng);
+      this.house(batch, g, { x: hx, z: hz, y0: lo, ry, w, d, h: tall ? 5.2 : 3.2, rh: 1.3 + rng() * 0.6, wall: pick(STYLE_WALLS[p.style]), roof: pick(STYLE_ROOFS[p.style]), door: (rng() - 0.5) * (w - 2), snow: p.id === CEDAR_ID }, rng);
       solidBox(hx, hz, (p.ox ? d : w) + 0.3, (p.ox ? w : d) + 0.3, 0);
       i++;
     }
@@ -294,6 +297,7 @@ export class Ports {
       for (let i = 0; i < 40; i++) {
         const a = -p.R * 1.4 + rng() * p.R * 1.9, b = (rng() * 2 - 1) * p.R * 1.3;
         if (avoidTown && a > -p.plD - 4 && Math.abs(b) < hw + 4) continue;
+        if (p.id === CEDAR_ID && CEDAR_ZONES.some(([za, zb, zr]) => Math.hypot(a - za, b - zb) < zr + 1.5)) continue;
         const [x, z] = W(a, b);
         const h = H(x, z);
         if (h >= minH && h <= maxH) return [x, z];
@@ -404,6 +408,10 @@ export class Ports {
       life = buildKutVillage({ p, g, batch, M, H, platforms, solids, rng, lampPost: (x, z, y0) => this.lampPost(batch, g, x, z, y0), glow: (x, y, z, s) => this.glow(g, x, y, z, s) });
     }
     if (zPlan) buildZoryaStatic(town, zPlan);
+    // ── Сідар-Гарбор: лісопилка з колесом, склад деревини, пастки, «Кленова лавка», мешканці (cedarTown.ts) ──
+    if (p.id === CEDAR_ID) {
+      life = buildCedarTown({ p, g, batch, M, H, platforms, solids, rng, lampPost: (x, z, y0) => this.lampPost(batch, g, x, z, y0), glow: (x, y, z, s) => this.glow(g, x, y, z, s), house: (o) => this.house(batch, g, o, rng) });
+    }
 
     // ── злити ──
     batch.build(g);
@@ -505,7 +513,7 @@ export class Ports {
 
   // ───────────────────────── будинок ─────────────────────────
 
-  private house(batch: Batch, g: THREE.Group, o: { x: number; z: number; y0: number; ry: number; w: number; d: number; h: number; rh: number; wall: THREE.Material; roof: THREE.Material; door?: number; sign?: string }, rng: () => number) {
+  private house(batch: Batch, g: THREE.Group, o: { x: number; z: number; y0: number; ry: number; w: number; d: number; h: number; rh: number; wall: THREE.Material; roof: THREE.Material; door?: number; sign?: string; snow?: boolean }, rng: () => number) {
     const M = this.M;
     const base = T(o.x, o.y0, o.z, o.ry);
     const at = (x: number, y: number, z: number, ry = 0, rx = 0) => base.clone().multiply(T(x, y, z, ry, rx));
@@ -522,8 +530,15 @@ export class Ports {
       const cz = s * Math.cos(a) * (L / 2) + s * Math.sin(a) * (t / 2);
       const cy = ridgeY - Math.sin(a) * (L / 2) + Math.cos(a) * (t / 2);
       batch.add(slab, o.roof, at(0, cy, cz, 0, s * a));
+      if (o.snow) {
+        // сніг шаром на верхніх 80% схилу (Північ)
+        const L2 = L * 0.8;
+        const sz = s * Math.cos(a) * (L2 / 2) + s * Math.sin(a) * (t + 0.05);
+        const sy = ridgeY - Math.sin(a) * (L2 / 2) + Math.cos(a) * (t + 0.05);
+        batch.add(roofSlabGeo(L2, 0.1, Wd - 0.2, 2).rotateY(-Math.PI / 2), M.whitePaint, at(0, sy, sz, 0, s * a));
+      }
     }
-    batch.add(boxGeo(Wd + 0.04, 0.16, 0.3), o.roof, at(0, ridgeY + 0.1, 0));
+    batch.add(boxGeo(Wd + 0.04, 0.16, 0.3), o.snow ? M.whitePaint : o.roof, at(0, ridgeY + 0.1, 0));
     // вікна фасаду й заду
     const rows = h >= 4.6 ? [B + 1.4, B + h - 1.2] : [B + h * 0.55 + 0.05];
     const win = (lx: number, ly: number, lz: number, r: number) => {
