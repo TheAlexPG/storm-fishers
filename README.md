@@ -86,6 +86,11 @@ explore islands, outrun Beaufort‑scale storms and come home with a hold full o
   - **The Azure Coast** — a Mediterranean shore in the spirit of Italy and Greece: white villages with blue domes and terracotta roofs, cypresses and olive groves, terraced hills, a wide turquoise shallow and calm warm sea. Harbours: **Porto Azzurro** and the Greek village **Agios Nikos**.
   - **The Northern Reach** — a cold coast like Maine or Alaska: dark fir forests, granite shores, snow on the peaks, red-and-white lighthouses, more fog and more frequent storms. Harbours: **Cedar Harbor** and the remote trading post **Grizzly Cove**.
 - Small islands off each coast (a cypress isle, a chapel rock, an olive island; a fir island, granite skerries, a seal islet) and **three lighthouse refuges** in the middle of the ocean to shelter from a front.
+- **Places to find off every coast**, as many as around home:
+  - **Azure Coast** — the temple ruins of **Poseidon's Cape**, the sea arch of **Sirens' Grotto**, the blue-and-white **Santa Luce Light** with the keeper's washing line, **Amphora Shoal** next to a **sunken galley**, the **Turquoise Lagoon** and **Squid Hollow** fishing grounds.
+  - **Northern Reach** — an abandoned **whaling station** on the skerries, a **trapper's cabin**, a carved totem on **Raven Rock**, the **Granite Tooth Light**, a **sunken trawler**, the **Waterfall Fjord** and **Seal Cove** fishing grounds.
+  - **Great Ocean** — the **Delta** weather buoy, **Broken Masts Reef** and the **Bird Cauldron**, where gulls dive over feeding tuna.
+  - Four more hats (a laurel wreath, a straw boater, a trapper's coonskin cap and a horned helm), an amphora, message bottles and a whaler's chest.
 - Mountains are visible from far out at sea as hazy silhouettes; every harbour has its own fish prices — northern fish fetches more on the Azure Coast and the other way round.
 - **Cargo ships** ply between the continents (and politely steer around your yacht).
 

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { rockGeo } from './portTerrain';
+import { Batch } from './portKit';
 import { terrainHeight } from './portTerrain';
 import { makeGullTexture } from './sky';
 import type { RockObstacle } from './boat';
@@ -22,6 +23,38 @@ interface Spot {
 }
 
 const HOT = (id: string) => HOTSPOTS.find((h) => h.id === id)!;
+
+/** злити нерухомі меші групи за виглядом матеріалу (піддерева з moving не чіпаємо) */
+function mergeStatic(g: THREE.Group, moving: Set<THREE.Object3D>) {
+  const batch = new Batch();
+  const canon = new Map<string, THREE.Material>();
+  const taken: THREE.Mesh[] = [];
+  const keyOf = (m: THREE.MeshStandardMaterial) =>
+    [m.color.getHex(), m.emissive.getHex(), m.emissiveIntensity, m.roughness, m.metalness, m.flatShading, m.vertexColors, m.side, m.transparent, m.opacity].join('|');
+  g.updateMatrixWorld(true);
+  const walk = (o: THREE.Object3D) => {
+    if (moving.has(o)) return;
+    const mesh = o as THREE.Mesh;
+    if (mesh.isMesh && !Array.isArray(mesh.material) && (mesh.material as THREE.MeshStandardMaterial).isMeshStandardMaterial && !(mesh.material as THREE.MeshStandardMaterial).map) {
+      const key = keyOf(mesh.material as THREE.MeshStandardMaterial);
+      let cm = canon.get(key);
+      if (!cm) { cm = mesh.material as THREE.Material; canon.set(key, cm); }
+      batch.add(mesh.geometry, cm, mesh.matrixWorld, mesh.castShadow);
+      taken.push(mesh);
+    }
+    for (const c of o.children) walk(c);
+  };
+  for (const c of g.children) walk(c);
+  if (taken.length < 2) return;
+  for (const m of taken) m.removeFromParent();
+  const prune = (o: THREE.Object3D): boolean => {
+    if (moving.has(o)) return false;
+    for (const c of [...o.children]) if (prune(c)) c.removeFromParent();
+    return o.children.length === 0 && !(o as THREE.Mesh).isMesh && !(o as THREE.Sprite).isSprite;
+  };
+  for (const c of [...g.children]) if (prune(c)) c.removeFromParent();
+  batch.build(g);
+}
 
 export class FarPlaces {
   readonly group = new THREE.Group();
@@ -326,6 +359,10 @@ export class FarPlaces {
       const rs = this.spots.find((s) => s.x === R.x && s.z === R.z);
       if (rs) flock(rs.g, R.x, R.z, 5, 8, 20, 8, 14);
     }
+
+    // нерухомі меші кожного місця — в кілька злитих (буй, промінь маяка й тюлені рухаються — окремо)
+    const moving = new Set<THREE.Object3D>([this.buoy, this.beam, ...this.seals.map((h) => h.parent!).filter(Boolean)]);
+    for (const s of this.spots) mergeStatic(s.g, moving);
 
     scene.add(this.group);
   }

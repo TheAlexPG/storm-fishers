@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { fbm, noise2, smoothstep } from './portKit';
+import { Batch, fbm, noise2, smoothstep } from './portKit';
 import { rockGeo } from './portTerrain';
 import { groundDetailTex } from './textures';
 import { makeGullTexture } from './sky';
@@ -100,6 +100,8 @@ export class Islands {
       const start = this.group.children.length;
       this.group.add(this.terrain(d, ground));
       this.props(d, rng, rockMat);
+      // нерухомий реквізит острова зливаємо за виглядом матеріалу — кілька мешів замість сотні
+      this.mergeProps(start + 1);
       // далекі острови не малюємо (сотні дрібних мешів реквізиту за серпанком)
       this.chunks.push({ x: d.x, z: d.z, r: d.r * Math.sqrt(d.elong) * 1.4, objs: this.group.children.slice(start) });
     }
@@ -122,6 +124,43 @@ export class Islands {
       this.pickups.push({ def: f, obj, glow, x, y, z });
     }
     scene.add(this.group);
+  }
+
+  /**
+   * злити нерухомі меші реквізиту (діти групи від індексу from) за виглядом матеріалу:
+   * однаковий колір/шорсткість/прозорість → один меш. Прапори, чайки й інше анімоване лишаються.
+   */
+  private mergeProps(from: number) {
+    const objs = this.group.children.slice(from);
+    const batch = new Batch();
+    const canon = new Map<string, THREE.Material>();
+    const moving = new Set<THREE.Object3D>(this.flags);
+    const taken: THREE.Mesh[] = [];
+    const keyOf = (m: THREE.MeshStandardMaterial) =>
+      [m.color.getHex(), m.emissive.getHex(), m.emissiveIntensity, m.roughness, m.metalness, m.flatShading, m.vertexColors, m.side, m.transparent, m.opacity, m.map?.uuid ?? ''].join('|');
+    for (const o of objs) {
+      o.updateMatrixWorld(true);
+      o.traverse((c) => {
+        const mesh = c as THREE.Mesh;
+        if (!mesh.isMesh || moving.has(mesh) || Array.isArray(mesh.material)) return;
+        const mat = mesh.material as THREE.MeshStandardMaterial;
+        if (!(mat as THREE.Material & { isMeshStandardMaterial?: boolean }).isMeshStandardMaterial) return;
+        const key = keyOf(mat);
+        let cm = canon.get(key);
+        if (!cm) { cm = mat; canon.set(key, mat); }
+        batch.add(mesh.geometry, cm, mesh.matrixWorld, mesh.castShadow);
+        taken.push(mesh);
+      });
+    }
+    if (taken.length < 2) return;
+    // забираємо злиті меші (порожні групи — теж), анімоване лишається на місці
+    for (const m of taken) m.removeFromParent();
+    const prune = (o: THREE.Object3D): boolean => {
+      for (const c of [...o.children]) if (prune(c)) c.removeFromParent();
+      return o.children.length === 0 && !(o as THREE.Mesh).isMesh && !(o as THREE.Sprite).isSprite;
+    };
+    for (const o of objs) if (o.parent && prune(o)) o.removeFromParent();
+    for (const m of batch.build(this.group)) m.receiveShadow = true;
   }
 
   // ── рельєф ──
@@ -484,7 +523,7 @@ export class Islands {
       temple.rotation.y = TR;
       // фундамент глибоко в пагорб — на вершині-горбі без щілин під подіумом
       add(new THREE.BoxGeometry(10, 5, 6.4), marbleD, 0, -1.9, 0, temple);
-      add(new THREE.BoxGeometry(11.2, 4, 7.6), flat(0x9b9486, 0.95), 0, -3.4, 0, temple);
+      add(new THREE.BoxGeometry(10.9, 4, 7.3), flat(0xcdc5b2, 0.9), 0, -3.0, 0, temple);
       add(new THREE.BoxGeometry(9.2, 0.35, 5.6), marble, 0, 0.75, 0, temple);
       const heights = [4.6, 4.6, 2.2, 4.6, 1.4, 4.6, 3.1, 4.6, 4.6, 0.9];
       let k = 0;
