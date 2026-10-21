@@ -887,7 +887,8 @@ export class Ocean {
   /** матриця корпусу човна (світ → локаль), щоб не малювати воду всередині */
   setHull(group: THREE.Object3D, speed = 0) {
     this.material.uniforms.uBoatSpeed.value = speed;
-    group.updateMatrixWorld();
+    // лише матриця самого корпусу (без обходу всіх дітей яхти) — значення те саме
+    group.updateWorldMatrix(true, false);
     (this.material.uniforms.uHullInv.value as THREE.Matrix4).copy(group.matrixWorld).invert();
   }
 

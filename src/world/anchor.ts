@@ -329,7 +329,8 @@ export class Anchor {
   private draw(boat: BoatLike, b: THREE.Vector3) {
     const am = this.anchorMesh;
     if (this.state === 0) {
-      boat.group.updateMatrixWorld();
+      // потрібна лише матриця самої яхти — без обходу всіх її ~1000 дітей
+      boat.group.updateWorldMatrix(true, false);
       this._m.multiplyMatrices(boat.group.matrixWorld, this.stowLocal);
       this._m.decompose(am.position, am.quaternion, am.scale);
       this.links.visible = false;

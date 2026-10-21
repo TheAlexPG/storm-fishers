@@ -85,6 +85,7 @@ export class Hud {
   private elFishStatus!: HTMLElement;
   private compass: HTMLCanvasElement | null = null;
   private compassCtx: CanvasRenderingContext2D | null = null;
+  private compassKey = '';
   private chipPort!: HTMLElement;
   private chipWp!: HTMLElement;
   private chipAnchor!: HTMLElement;
@@ -337,6 +338,7 @@ export class Hud {
     c.style.width = '300px';
     c.style.height = '36px';
     this.compassCtx?.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.compassKey = ''; // canvas очистився — перемалювати
   }
 
   private night = false;
@@ -575,6 +577,10 @@ export class Hud {
   private drawCompass(headingRad: number, boat: { x: number; z: number }, wp: { x: number; z: number } | null, windDir = 0, wind = 0) {
     const c = this.compassCtx;
     if (!c || !this.compass) return;
+    // нічого помітного не змінилось (менше частки пікселя) — стрічка та сама, не перемальовуємо
+    const key = `${Math.round(compassDeg(headingRad) * 20)}|${Math.round(boat.x * 2)},${Math.round(boat.z * 2)}|${wp ? Math.round(wp.x * 2) + ',' + Math.round(wp.z * 2) : '-'}|${Math.round(windDir * 100)}|${Math.round(wind * 100)}|${this.night ? 1 : 0}`;
+    if (key === this.compassKey) return;
+    this.compassKey = key;
     const w = 300; // логічний розмір (dpr закладений у transform)
     const h = 36;
     const d0 = compassDeg(headingRad);
