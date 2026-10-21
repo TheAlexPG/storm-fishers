@@ -28,6 +28,8 @@ export const HATS: HatDef[] = [
   { id: 'boater', name: L('Канотьє', `Straw boater`), icon: '🎩', kind: 'boater', color: 0xe8d39a, accent: 0x1f3b6b, hint: L('Оливковий острів, біля криниці', `Olive Island, by the well`) },
   { id: 'coonskin', name: L('Шапка траппера', `Trapper's coonskin cap`), icon: '🦝', kind: 'coonskin', color: 0x6a5240, accent: 0x2f2620, hint: L('Хижка траппера на півночі', `the trapper's cabin up north`) },
   { id: 'viking', name: L('Шолом конунга', `King's horned helm`), icon: '⚔️', kind: 'viking', color: 0x8a8d90, accent: 0xe9dfc8, hint: L('Гранітні Брати', `the Granite Brothers`) },
+  { id: 'panama', name: L('Курортна панамка', `Resort sun hat`), icon: '🏖️', kind: 'bucket', color: 0xf6f2ea, accent: 0x24878c, hint: L('кіоск «Морозиво й сувеніри» в Сонячній Марині', `the gelato & souvenir kiosk at Sunny Marina`) },
+  { id: 'marinacap', name: L('Кепка «Сонячна Марина»', `“Sunny Marina” cap`), icon: '🧢', kind: 'cap', color: 0xe2674a, accent: 0xf6f2ea, hint: L('кіоск «Морозиво й сувеніри» в Сонячній Марині', `the gelato & souvenir kiosk at Sunny Marina`) },
   { id: 'beanie', name: L('Шапка з помпоном', `Bobble hat`), icon: '🧶', kind: 'beanie', color: 0xb8362c, accent: 0xf4efe4, hint: L('відкрий усі острови', `discover all the islands`) },
 ];
 

@@ -7,6 +7,8 @@ import type { Platform, Solid } from './port';
 import { mergeStatic } from './staticMerge';
 import { buildKutVillage, type VillageLife } from './kutVillage';
 import { ZORYA_ID, ZoryaLife, buildZoryaStatic, zoryaPlan, type TownCtx } from './zoryaTown';
+import { buildResort, type ResortLife } from './marinaResort';
+import type { RockObstacle } from './boat';
 
 // ─────────────────────────────────────────────────────────────
 // Інші гавані світу (дані — portSites.ts): суходіл, кам'яна набережна,
@@ -97,6 +99,8 @@ interface Built {
   life?: VillageLife;
   /** живе містечко (Гавань Зорі): мешканці, дзвін, прапорці */
   zorya?: ZoryaLife;
+  /** курорт (Сонячна Марина): відпочивальники й гітарист (оживають поблизу) */
+  resort?: ResortLife;
 }
 
 export class Ports {
@@ -110,8 +114,8 @@ export class Ports {
   onBell: ((vol: number) => void) | null = null;
   onSay: ((text: string) => void) | null = null;
 
-  /** platforms/solids — спільні з домашнім Port (ходьба й зіткнення гравця) */
-  constructor(scene: THREE.Scene, platforms: Platform[], solids: Solid[]) {
+  /** platforms/solids — спільні з домашнім Port (ходьба й зіткнення гравця); rocks — колізія човнів (понтони, яхти-сусіди) */
+  constructor(scene: THREE.Scene, platforms: Platform[], solids: Solid[], private rocks?: RockObstacle[]) {
     this.M = makeMats();
     this.glowMat = new THREE.SpriteMaterial({ map: glowTex(), color: 0xffc677, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
     for (const site of PORT_SITES) this.built.push(this.build(site, platforms, solids));
@@ -300,19 +304,16 @@ export class Ports {
       }
       return null;
     };
+    let resortLife: ResortLife | undefined;
     if (p.style === 'resort') {
       // пальми, парасольки на пляжі
       for (let i = 0; i < 16; i++) {
         const s = landSpot(0.5, 6);
         if (s) { this.palm(batch, s[0], s[1], H(s[0], s[1]), 0.8 + rng() * 0.5, rng); solidCircle(s[0], s[1], 0.35); }
       }
-      for (let i = 0; i < 6; i++) {
-        const s = landSpot(0.3, 1.4, true);
-        if (!s) continue;
-        const y = H(s[0], s[1]);
-        batch.add(cylGeo(0.04, 0.04, 2.2, 6), M.iron, T(s[0], y + 1.1, s[1]));
-        batch.add(new THREE.ConeGeometry(1.3, 0.5, 8, 1, true), i % 3 === 0 ? M.canvasA : i % 3 === 1 ? M.canvasB : M.canvasC, T(s[0], y + 2.3, s[1]));
-      }
+      // пляж із шезлонгами, понтон з яхтами-сусідами, гірлянди, кафе, кіоск морозива (marinaResort.ts)
+      resortLife = buildResort({ p, batch, g, M: M as unknown as Record<string, THREE.Material>, ry, rng, platforms, solids, rocks: this.rocks, landSpot, palm: (x, z, y, s) => this.palm(batch, x, z, y, s, rng) });
+      g.add(resortLife.group);
       // у містечку — кадки з пальмами вздовж набережної
       for (let b = -hw + 8; b < hw - 6; b += 16) {
         if (Math.abs(b) < p.pierW / 2 + 3) continue;
@@ -412,7 +413,7 @@ export class Ports {
       if (m.isMesh) m.receiveShadow = true;
     });
     // решту окремих мешів (вивіски, ліхтарі, дрібниці з власними матеріалами) — теж докупи
-    mergeStatic(g, { skip: [lantern] });
+    mergeStatic(g, { skip: [lantern, resortLife?.group] });
     // живе — після злиття (рухається), окремою групою
     let zorya: ZoryaLife | undefined;
     if (zPlan) {
@@ -422,7 +423,7 @@ export class Ports {
       g.add(zorya.group);
     }
     this.group.add(g);
-    return { site: p, group: g, lantern, lanternPos, phase: rng() * 6, life, zorya };
+    return { site: p, group: g, lantern, lanternPos, phase: rng() * 6, life, zorya, resort: resortLife };
   }
 
   /** точка для маяка: на краю суходолу поруч із гаванню, на сухому */
@@ -626,9 +627,15 @@ export class Ports {
       g.userData.hide = night <= 0.02;
       g.visible = !g.userData.hide;
     }
+    for (const b of this.built) b.resort?.setNight(night);
   }
 
   private lastT = -1;
+
+  /** курорт: точка вуличного музиканта (для тихого звуку поблизу) */
+  get busker(): THREE.Vector3 | null {
+    return this.built.find((b) => b.resort)?.resort?.busker ?? null;
+  }
 
   update(t: number, cam: THREE.Vector3, hours = 12) {
     const dt = this.lastT < 0 ? 0 : Math.min(0.1, Math.max(0, t - this.lastT));
@@ -647,13 +654,15 @@ export class Ports {
         b.group.children.forEach((c) => (c.visible = c === b.lantern));
         b.lantern.scale.setScalar(Math.min(60, 9 + d * 0.02));
       } else {
-        // userData.hide — дитина сама ховається; ореоли ліхтарів — лише вночі (удень прозорі, а виклик малювання коштують)
+        // userData.hide — дитина сама ховається; ореоли ліхтарів — лише вночі; група курорту сама керує видимістю
         const glowOn = this.night > 0.02;
-        b.group.children.forEach((c) => (c.visible = !c.userData.hide && ((c as THREE.Sprite).isSprite && c !== b.lantern ? glowOn : true)));
+        b.group.children.forEach((c) => (c.visible = c === b.resort?.group ? c.visible : !c.userData.hide && ((c as THREE.Sprite).isSprite && c !== b.lantern ? glowOn : true)));
         b.lantern.scale.setScalar(Math.min(40, 9 + d * 0.015));
       }
       // містечко живе (і дзвонить) лише поки гавань видно
       if (b.zorya && b.group.visible && d < 1500) b.zorya.update(t, cam, hours, this.night);
+      // курорт: люди й гітарист — лише поблизу (сам ховає групу далеко)
+      if (b.resort && d < 1500) b.resort.update(dt, cam);
     }
   }
 

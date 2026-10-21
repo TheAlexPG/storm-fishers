@@ -100,6 +100,8 @@ import { chartOffers, chartmakerHtml, bindChartmaker } from './ui/chartmaker';
 import { GOODS_BY_ID, DOCK_BY_ID, cargoSlots, dockName, type CargoOrder } from './game/cargo';
 import { continentRegion } from './world/continents';
 import { PORT_SITES, PORT_SITE_BY_ID, PORT_SERVICE_HANDLERS, pierRect, siteBerths, type Berth } from './world/portSites';
+import { gelatoHtml, SCOOPS, KIOSK_HATS } from './ui/gelatoKiosk';
+import { Busker } from './world/busker';
 import type { Platform } from './world/port';
 import { Avatar } from './world/avatar';
 import './styles.css';
@@ -266,6 +268,7 @@ class Game {
   private islands: Islands;
   /** інші гавані світу (world/ports.ts) */
   private ports: Ports;
+  private busker = new Busker(() => this.audio.sfx());
   /** континенти: рельєф, ліси, містечка, маяки (world/continentMesh.ts) */
   private continents: ContinentScenery;
   /** вантажі: ящики на яхті, на причалі й у руках (world/cargoView.ts) */
@@ -373,7 +376,7 @@ class Game {
     // скупники риби — після островів (хижа Остапа шукає вільне місце серед дерев)
     this.stalls = new BuyerStalls(this.scene, this.port);
     this.ordersChip = new OrdersChip();
-    this.ports = new Ports(this.scene, this.port.platforms, this.port.solids);
+    this.ports = new Ports(this.scene, this.port.platforms, this.port.solids, this.port.rocks);
     // Гавань Зорі: дзвін каплиці й репліки мешканців
     this.ports.onBell = (v) => this.audio.bell(v * 0.9, 262);
     this.ports.onSay = (s) => this.hud.toast(s, 'good', 4500);
@@ -533,6 +536,8 @@ class Game {
     PORT_SERVICE_HANDLERS.bait = () => this.openBait();
     // картограф Гавані Зорі (portSites: svc 'chartmaker')
     PORT_SERVICE_HANDLERS.chartmaker = () => this.openChartmaker();
+    // кіоск «Морозиво й сувеніри» Сонячної Марини
+    PORT_SERVICE_HANDLERS.gelato = () => this.openGelato();
 
     this.reticle = document.createElement('div');
     this.reticle.id = 'reticle';
@@ -2798,6 +2803,43 @@ class Game {
     );
   }
 
+  private openGelato() {
+    const g = this.game;
+    this.phase = 'dialog';
+    this.expectUnlock = true;
+    document.exitPointerLock();
+    this.dialogs.custom(gelatoHtml(g, (id) => this.hatOwned(id)), 'shop cargo gelato', (panel) => {
+      panel.querySelectorAll<HTMLElement>('[data-scoop]').forEach((b) => b.addEventListener('click', () => {
+        const s = SCOOPS.find((x) => x.id === b.dataset.scoop);
+        if (!s || g.money < s.price) return;
+        g.spend(s.price, 'other');
+        g.addEnergy(s.energy);
+        this.audio.click();
+        this.hud.toast(L(`🍦 ${s.name} — смакота! +${s.energy} сил`, `🍦 ${s.name} — delicious! +${s.energy} energy`), 'good', 2500);
+        this.openGelato();
+      }));
+      panel.querySelectorAll<HTMLElement>('[data-hat]').forEach((b) => b.addEventListener('click', () => {
+        const id = b.dataset.hat!;
+        const price = KIOSK_HATS.find(([h]) => h === id)?.[1] ?? 0;
+        if (!price || g.money < price || this.hatOwned(id)) return;
+        g.spend(price, 'other');
+        g.finds.push('hat:' + id);
+        g.hat = id;
+        this.audio.catchJingle();
+        this.saveGame();
+        const h = HAT_BY_ID[id];
+        this.hud.toast(L(`${h.icon} ${h.name} — уже на тобі! Капелюхи: ${HATS.filter((x) => this.hatOwned(x.id)).length}/${HATS.length}`, `${h.icon} ${h.name} — you're wearing it! Hats: ${HATS.filter((x) => this.hatOwned(x.id)).length}/${HATS.length}`), 'good', 3500);
+        this.openGelato();
+      }));
+      panel.querySelectorAll<HTMLElement>('[data-wear]').forEach((b) => b.addEventListener('click', () => {
+        g.hat = b.dataset.wear!;
+        this.saveGame();
+        this.audio.click();
+        this.openGelato();
+      }));
+    });
+  }
+
   private openBase(site: string) {
     const g = this.game;
     const price = 6000;
@@ -2925,6 +2967,8 @@ class Game {
     this.port.update(simDt, t, this.camera.position);
     this.ports.setNight(1 - time.daylight);
     this.ports.update(t, this.camera.position, time.hours);
+    // курорт: тихий гітарист поруч (Сонячна Марина)
+    this.busker.update(this.ports.busker, this.camera.position, clamp((this.weather.intensity - 0.45) / 0.5, 0, 1));
     this.continents.setNight(1 - time.daylight);
     this.continents.update(t, this.camera.position);
     this.syncCargo();
