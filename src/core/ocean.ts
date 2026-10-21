@@ -494,16 +494,21 @@ void main() {
   vec3 refl = mix(uSkyColor, uZenithColor, pow(ry, 0.55));
   // шорстка вода відбиває небо розмито (без шовкових смуг)
   refl = mix(refl, mix(uSkyColor, uZenithColor, 0.45), rough * 0.75);
+  // «тінь у повітрі» в напрямку погляду (та сама, що в небі): під фронтом і стелею
+  // обрій темний — і у відбитті, і в серпанку, без світлої смуги над водою
+  // лише вдалині (поблизу ні туману, ні відбиття обрію) — дешевше
+  float airO = dist > 120.0 ? airOcc(uCamPos.xz, normalize(vWorldPos.xz - uCamPos.xz + 1e-4), clamp(dist * 3.0, 600.0, 18000.0)) : 0.0;
+  refl = mix(refl, uCAir * 1.1, airO * (1.0 - ry) * 0.8);
   // хмари у відбитті: стовпчик густини там, де відбитий промінь перетинає шар
   // (рівніша нормаль і розмитий шум: інакше кожна хвиля «мармурить» відбиття)
   vec3 Rc = reflect(-V, normalize(mix(vec3(0.0, 1.0, 0.0), Nm, 0.3)));
   if (Rc.y > 0.03) {
-    float ch = mix(uCloudLayer.x, uCloudLayer.y, 0.3) - vWorldPos.y;
+    float ch = uCloudBase0 + 300.0 - vWorldPos.y;
     vec2 cq = vWorldPos.xz + Rc.xz / Rc.y * ch;
     float cDist = ch / Rc.y;
     vec3 ccv = cloudCoverAt(cq);
     vec2 cuv = cloudUV(cq);
-    float cs = texture2D(uCloudNoise, cuv, 2.5).r * 0.62 + texture2D(uCloudNoise, cuv * 2.7 + vec2(0.37, 0.11), 2.5).a * 0.38;
+    float cs = texture2D(uCloudNoise, cuv, 2.5).r * 0.62 + texture2D(uCloudNoise, mat2(0.866, 0.5, -0.5, 0.866) * cuv * 2.7 + vec2(0.37, 0.11), 2.5).a * 0.38;
     float ca = smoothstep(-0.04, 0.22, cs - (1.0 - ccv.r)) * (1.0 - smoothstep(5000.0, 14000.0, cDist));
     vec3 ccol = mix(mix(uCShade, uCLit, 0.55 + 0.25 * Rc.y), uCStorm, ccv.g);
     ccol = mix(ccol, uSkyColor, smoothstep(2500.0, 14000.0, cDist) * 0.6);
@@ -701,7 +706,7 @@ void main() {
 
   // Димка відстані
   float fogF = 1.0 - exp(-dist * dist * uFogDensity * uFogDensity);
-  col = mix(col, uFogColor, clamp(fogF, 0.0, 1.0));
+  col = mix(col, mix(uFogColor, uCAir, airO * 0.85), clamp(fogF, 0.0, 1.0));
 
   // ледь помітний дизеринг: плавні градієнти глибини й неба без смуг (8 біт на канал)
   col += (hash(gl_FragCoord.xy + fract(uTime) * 61.0) - 0.5) / 255.0;
