@@ -718,7 +718,8 @@ export class MapView {
         continue;
       }
       // гавані — якір; назву знають і до відвідин (чутки моряків), відкриті — яскраві
-      if (l.id.startsWith('port-')) {
+      // гавані й маленькі бухти континентів (cove-)
+      if (l.id.startsWith('port-') || l.id.startsWith('cove-')) {
         c.beginPath();
         c.arc(px, pz, 10, 0, Math.PI * 2);
         c.fillStyle = found ? '#2a3a46' : 'rgba(42,58,70,0.35)';

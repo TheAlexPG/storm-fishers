@@ -40,7 +40,7 @@ const OW = Math.ceil((WORLD.W1 - WORLD.W0) / OM), OH = Math.ceil((WORLD.H1 - WOR
 const ZOOMS = [0.45, 0.2, 0.075];
 const ZOOM_KEY = 'storm-minimap-zoom';
 
-const PORTS = LANDMARKS.filter((l) => l.id.startsWith('port-'));
+const PORTS = LANDMARKS.filter((l) => l.id.startsWith('port-') || l.id.startsWith('cove-'));
 const CONTS = LANDMARKS.filter((l) => l.id.startsWith('cont-'));
 const REFUGES = ISLANDS.filter((d) => d.kind === 'refuge');
 /** пам'ятки в морі (не гавані, континенти, рибні місця чи острови) */

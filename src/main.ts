@@ -1449,7 +1449,8 @@ class Game {
       tip: (() => {
         const zone = zoneFromDist(seaDist(this.boat.pos.x, this.boat.pos.z));
         const night = this.time.isNight;
-        const here = fishPoolAt(this.boat.pos.x, this.boat.pos.z, zone).filter((f) => (night ? f.night : f.day)).map((f) => f.name.toLowerCase());
+        // місцеві види — першими (біля континенту саме вони цікаві)
+        const here = fishPoolAt(this.boat.pos.x, this.boat.pos.z, zone).filter((f) => (night ? f.night : f.day)).sort((a, b) => (b.regions ? 1 : 0) - (a.regions ? 1 : 0)).map((f) => f.name.toLowerCase());
         return here.length ? L(`${night ? L('Ніч', `Night`) : L('День', `Day`)} · ${ZONE_NAMES[zone]}: тут зараз ловиться ${here.join(', ')}`, `${night ? L('Ніч', `Night`) : L('День', `Day`)} · ${ZONE_NAMES[zone]}: biting here now — ${here.join(', ')}`) : '';
       })(),
     };

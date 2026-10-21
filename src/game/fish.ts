@@ -92,8 +92,8 @@ export const SCHOOL_SPOTS: SchoolSpot[] = [
   SPOT({ id: 'sch-n-south', name: L('південна банка', `the southern bank`), region: 'north', x: -3720, z: 4060 }),
   SPOT({ id: 'sch-n-nw', name: L('північно-західний свал', `the northwest drop-off`), region: 'north', x: -4660, z: 1500 }),
   // Великий океан
-  SPOT({ id: 'sch-oc-west', name: L('океан між домом і Північчю', `the ocean between home and the North`), region: 'ocean', x: -1360, z: 2420 }),
-  SPOT({ id: 'sch-oc-east', name: L('океан між домом і Лазуровим', `the ocean between home and the Azure Coast`), region: 'ocean', x: 1380, z: 2640 }),
+  SPOT({ id: 'sch-oc-west', name: L('західний океан', `the western ocean`), region: 'ocean', x: -1360, z: 2420 }),
+  SPOT({ id: 'sch-oc-east', name: L('східний океан', `the eastern ocean`), region: 'ocean', x: 1380, z: 2640 }),
   SPOT({ id: 'sch-oc-south', name: L('південний океан', `the southern ocean`), region: 'ocean', x: 160, z: 3640 }),
 ];
 export const SCHOOL_BY_ID: Record<string, SchoolSpot> = Object.fromEntries(SCHOOL_SPOTS.map((s) => [s.id, s]));
