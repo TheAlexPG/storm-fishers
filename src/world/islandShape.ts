@@ -68,7 +68,7 @@ export const ISLANDS: IslandDef[] = [...RAW_ISLANDS.map((d) => ({ ...d, x: Math.
 for (const d of FAR_ISLANDS) if (d.kind === 'refuge') addHaven({ x: d.x, z: d.z, r: 320, name: d.name });
 
 /** найдовший радіус з урахуванням витягнутості й шуму берега (+ підводний схил) */
-const reach = (d: IslandDef) => d.r * Math.sqrt(d.elong) * 1.3 + 14;
+const reach = (d: IslandDef) => d.r * Math.sqrt(d.elong) * 1.3 + 46;
 
 /** локальні координати острова: (u — уздовж довгої осі, v — поперек), відстань «у радіусах» */
 function local(d: IslandDef, x: number, z: number) {
@@ -91,7 +91,8 @@ export function islandInside(d: IslandDef, x: number, z: number): number {
 /** висота одного острова (дуже глибоко — далеко від нього) */
 export function islandHeightOf(d: IslandDef, x: number, z: number): number {
   const s = islandInside(d, x, z);
-  if (s < 0) return Math.max(-9, s * 0.5); // крутий підводний схил: кіль сідає за ~2.5 м від води
+  // крутий підводний схил: кіль сідає за ~2.5 м від води; до −12 (як навколишнє море) — без квадратних «мілин» на межі
+  if (s < 0) return Math.max(-12, s * 0.5);
   // пляж (пологий), далі — пагорб до вершини з горбиками
   const beach = Math.min(s, 9) * 0.13;
   const hill = smoothstep(8, 8 + d.r * 0.65, s) * (d.peak - 1.1) * (0.75 + 0.5 * fbm(x * 0.05 + d.seed, z * 0.05 - d.seed, 3));

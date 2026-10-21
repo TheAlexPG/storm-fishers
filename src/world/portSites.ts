@@ -284,7 +284,7 @@ export function siteServices(p: PortSite): PortService[] {
 }
 
 /** охоплення суходолу (для швидких відсічок) */
-const reach = (p: PortSite) => p.R * Math.sqrt(p.elong) * 1.7 + 30;
+const reach = (p: PortSite) => p.R * Math.sqrt(p.elong) * 1.7 + 52;
 
 /** висота суходолу одного порту */
 export function siteHeight(p: PortSite, x: number, z: number): number {
@@ -301,7 +301,8 @@ export function siteHeight(p: PortSite, x: number, z: number): number {
   const k = 1 + (fbm(Math.cos(ang) * 1.3 + p.seed, Math.sin(ang) * 1.3 - p.seed, 3) - 0.5) * 0.45;
   const s = p.R * k - dist;
   let h: number;
-  if (s < 0) h = Math.max(-9, s * 0.5);
+  // до −12 (як навколишнє море): без квадратної «мілини» на межі bbox
+  if (s < 0) h = Math.max(-12, s * 0.5);
   else {
     const beach = Math.min(s, 9) * 0.14;
     const hill = smoothstep(10, 10 + p.R * 0.6, s) * (p.peak - 1.2) * (0.7 + 0.6 * fbm(x * 0.04 + p.seed, z * 0.04 - p.seed, 3));

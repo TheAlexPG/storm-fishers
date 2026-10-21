@@ -12,14 +12,110 @@ import { islandHeight } from './islandShape';
 export const GROUND_Y = 1.6;
 export const PLATEAU = { x0: -60, x1: 60, z0: -130, z1: -40 };
 
-const EXT_X = 470;
-const EXT_Z0 = -20;
-const EXT_Z1 = -740;
+/** межі сітки рельєфу рідного острова (з запасом під миси й косу) */
+const EXT_X = 600;
+const EXT_Z0 = 20;
+const EXT_Z1 = -900;
 
-/** лінія берега за межами набережної — плавно відступає вглиб (бухта) */
+/** лінія берега біля гавані — плавно відступає вглиб (бухта); далі берег задає форма острова */
 export function coastZ(x: number): number {
   const a = Math.max(0, Math.abs(x) - 60);
   return -40 - 0.12 * a - 0.0016 * a * a;
+}
+
+// ── форма острова: плавно злиті еліпси й капсули + викривлення шумом (органічний берег) ──
+function sdEllipse(x: number, z: number, cx: number, cz: number, rx: number, rz: number, rot: number): number {
+  const dx = x - cx, dz = z - cz;
+  const c = Math.cos(rot), s = Math.sin(rot);
+  const u = dx * c - dz * s, v = dx * s + dz * c;
+  return (1 - Math.hypot(u / rx, v / rz)) * Math.min(rx, rz);
+}
+function sdCapsule(x: number, z: number, ax: number, az: number, bx: number, bz: number, r: number): number {
+  const px = x - ax, pz = z - az, vx = bx - ax, vz = bz - az;
+  const t = Math.max(0, Math.min(1, (px * vx + pz * vz) / (vx * vx + vz * vz)));
+  return r - Math.hypot(px - vx * t, pz - vz * t);
+}
+/** плавне об'єднання (додатне — всередині) */
+function smax(a: number, b: number, k: number): number {
+  const h = Math.max(0, Math.min(1, 0.5 + (0.5 * (a - b)) / k));
+  return b + (a - b) * h + k * h * (1 - h);
+}
+/** плавне вирізання */
+function smin(a: number, b: number, k: number): number {
+  return -smax(-a, -b, k);
+}
+
+/** острівці-скелі біля берега: x, z, радіус, висота */
+const STACKS: Array<[number, number, number, number]> = [
+  [468, -46, 13, 11],
+  [503, -98, 8, 15],
+  [444, -8, 6, 6],
+  [-575, -262, 14, 7],
+  [-345, -858, 22, 13],
+  [272, -820, 15, 18],
+  [-585, -560, 11, 9],
+  [560, -470, 12, 10],
+];
+
+function isleShape(x: number, z: number): number {
+  // викривлення простору шумом — береги звивисті, без «циркульних» дуг
+  const wx = x + (fbm(x * 0.0042 + 3.1, z * 0.0042 - 1.7, 3) - 0.5) * 110;
+  const wz = z + (fbm(x * 0.0042 - 8.3, z * 0.0042 + 5.9, 3) - 0.5) * 110;
+  // тіло острова
+  let d = sdEllipse(wx, wz, -10, -400, 330, 250, -0.12);
+  // скелястий мис на південному сході — прикриває гавань від океану
+  d = smax(d, sdEllipse(wx, wz, 300, -175, 165, 82, 0.62), 70);
+  // північно-західна й північно-східна частини (хребет)
+  d = smax(d, sdEllipse(wx, wz, -300, -560, 175, 125, 0.35), 90);
+  d = smax(d, sdEllipse(wx, wz, 250, -585, 165, 120, -0.3), 90);
+  // піщана коса на заході: дуга з двох капсул
+  d = smax(d, sdCapsule(wx, wz, -290, -235, -470, -185, 34), 45);
+  d = smax(d, sdCapsule(wx, wz, -470, -185, -590, -100, 22), 30);
+  // глибока північна затока (долина спускається до неї)
+  d = smin(d, -sdCapsule(wx, wz, -40, -905, -15, -620, 55), 40);
+  // північно-східна бухта й східна бухточка з пляжем
+  d = smin(d, -sdEllipse(wx, wz, 470, -390, 120, 90, 0.4), 50);
+  d = smin(d, -sdEllipse(wx, wz, -455, -400, 85, 70, 0), 40);
+  // дрібна порізаність берега
+  return d + (fbm(x * 0.03 + 11, z * 0.03 - 7, 2) - 0.5) * 16;
+}
+
+/** «внутрішня» відстань від берега рідного острова, м (>0 — суша); біля гавані — стара бухта */
+export function homeInland(x: number, z: number): number {
+  const sShape = isleShape(x, z);
+  // гавань «Шторм» і пляжі обабіч — точно як раніше
+  const wf = smoothstep(260, 170, Math.abs(x)) * smoothstep(-320, -210, z);
+  if (wf <= 0) return sShape;
+  const sFront = coastZ(x) - z;
+  return sShape + (sFront - sShape) * wf;
+}
+
+/** наскільки берег тут скелястий (0..1): мис на південному сході, північно-західний край, мисок між затоками */
+function cliffness(x: number, z: number): number {
+  const e = (cx: number, cz: number, r: number) => Math.max(0, 1 - Math.hypot(x - cx, z - cz) / r);
+  return Math.min(1, smoothstep(0, 0.5, e(380, -150, 200)) + smoothstep(0, 0.5, e(-430, -680, 220)) + smoothstep(0, 0.5, e(150, -760, 160)));
+}
+
+/** гавань: днище −4.5 м перед набережною, далі плавно до глибокого моря (без прямих країв) */
+function harbourFloor(x: number, z: number): number {
+  // еліпс гавані з нерівним краєм (без «циркульного» кола на лоції)
+  const q = Math.hypot(x / 88, (z - 15) / 90) * (0.85 + 0.3 * fbm(x * 0.012 + 5, z * 0.012 - 3, 2));
+  return -4.5 - 3 * smoothstep(1, 1.25, q) - 4.5 * smoothstep(1.15, 1.55, q);
+}
+
+/** острівці-скелі (і для колізії яхти — це рельєф) */
+function stacksHeight(x: number, z: number): number {
+  let h = -99;
+  for (const [sx, sz, r, pk] of STACKS) {
+    const ddx = x - sx, ddz = z - sz;
+    if (Math.abs(ddx) > r * 2.6 || Math.abs(ddz) > r * 2.6) continue;
+    const a = Math.atan2(ddz, ddx);
+    const rr = r * (0.8 + 0.4 * noise2(Math.cos(a) * 2 + sx, Math.sin(a) * 2 + sz));
+    const d = Math.hypot(ddx, ddz) / rr;
+    const v = d < 1 ? pk * Math.pow(1 - d * d, 0.6) * (0.8 + 0.4 * fbm(x * 0.2, z * 0.2, 2)) : -(d - 1) * rr * 0.55;
+    h = Math.max(h, v);
+  }
+  return h;
 }
 
 /** висота землі (світові координати) */
@@ -28,41 +124,40 @@ export function terrainHeight(x: number, z: number): number {
   // заглиблення під сходи з причалу на набережну
   if (ax <= 25 && z <= PLATEAU.z1 && z >= -41.55) return 1.1;
   if (ax <= PLATEAU.x1 && z >= PLATEAU.z0 && z <= PLATEAU.z1) return GROUND_Y;
-  // дно перед набережною (гавань); далі в морі — глибшає, і там можуть бути
-  // острови та суходоли інших портів (раніше смуга до краю мапи їх «стирала»)
-  if (ax <= PLATEAU.x1 && z > PLATEAU.z1) {
-    // за гаванню — плавно до глибокого моря (−12), інакше мілка смуга тяглася до краю світу
-    const h = -4.5 - 2.5 * smoothstep(PLATEAU.z1 + 120, PLATEAU.z1 + 260, z) - 5 * smoothstep(PLATEAU.z1 + 300, PLATEAU.z1 + 700, z);
-    return z < PLATEAU.z1 + 120 ? h : Math.max(h, islandHeight(x, z));
+  // гавань перед набережною — рівне днище, як раніше
+  if (ax <= PLATEAU.x1 && z > PLATEAU.z1 && z < PLATEAU.z1 + 120) return -4.5;
+  // далеко від рідного острова — глибоке море + острови/континенти
+  if (ax >= EXT_X + 60 || z <= EXT_Z1 - 60 || z > 260) return Math.max(-12, stacksHeight(x, z), islandHeight(x, z));
+  const s = homeInland(x, z);
+  // берег: пологий пляж, далі — крутіший схил; на мисах — скелі
+  const cl = cliffness(x, z);
+  const shore = -3.2 + s * (0.3 + cl * 1.6) + Math.max(0, s - 14) * 0.55 + (fbm(x * 0.05, z * 0.05, 2) - 0.5) * 1.0;
+  let h: number;
+  if (s < -40) {
+    // у морі рельєф суходолу не потрібен
+    h = Math.max(-12, shore);
+  } else {
+    const dx = Math.max(0, ax - PLATEAU.x1);
+    const dz = Math.max(0, PLATEAU.z0 - z, z - PLATEAU.z1);
+    const d = Math.hypot(dx, dz);
+    // пагорби довкола плато
+    const n = fbm(x * 0.006 + 3.3, z * 0.006 - 5.1, 4);
+    let H = GROUND_Y + smoothstep(3, 70, d) * (5 + 34 * n);
+    // гірський хребет уздовж острова (з заходу на схід), вершини — шумом
+    const ridgeZ = -470 + 70 * Math.sin(x * 0.006 + 0.8) - 0.12 * x;
+    const rd = (z - ridgeZ) / 150;
+    const ridgeN = fbm(x * 0.0045 - 7, z * 0.0045 + 2, 3);
+    // за гаванню (ближче z −170) — пагорби як були, хребет починається далі
+    H += smoothstep(30, 210, s) * smoothstep(-170, -330, z) * (30 + 48 * Math.exp(-rd * rd)) * (0.55 + 0.9 * ridgeN);
+    // долина від плато на північ, до затоки
+    const vx = -30 + 45 * Math.sin(z * 0.009);
+    const vd = (x - vx) / 70;
+    H -= smoothstep(-200, -330, z) * 30 * Math.exp(-vd * vd);
+    h = Math.min(Math.max(GROUND_Y + 0.4, H), shore);
   }
-  // поза домашнім берегом (край мапи тоне в морі) — одразу глибоке море + острови/континенти
-  if (ax >= EXT_X || z <= EXT_Z1) return Math.max(-12, islandHeight(x, z));
-  // далеко в морі перед берегом рельєф суходолу не потрібен (min(H, shore) = shore): без дорогого шуму
-  const sFar = coastZ(x) - z;
-  if (sFar < -40) {
-    const e = smoothstep(EXT_X, EXT_X - 170, ax) * smoothstep(EXT_Z1, EXT_Z1 + 160, z);
-    return Math.max(-12 + (-3.2 + sFar * 0.3 + (fbm(x * 0.05, z * 0.05, 2) - 0.5) + 12) * e, islandHeight(x, z));
-  }
-  const dx = Math.max(0, ax - PLATEAU.x1);
-  const dz = Math.max(0, PLATEAU.z0 - z, z - PLATEAU.z1);
-  const d = Math.hypot(dx, dz);
-  // пагорби довкола плато + гірський хребет далі вглиб
-  const n = fbm(x * 0.006 + 3.3, z * 0.006 - 5.1, 4);
-  const ridge = fbm(x * 0.0032 - 7, z * 0.0032 + 2, 3);
-  const H =
-    GROUND_Y +
-    smoothstep(3, 70, d) * (5 + 34 * n) +
-    smoothstep(40, 330, -z + PLATEAU.z0) * (22 + 55 * ridge);
-  // берег: пологий пляж, далі — крутіший схил
-  const s = coastZ(x) - z;
-  const shore = -3.2 + s * 0.3 + Math.max(0, s - 14) * 0.55 + (fbm(x * 0.05, z * 0.05, 2) - 0.5) * 1.0;
-  let h = Math.min(H, shore);
-  // краї мапи тонуть у морі (острів, а не обрізаний край); далі — глибоке море
-  // (−12 м: не «мілина» для прибою й хвиль, коли мапа дна покриває весь світ)
-  const e = smoothstep(EXT_X, EXT_X - 170, ax) * smoothstep(EXT_Z1, EXT_Z1 + 160, z);
-  h = -12 + (h + 12) * e;
-  // острови в морі (islandShape.ts)
-  return Math.max(h, islandHeight(x, z));
+  // у воді біля гавані дно не глибше за днище гавані (рівний підхід, без прямих країв)
+  if (h < 0) h = Math.max(h, harbourFloor(x, z));
+  return Math.max(h, -12, stacksHeight(x, z), islandHeight(x, z));
 }
 
 const C = (hex: number) => new THREE.Color(hex);
@@ -119,15 +214,15 @@ export function buildTerrain(parent: THREE.Object3D): THREE.Mesh {
         // витоптані плями біля будинків
         tmp.lerp(COL.dirt, smoothstep(0.6, 0.78, fbm(x * 0.05 + 2, z * 0.05 - 1, 2)) * 0.55);
       } else {
-        const s = coastZ(x) - z;
+        const s = homeInland(x, z);
         // пісок біля води
         const sandy = smoothstep(2.6, 1.3, h) * smoothstep(40, 18, s);
         tmp.lerp(COL.sand, sandy);
         if (h < 0.35) tmp.copy(COL.wetSand).lerp(COL.seabed, smoothstep(0.2, -2.5, h));
         // скелі на крутих схилах і високо в горах
-        const rocky = Math.max(smoothstep(0.45, 0.85, slope), smoothstep(45, 75, h) * 0.8);
+        const rocky = Math.max(smoothstep(0.45, 0.85, slope), smoothstep(62, 95, h) * 0.55);
         tmp.lerp(noise2(x * 0.1, z * 0.1) > 0.5 ? COL.rock : COL.rockDark, rocky);
-        tmp.lerp(COL.snowy, smoothstep(70, 95, h) * 0.6);
+        tmp.lerp(COL.snowy, smoothstep(88, 110, h) * 0.5);
       }
       col[k * 3] = tmp.r;
       col[k * 3 + 1] = tmp.g;
