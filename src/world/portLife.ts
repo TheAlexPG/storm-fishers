@@ -193,10 +193,7 @@ export class PortLife {
       n++;
     }
     mesh.count = n;
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    mesh.computeBoundingSphere();
-    this.group.add(mesh);
+    this.addTiles(mesh, 300, 450);
 
     // польові квіти
     const fGeo = new THREE.IcosahedronGeometry(0.045, 0);
@@ -232,10 +229,62 @@ export class PortLife {
       }
     }
     flowers.count = k;
-    flowers.instanceMatrix.needsUpdate = true;
-    if (flowers.instanceColor) flowers.instanceColor.needsUpdate = true;
-    flowers.computeBoundingSphere();
-    this.group.add(flowers);
+    this.addTiles(flowers, 220, 330);
+  }
+
+  /**
+   * Розкласти інстанси по клітинках 40×40 м: кожна клітинка — окремий InstancedMesh
+   * (та сама геометрія й матеріал, ті самі матриці й кольори), тож за кадром її не
+   * малюємо (раніше одна межа на весь порт — трава малювалась завжди, навіть позаду).
+   * Далеко клітинка плавно рідшає (near…far м): пучок там менший за пів пікселя й у тумані.
+   * Порядок інстансів випадковий, тож перші k — рівномірна вибірка.
+   */
+  private addTiles(src: THREE.InstancedMesh, near: number, far: number) {
+    const CELL = 40;
+    const buckets = new Map<string, number[]>();
+    const m = new THREE.Matrix4();
+    for (let i = 0; i < src.count; i++) {
+      src.getMatrixAt(i, m);
+      const key = `${Math.floor(m.elements[12] / CELL)},${Math.floor(m.elements[14] / CELL)}`;
+      let b = buckets.get(key);
+      if (!b) buckets.set(key, (b = []));
+      b.push(i);
+    }
+    const c = new THREE.Color();
+    for (const ids of buckets.values()) {
+      const t = new THREE.InstancedMesh(src.geometry, src.material, ids.length);
+      t.receiveShadow = src.receiveShadow;
+      t.castShadow = src.castShadow;
+      ids.forEach((id, k) => {
+        src.getMatrixAt(id, m);
+        t.setMatrixAt(k, m);
+        if (src.instanceColor) {
+          src.getColorAt(id, c);
+          t.setColorAt(k, c);
+        }
+      });
+      t.instanceMatrix.needsUpdate = true;
+      if (t.instanceColor) t.instanceColor.needsUpdate = true;
+      t.computeBoundingSphere();
+      t.computeBoundingBox();
+      this.group.add(t);
+      const s = t.boundingSphere!;
+      this.tiles.push({ mesh: t, full: ids.length, x: s.center.x, z: s.center.z, r: s.radius, near, far });
+    }
+    src.dispose();
+  }
+
+  private tiles: Array<{ mesh: THREE.InstancedMesh; full: number; x: number; z: number; r: number; near: number; far: number }> = [];
+
+  /** далекі клітинки трави й квітів рідшають, за far — не малюються */
+  private thin(cam: THREE.Vector3) {
+    for (const t of this.tiles) {
+      const d = Math.max(0, Math.hypot(cam.x - t.x, cam.z - t.z) - t.r);
+      const f = d <= t.near ? 1 : d >= t.far ? 0 : 1 - (d - t.near) / (t.far - t.near);
+      const n = Math.round(t.full * f);
+      t.mesh.count = n;
+      t.mesh.visible = n > 0;
+    }
   }
 
   // ───────────── мешканці ─────────────
@@ -373,8 +422,9 @@ export class PortLife {
     this.night = night;
   }
 
-  update(dt: number, t: number) {
+  update(dt: number, t: number, cam?: THREE.Vector3) {
     this.uTime.value = t;
+    if (cam) this.thin(cam);
     for (const p of this.people) {
       const br = Math.sin(t * 1.4 + p.phase);
       p.torso.scale.y = 1 + br * 0.008;

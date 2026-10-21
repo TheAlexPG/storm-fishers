@@ -1452,8 +1452,8 @@ export class Port {
     this.beamMat.opacity = night * 0.32;
   }
 
-  update(dt: number, t: number) {
-    this.life.update(dt, t);
+  update(dt: number, t: number, cam?: THREE.Vector3) {
+    this.life.update(dt, t, cam);
     // прожектор маяка обертається
     this.beaconPhase += dt * 0.7;
     this.lighthouseLight.target.position.set(Math.cos(this.beaconPhase) * 60, 0, Math.sin(this.beaconPhase) * 60);

@@ -2852,7 +2852,7 @@ class Game {
 
     // порт
     this.port.setNight(1 - time.daylight);
-    this.port.update(simDt, t);
+    this.port.update(simDt, t, this.camera.position);
     this.ports.setNight(1 - time.daylight);
     this.ports.update(t, this.camera.position);
     this.continents.setNight(1 - time.daylight);
