@@ -406,6 +406,35 @@ export class AudioEngine {
     }
   }
 
+  /** мандоліна (Порто-Аццурро): нота з тремоло — три швидкі щипки, що згасають */
+  mandolin(vol: number, hz: number) {
+    const ctx = this.ensure();
+    if (!ctx || !this.master || vol <= 0.01) return;
+    const t0 = ctx.currentTime;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 2600;
+    lp.connect(this.master);
+    for (let k = 0; k < 3; k++) {
+      const t = t0 + k * 0.075;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.045 * vol * (1 - k * 0.22), t + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+      g.connect(lp);
+      // дві струни в парі (мандоліна — подвійні хори), трохи розлаштовані
+      for (const det of [-4, 4]) {
+        const o = ctx.createOscillator();
+        o.type = 'triangle';
+        o.frequency.value = hz;
+        o.detune.value = det;
+        o.connect(g);
+        o.start(t);
+        o.stop(t + 0.32);
+      }
+    }
+  }
+
   // радіо в каюті: ефір, голос, музичні станції (core/radioAudio.ts)
   private radioOut: RadioAudio | null = null;
   radio(st: RadioAudioState, dt: number) {

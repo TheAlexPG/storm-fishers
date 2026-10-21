@@ -1,4 +1,5 @@
 import { bakeryHtml, eatPastry, ostapLine, petCat } from './ui/bakery';
+import { gelatoHtml as gelateriaHtml, eatGelato } from './ui/gelato';
 import * as THREE from 'three';
 import { Input } from './core/input';
 import { installFastMatrix } from './core/fastMatrix';
@@ -382,6 +383,7 @@ class Game {
     // Гавань Зорі: дзвін каплиці й репліки мешканців
     this.ports.onBell = (v) => this.audio.bell(v * 0.9, 262);
     this.ports.onSay = (s) => this.hud.toast(s, 'good', 4500);
+    this.ports.onMandolin = (v, hz) => this.audio.mandolin(v, hz);
     this.continents = new ContinentScenery(this.scene);
     this.traders = new Traders(this.scene, glowTex());
     this.moorDock = this.port.quay;
@@ -542,6 +544,8 @@ class Game {
     PORT_SERVICE_HANDLERS.gelato = () => this.openGelato();
     // «Остання крамниця перед океаном» на китобійні (portSites: svc 'whalerstore')
     PORT_SERVICE_HANDLERS.whalerstore = () => this.openKrayStore();
+    // джелатерія «Стелла» Порто-Аццурро (portSites: svc 'gelateria')
+    PORT_SERVICE_HANDLERS.gelateria = () => this.openGelateria();
 
     this.reticle = document.createElement('div');
     this.reticle.id = 'reticle';
@@ -2731,6 +2735,22 @@ class Game {
         this.audio.click();
         this.saveGame();
         this.openKrayStore(msg);
+      }));
+    });
+  }
+
+  /** Джелатерія «Стелла» (Порто-Аццурро): морозиво з бафами */
+  private openGelateria(note = '') {
+    this.phase = 'dialog';
+    this.expectUnlock = true;
+    document.exitPointerLock();
+    this.dialogs.custom(gelateriaHtml(this.game, note), 'shop cargo', (panel) => {
+      panel.querySelectorAll<HTMLElement>('[data-scoop]').forEach((b) => b.addEventListener('click', () => {
+        const msg = eatGelato(this.game, b.dataset.scoop!);
+        if (!msg) return;
+        this.audio.click();
+        this.saveGame();
+        this.openGelateria(msg);
       }));
     });
   }
