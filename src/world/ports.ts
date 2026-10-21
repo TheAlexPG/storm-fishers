@@ -7,6 +7,7 @@ import type { Platform, Solid } from './port';
 import { mergeStatic } from './staticMerge';
 import { buildKutVillage, type VillageLife } from './kutVillage';
 import { ZORYA_ID, ZoryaLife, buildZoryaStatic, zoryaPlan, type TownCtx } from './zoryaTown';
+import { KRAY_ID, KrayLife, buildKrayStatic, type KrayCtx, type KrayPlan } from './krayStation';
 
 // ─────────────────────────────────────────────────────────────
 // Інші гавані світу (дані — portSites.ts): суходіл, кам'яна набережна,
@@ -97,6 +98,8 @@ interface Built {
   life?: VillageLife;
   /** живе містечко (Гавань Зорі): мешканці, дзвін, прапорці */
   zorya?: ZoryaLife;
+  /** китобійня «Край світу»: мешканці, хаскі, вимпел, дим */
+  kray?: KrayLife;
 }
 
 export class Ports {
@@ -404,6 +407,11 @@ export class Ports {
       life = buildKutVillage({ p, g, batch, M, H, platforms, solids, rng, lampPost: (x, z, y0) => this.lampPost(batch, g, x, z, y0), glow: (x, y, z, s) => this.glow(g, x, y, z, s) });
     }
     if (zPlan) buildZoryaStatic(town, zPlan);
+    // ── Китобійня «Край світу»: сліп, котли, бочки, гарпуни, ребра кита (krayStation.ts) ──
+    const kCtx: KrayCtx | null = p.id === KRAY_ID
+      ? { p, g, batch, M: M as unknown as KrayCtx['M'], rng, H, platforms, solids, lampPost: (x, z, y0) => this.lampPost(batch, g, x, z, y0), glow: (x, y, z, s) => this.glow(g, x, y, z, s) }
+      : null;
+    const kPlan: KrayPlan | null = kCtx ? buildKrayStatic(kCtx) : null;
 
     // ── злити ──
     batch.build(g);
@@ -421,8 +429,14 @@ export class Ports {
       zorya.onSay = (s) => this.onSay?.(s);
       g.add(zorya.group);
     }
+    let kray: KrayLife | undefined;
+    if (kCtx && kPlan) {
+      kray = new KrayLife(kCtx, kPlan);
+      kray.onSay = (s) => this.onSay?.(s);
+      g.add(kray.group);
+    }
     this.group.add(g);
-    return { site: p, group: g, lantern, lanternPos, phase: rng() * 6, life, zorya };
+    return { site: p, group: g, lantern, lanternPos, phase: rng() * 6, life, zorya, kray };
   }
 
   /** точка для маяка: на краю суходолу поруч із гаванню, на сухому */
@@ -635,6 +649,7 @@ export class Ports {
     this.lastT = t;
     for (const b of this.built) {
       b.life?.update(dt, t, cam, this.night);
+      b.kray?.update(dt, t, cam, this.night);
       const d = Math.hypot(cam.x - b.site.x, cam.z - b.site.z);
       // далеко за туманом — не малюємо (вогник маяка лишається видно)
       b.group.visible = d < 1500;

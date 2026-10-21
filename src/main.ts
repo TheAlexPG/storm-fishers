@@ -96,6 +96,8 @@ import { Traders } from './world/traders';
 import { glowTex } from './world/textures';
 import { cargoHtml, bindCargo, baseHtml } from './ui/cargoBoard';
 import { baitHtml, bindBait } from './ui/baitShop';
+import { krayStoreHtml, takeRation } from './ui/krayStore';
+import { krayFog } from './world/krayStation';
 import { chartOffers, chartmakerHtml, bindChartmaker } from './ui/chartmaker';
 import { GOODS_BY_ID, DOCK_BY_ID, cargoSlots, dockName, type CargoOrder } from './game/cargo';
 import { continentRegion } from './world/continents';
@@ -533,6 +535,8 @@ class Game {
     PORT_SERVICE_HANDLERS.bait = () => this.openBait();
     // картограф Гавані Зорі (portSites: svc 'chartmaker')
     PORT_SERVICE_HANDLERS.chartmaker = () => this.openChartmaker();
+    // «Остання крамниця перед океаном» на китобійні (portSites: svc 'whalerstore')
+    PORT_SERVICE_HANDLERS.whalerstore = () => this.openKrayStore();
 
     this.reticle = document.createElement('div');
     this.reticle.id = 'reticle';
@@ -2710,6 +2714,22 @@ class Game {
 
   /** склад гавані: накладні, здати, відмовитись */
   /** пекарня «Тепла скоринка»: випічку з'їдаєш одразу — енергія й бафи */
+  /** «Остання крамниця перед океаном» (Китобійня «Край світу»): провізія з бафами */
+  private openKrayStore(note = '') {
+    this.phase = 'dialog';
+    this.expectUnlock = true;
+    document.exitPointerLock();
+    this.dialogs.custom(krayStoreHtml(this.game, note), 'shop cargo', (panel) => {
+      panel.querySelectorAll<HTMLElement>('[data-ration]').forEach((b) => b.addEventListener('click', () => {
+        const msg = takeRation(this.game, b.dataset.ration!);
+        if (!msg) return;
+        this.audio.click();
+        this.saveGame();
+        this.openKrayStore(msg);
+      }));
+    });
+  }
+
   private openBakery(note = '') {
     this.dialogs.custom(bakeryHtml(this.game, note), 'shop cargo', (panel) => {
       panel.querySelectorAll<HTMLElement>('[data-pastry]').forEach((b) => b.addEventListener('click', () => {
@@ -2859,7 +2879,9 @@ class Game {
     // клімат континенту: на Півночі частіше туман, на Лазуровому узбережжі — прозоре повітря
     const cp = this.camera.position;
     const cl = climate(cp.x, cp.z);
-    return (base + storm) * (1 + cl.north * (0.55 + 0.45 * Math.sin(this.simTime * 0.011)) - cl.med * 0.18);
+    // «Край світу»: холодна вода відкритого океану — туман сідає частіше й густіше
+    const kf = krayFog(cp.x, cp.z) * (0.3 + 0.55 * Math.max(0, Math.sin(this.simTime * 0.0085 + 2.1)));
+    return (base + storm) * (1 + cl.north * (0.55 + 0.45 * Math.sin(this.simTime * 0.011)) - cl.med * 0.18 + kf);
   }
 
   private render() {

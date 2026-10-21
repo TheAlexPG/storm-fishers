@@ -140,6 +140,7 @@ const RAW_SITES: PortSite[] = [
       { kind: 'fuel', a: -3, b: 12, name: L('Цистерна', `Fuel tank`), icon: '⛽', label: L('Цистерна — пальне (дороге: край світу)', `Fuel tank — fuel (expensive: it's the world's end)`) },
       { kind: 'exchange', a: -5, b: -8, name: L('Скупка', `Buyer`), icon: '🐟', label: L('Скупка китобійні — трофеї відкритого моря дорого', `Whaling station buyer — open-sea trophies fetch a lot`) },
       { kind: 'yard', a: -12, b: 4, name: L('Слип', `Slipway`), icon: '🔧', label: L('Слип китобійні — ремонт (дорого)', `Whaling station slipway — repairs (expensive)`) },
+      { kind: 'whalerstore', a: -4, b: 21, name: L('Остання крамниця', `The Last Store`), icon: '🥫', label: L('Остання крамниця перед океаном — провізія на довгий перехід (бафи)', `The Last Store before the ocean — provisions for a long passage (buffs)`) },
     ],
   },
 ];
