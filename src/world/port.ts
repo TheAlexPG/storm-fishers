@@ -39,7 +39,7 @@ export interface Platform {
 }
 
 export interface PortPoint {
-  id: 'shop' | 'fuel' | 'repair' | 'house' | 'board' | 'market' | 'office' | 'tavern' | 'smoke' | 'chef' | 'cannery' | 'cargo';
+  id: 'shop' | 'fuel' | 'repair' | 'house' | 'board' | 'market' | 'office' | 'tavern' | 'smoke' | 'chef' | 'cannery' | 'cargo' | 'bakery' | 'cat' | 'oldman';
   x: number;
   z: number;
   label: string;
@@ -51,6 +51,9 @@ export interface PortPoint {
   /** не показувати на лоції й мінімапі */
   mapHide?: boolean;
 }
+
+/** пекарня рідної гавані: центр і розмір (фасад з дверима — до моря, +Z) */
+export const BAKERY = { x: -38, z: -62, w: 7, d: 5.4 };
 
 export const PORT_POINTS: PortPoint[] = [
   // кожне місце — лише свої послуги: рибу продають на біржі, речі — у крамниці,
@@ -70,6 +73,11 @@ export const PORT_POINTS: PortPoint[] = [
   { id: 'smoke', x: 24.4, z: -46.1, label: L('Коптильня Гната — жирна риба оптом, замовлення', `Hnat's Smokehouse — oily fish in bulk, orders`), name: L('Коптильня', `Smokehouse`), icon: '🔥' },
   { id: 'chef', x: 29.6, z: -52.3, label: L('Ресторан «Маяк» — велика делікатесна риба, замовлення', `“Lighthouse” restaurant — big delicacy fish, orders`), name: L('Ресторан', `Restaurant`), icon: '🍽' },
   { id: 'cannery', x: 55.2, z: -46.1, label: L('Консервний завод — будь-яка риба, без насичення', `Cannery — any fish, never saturates`), name: L('Завод', `Cannery`), icon: '🥫' },
+  // пекарня біля маяка (ui/bakery.ts): гаряча випічка з бафами, обмежена денна вітрина
+  { id: 'bakery', x: BAKERY.x, z: BAKERY.z + BAKERY.d / 2 + 1.6, label: L('Пекарня «Тепла скоринка» — пиріжки й булочки з бафами', `“Warm Crust” bakery — pies and buns with buffs`), name: L('Пекарня', `Bakery`), icon: '🥐' },
+  // кіт пекарні на сходинці та дід на лавці біля хати — поговорити / погладити
+  { id: 'cat', x: BAKERY.x + 1.35, z: BAKERY.z + BAKERY.d / 2 + 0.55, label: L('Погладити кота Сухарика', `Pet Rusk the cat`), name: L('Кіт', `Cat`), icon: '🐈', mapHide: true },
+  { id: 'oldman', x: -4.3, z: -58.3, label: L('Поговорити з дідом Остапом', `Chat with old Ostap`), name: L('Дід Остап', `Old Ostap`), icon: '👴', mapHide: true },
 ];
 
 const DECK_Y = 1.1;
@@ -484,6 +492,7 @@ export class Port {
     this.buildServiceBuildings();
     this.buildLighthouse();
     this.buildVillage();
+    this.buildHomeExtras();
     this.buildBuoys();
     this.buildSeaRocksAndIslands();
 
@@ -496,7 +505,7 @@ export class Port {
     // решта нерухомого (будинки, палі, ліхтарі, огорожі…) — у кілька мешів на клітинку:
     // той самий матеріал, ті самі тіні — лише в рази менше викликів малювання
     this.mergeStats = mergeStatic(this.group, {
-      skip: [this.life.group, this.beamPivot, this.flag.mesh, ...this.bobbers.map((b) => b.obj)],
+      skip: [this.life.group, this.beamPivot, this.flag.mesh, ...this.bobbers.map((b) => b.obj), ...this.cats.map((c) => c.root)],
     });
   }
 
@@ -1289,6 +1298,211 @@ export class Port {
     buildTrees(this.group, rng, this.extraTrees, (x, z) => hill.some(([hx, hz]) => Math.hypot(hx - x, hz - z) < 8));
   }
 
+  // ───────────────────────── рідна гавань: пекарня, гірлянди, лавки, коти ─────────────────────────
+
+  private buildHomeExtras() {
+    const M = this.M;
+    const B = BAKERY;
+    const front = B.z + B.d / 2;
+
+    // пекарня «Тепла скоринка»: кремова штукатурка, зелені віконниці, теплі вікна
+    const h = this.house({
+      x: B.x, z: B.z, w: B.w, d: B.d, h: 3.4, rh: 2.0, wall: M.plasterCream, wallTile: 3, roof: M.roofRed,
+      door: 0, doorMat: M.shutterGreen, front: [-2.2, 2.2], back: [0], sideWin: true, shutter: M.shutterGreen,
+      chimney: [-2.1, -1.2], lit: 1,
+    });
+    if (h.chimney) this.bakeSmoke.copy(h.chimney);
+    this.sign(L('ПЕКАРНЯ', `BAKERY`), B.x, G + 0.35 + 3.0, front + 0.08, 2.6, '#7a3b22');
+    // смугаста маркіза над вітриною (обабіч дверей)
+    {
+      const c = document.createElement('canvas');
+      c.width = 64;
+      c.height = 8;
+      const g2 = c.getContext('2d')!;
+      for (let i = 0; i < 8; i++) {
+        g2.fillStyle = i % 2 ? '#f4efe2' : '#c2452f';
+        g2.fillRect(i * 8, 0, 8, 8);
+      }
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.repeat.set(2, 1);
+      const awn = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, side: THREE.DoubleSide });
+      for (const sx of [-2.2, 2.2]) {
+        this.add(new THREE.PlaneGeometry(1.9, 0.9), awn, T(B.x + sx, G + 0.35 + 2.55, front + 0.42, 0, -1.0));
+        this.add(boxGeo(1.9, 0.18, 0.02), awn, T(B.x + sx, G + 0.35 + 2.12, front + 0.82));
+      }
+    }
+    // столик з кошиками хліба перед вітриною
+    {
+      const tx = B.x - 2.4, tz = front + 1.15;
+      this.solidBox(tx, tz, 1.6, 0.8);
+      this.bx(M.woodDark, 1.5, 0.07, 0.7, tx, G + 0.86, tz, 0, 1, 1.5);
+      for (const s of [-0.65, 0.65]) for (const d of [-0.28, 0.28]) this.bx(M.woodDark, 0.06, 0.85, 0.06, tx + s, G + 0.42, tz + d);
+      const loaf = new THREE.SphereGeometry(0.2, 8, 5);
+      for (let i = 0; i < 3; i++) {
+        const bx = tx - 0.45 + i * 0.45;
+        this.add(new THREE.CylinderGeometry(0.22, 0.17, 0.12, 10), M.rope, T(bx, G + 0.95, tz));
+        this.add(loaf, this.breadMat, T(bx - 0.05, G + 1.04, tz - 0.04, i, 0, 0, 1.1, 0.55, 0.7));
+        this.add(loaf, this.breadMat, T(bx + 0.07, G + 1.07, tz + 0.06, i + 1, 0, 0, 0.8, 0.5, 0.6));
+      }
+      // крейдяна дошка-«будиночок» з меню
+      const cb = document.createElement('canvas');
+      cb.width = 128;
+      cb.height = 160;
+      const g3 = cb.getContext('2d')!;
+      g3.fillStyle = '#26312d';
+      g3.fillRect(0, 0, 128, 160);
+      g3.fillStyle = '#f2ead8';
+      g3.textAlign = 'center';
+      g3.font = 'bold 20px Georgia, serif';
+      g3.fillText(L('СЬОГОДНІ', `TODAY`), 64, 30);
+      g3.font = '16px Georgia, serif';
+      const lines = [L('пиріжки', `fish pies`), L('булочки', `cinnamon buns`), L('крендель', `pretzels`), L('пиріг', `skipper's pie`)];
+      lines.forEach((t, i) => g3.fillText('· ' + t + ' ·', 64, 62 + i * 24));
+      const ct = new THREE.CanvasTexture(cb);
+      ct.colorSpace = THREE.SRGBColorSpace;
+      const chalk = new THREE.MeshStandardMaterial({ map: ct, roughness: 0.95 });
+      const ax = B.x + 2.9, az = front + 1.4;
+      this.solidCircle(ax, az, 0.4);
+      for (const s of [1, -1]) {
+        this.add(new THREE.PlaneGeometry(0.62, 0.8), chalk, T(ax, G + 0.48, az + s * 0.13, s > 0 ? 0 : Math.PI, s * -0.28));
+        this.add(boxGeo(0.68, 0.86, 0.03), M.woodDark, T(ax, G + 0.48, az + s * 0.145, 0, s * -0.28));
+      }
+    }
+    // квіти в ящиках обабіч дверей і лавка з видом на маяк
+    this.planter(B.x - 1.1, front + 0.5);
+    this.planter(B.x + 3.4, front + 0.5);
+    this.bench(B.x + 4.6, G, B.z + 0.6, -Math.PI / 2);
+    // бруківка перед пекарнею до задвірок хатки доглядача маяка (z ≈ −54)
+    this.bx(M.cobble, 7.6, 0.06, 1.8, B.x, G + 0.02, front + 0.9, 0, 2.5, 2.5, false);
+    this.bx(M.cobble, 2.2, 0.06, -55.4 - front, B.x, G + 0.02, (front - 55.4) / 2, 0, 2.5, 2.5, false);
+
+    // лавки на набережній — обличчям до моря, біля кожної — ящик з квітами
+    for (const x of [-47.6, -37.5, 44, 50.5]) {
+      this.bench(x, G, -45.3, 0);
+      this.planter(x + 1.5, -45.8);
+    }
+    // пастки-«вентері» й бухти тросу біля складу
+    for (const [x, z, r] of [[-43.2, -44.6, 0.3], [-42.4, -44.9, -0.2], [-42.8, -44.7, 0.1]] as Array<[number, number, number]>) this.lobsterPot(x, z, r, 0);
+    this.lobsterPot(-42.8, -44.7, 0.4, 0.62);
+    this.ropeCoil(-44.4, G, -45.2);
+
+    // гірлянди-лампочки між ліхтарями набережної й над променадом
+    const lampY = G + 3.95 - 0.05;
+    const spans: Array<[number, number, number, number]> = [
+      [-52, -41.2, -40, -41.2], [-40, -41.2, -27.5, -41.2],
+      [27.5, -41.2, 40, -41.2], [40, -41.2, 54, -41.2],
+      [-18.5, -46.9, 0.6, -46.9], [0.6, -46.9, 16.8, -46.9],
+    ];
+    const bulb = new THREE.SphereGeometry(0.075, 6, 4);
+    const pennant = new THREE.BufferGeometry();
+    pennant.setAttribute('position', new THREE.Float32BufferAttribute([-0.16, 0, 0, 0.16, 0, 0, 0, -0.34, 0], 3));
+    pennant.computeVertexNormals();
+    const flagMats = [M.redPaint, M.yellowPaint, M.bluePaint, M.whitePaint, M.greenPaint].map((m) => {
+      const c = (m as THREE.MeshStandardMaterial).clone();
+      c.side = THREE.DoubleSide;
+      return c;
+    });
+    for (const [x0, z0, x1, z1] of spans) {
+      const len = Math.hypot(x1 - x0, z1 - z0);
+      const ry = Math.atan2(x1 - x0, z1 - z0);
+      const n = Math.max(6, Math.round(len / 1.1));
+      const sag = 0.55 + len * 0.012;
+      let px = x0, py = lampY, pz = z0;
+      for (let i = 1; i <= n; i++) {
+        const t = i / n;
+        const x = x0 + (x1 - x0) * t, z = z0 + (z1 - z0) * t;
+        const y = lampY - Math.sin(t * Math.PI) * sag;
+        const sl = Math.hypot(x - px, y - py, z - pz);
+        // відрізок дроту
+        const m = new THREE.Matrix4().lookAt(new THREE.Vector3(px, py, pz), new THREE.Vector3(x, y, z), new THREE.Vector3(0, 1, 0));
+        m.setPosition((px + x) / 2, (py + y) / 2, (pz + z) / 2);
+        this.add(new THREE.CylinderGeometry(0.012, 0.012, sl, 4).rotateX(Math.PI / 2), M.iron, m, false);
+        if (i < n) {
+          this.add(bulb, M.lampGlass, T(x, y - 0.1, z), false);
+          if (i % 2 === 0) this.add(pennant, flagMats[i % flagMats.length], T(x, y - 0.02, z, ry + Math.PI / 2), false);
+        }
+        px = x; py = y; pz = z;
+      }
+    }
+
+    // коти: Сухарик на сходинці пекарні (хвіст ходить), рудий спить на ящиках біля ринку
+    this.cats.push(this.cat(B.x + 1.35, G + 0.18, front + 0.5, Math.PI * 0.85, 0x8c8a86, false));
+    this.cats.push(this.cat(31.1, G + 1.22, -48.0, 0.4, 0xd88a3c, true));
+  }
+
+  private breadMat = new THREE.MeshStandardMaterial({ color: 0xc98a45, roughness: 0.8 });
+  private bakeSmoke = new THREE.Vector3();
+  private bakeSmokeS: Array<{ s: THREE.Sprite; mat: THREE.SpriteMaterial; k: number }> = [];
+  private cats: Array<{ root: THREE.Group; tail: THREE.Object3D; head: THREE.Object3D; body: THREE.Object3D; sleep: boolean; phase: number }> = [];
+
+  /** «вентер» — дротяна пастка для омарів/крабів: каркас + сітка */
+  private lobsterPot(x: number, z: number, ry: number, y0: number) {
+    const M = this.M;
+    if (y0 === 0) this.solidCircle(x, z, 0.4);
+    const y = G + y0 + 0.3;
+    this.add(new THREE.CylinderGeometry(0.3, 0.3, 0.75, 8, 1, true, 0, Math.PI).rotateZ(Math.PI / 2).rotateY(Math.PI / 2), this.potNetMat, T(x, y - 0.1, z, ry), false);
+    this.bx(M.woodDark, 0.62, 0.05, 0.75, x, G + y0 + 0.03, z, ry);
+    for (const s of [-0.34, 0, 0.34]) {
+      const m = T(x, y - 0.1, z, ry).multiply(T(0, 0, s)).multiply(new THREE.Matrix4().makeRotationZ(Math.PI / 2));
+      this.add(new THREE.TorusGeometry(0.3, 0.012, 3, 10, Math.PI), M.iron, m, false);
+    }
+  }
+  private potNetMat = new THREE.MeshStandardMaterial({ color: 0x2f5d52, roughness: 1, side: THREE.DoubleSide, transparent: true, opacity: 0.55, depthWrite: false });
+
+  /** маленький кіт (сидить або спить клубком); хвіст і голова анімуються поблизу */
+  private cat(x: number, y: number, z: number, ry: number, color: number, sleep: boolean) {
+    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.95 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x2a2624, roughness: 0.6 });
+    const root = new THREE.Group();
+    root.position.set(x, y, z);
+    root.rotation.y = ry;
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8), mat);
+    const head = new THREE.Group();
+    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), mat);
+    head.add(skull);
+    for (const s of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.07, 4), mat);
+      ear.position.set(s * 0.05, 0.09, 0);
+      ear.rotation.z = -s * 0.25;
+      head.add(ear);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.012, 5, 4), dark);
+      eye.position.set(s * 0.035, 0.015, 0.088);
+      eye.scale.y = sleep ? 0.25 : 1;
+      head.add(eye);
+    }
+    const tail = new THREE.Group();
+    const tailMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.026, 0.32, 5).translate(0, 0.16, 0), mat);
+    tail.add(tailMesh);
+    if (sleep) {
+      // клубочком: тіло пласке, голова на лапах, хвіст обвиває
+      body.scale.set(1.25, 0.6, 1.1);
+      body.position.y = 0.1;
+      head.position.set(0.12, 0.12, 0.12);
+      head.rotation.set(0.3, 0.9, 0.2);
+      tail.position.set(-0.14, 0.06, 0.08);
+      tail.rotation.set(Math.PI / 2, 0, 1.2);
+    } else {
+      body.scale.set(0.85, 1.15, 1.2);
+      body.position.set(0, 0.17, -0.03);
+      head.position.set(0, 0.4, 0.06);
+      tail.position.set(0, 0.06, -0.2);
+      tail.rotation.set(-1.2, 0, 0);
+      for (const s of [-1, 1]) {
+        const paw = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 4), mat);
+        paw.position.set(s * 0.06, 0.03, 0.13);
+        root.add(paw);
+      }
+    }
+    for (const o of [body, skull, tailMesh]) o.castShadow = true;
+    root.add(body, head, tail);
+    root.userData.noMerge = true;
+    this.group.add(root);
+    this.solidCircle(x, z, 0.25);
+    return { root, tail, head, body, sleep, phase: x * 0.37 };
+  }
+
   private beachDinghy(x: number, z: number, ry: number) {
     const M = this.M;
     const y = Math.max(terrainHeight(x, z), 0.2);
@@ -1487,6 +1701,38 @@ export class Port {
       pos.needsUpdate = true;
       this.flag.geo.computeVertexNormals();
     }
+
+    // коти й дим пекарні — лише коли камера поруч (далеко нічого не рахуємо)
+    const near = !cam || Math.hypot(cam.x - BAKERY.x, cam.z - BAKERY.z) < 140;
+    if (near) {
+      for (const c of this.cats) {
+        const p = t + c.phase;
+        if (c.sleep) {
+          c.body.scale.y = 0.6 + Math.sin(p * 1.6) * 0.03;
+        } else {
+          // хвіст ліниво ходить, зрідка смикається; голова озирається
+          const flick = Math.max(0, Math.sin(p * 0.37) - 0.85) * 6;
+          c.tail.rotation.z = Math.sin(p * 1.3) * 0.45 + Math.sin(p * 7) * 0.12 * flick;
+          c.head.rotation.y = Math.sin(p * 0.23) * 0.7;
+          c.head.rotation.x = Math.sin(p * 0.31 + 1) * 0.12;
+        }
+      }
+      if (!this.bakeSmokeS.length && this.bakeSmoke.lengthSq() > 0) {
+        for (let i = 0; i < 5; i++) {
+          const mat = new THREE.SpriteMaterial({ map: glowTex(), color: 0xe4e1da, transparent: true, opacity: 0, depthWrite: false });
+          const s = new THREE.Sprite(mat);
+          this.group.add(s);
+          this.bakeSmokeS.push({ s, mat, k: i / 5 });
+        }
+      }
+      for (const s of this.bakeSmokeS) {
+        const a = (t * 0.1 + s.k) % 1;
+        s.s.position.set(this.bakeSmoke.x + a * 1.8 + Math.sin(a * 5 + s.k * 7) * 0.2, this.bakeSmoke.y + a * 4.5, this.bakeSmoke.z - a * 0.6);
+        s.s.scale.setScalar(0.4 + a * 2.2);
+        s.mat.opacity = Math.sin(a * Math.PI) * (0.24 - this.night * 0.1);
+      }
+    }
+    for (const s of this.bakeSmokeS) s.s.visible = near;
 
     // дим із комина хати
     if (!this.smoke.length && this.smokeOrigin.lengthSq() > 0) this.initSmoke();

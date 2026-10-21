@@ -1,3 +1,4 @@
+import { bakeryHtml, eatPastry, ostapLine, petCat } from './ui/bakery';
 import * as THREE from 'three';
 import { Input } from './core/input';
 import { installFastMatrix } from './core/fastMatrix';
@@ -2485,6 +2486,19 @@ class Game {
       this.openCargo('home');
       return;
     }
+    // рідна гавань: пекарня, кіт пекарні, дід Остап (ui/bakery.ts)
+    if (id === 'port:bakery') {
+      this.openBakery();
+      return;
+    }
+    if (id === 'port:cat') {
+      this.hud.toast(petCat(this.game), 'good', 3200);
+      return;
+    }
+    if (id === 'port:oldman') {
+      this.hud.toast(ostapLine(), 'good', 6500);
+      return;
+    }
     // кожне місце в порту — лише свої послуги
     const venue = ({ 'port:shop': 'shop', 'port:fuel': 'fuel', 'port:repair': 'yard', 'port:office': 'office', 'port:market': 'exchange', 'port:tavern': 'tavern', 'port:smoke': 'smoke', 'port:chef': 'chef', 'port:cannery': 'cannery', 'buyer:hermit': 'hermit' } as const)[id as 'port:shop'];
     if (venue) {
@@ -2686,6 +2700,19 @@ class Game {
   }
 
   /** склад гавані: накладні, здати, відмовитись */
+  /** пекарня «Тепла скоринка»: випічку з'їдаєш одразу — енергія й бафи */
+  private openBakery(note = '') {
+    this.dialogs.custom(bakeryHtml(this.game, note), 'shop cargo', (panel) => {
+      panel.querySelectorAll<HTMLElement>('[data-pastry]').forEach((b) => b.addEventListener('click', () => {
+        const msg = eatPastry(this.game, b.dataset.pastry!);
+        if (!msg) return;
+        this.audio.click();
+        this.saveGame();
+        this.openBakery(msg);
+      }));
+    });
+  }
+
   private openCargo(site: string, note = '') {
     const g = this.game;
     if (this.coop.crewing) {

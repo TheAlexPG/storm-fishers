@@ -23,6 +23,8 @@ const PATHS: Array<[number, number, number, number]> = [
   [-59, 59, -72.6, -68.0],
   [-33.2, -30.8, -50, -46.4],
   [24.1, 27.1, -109, -72.6],
+  [-39.1, -36.9, -59.4, -55.3], // доріжка від пекарні
+  [-41.9, -34.1, -59.4, -57.4], // бруківка перед пекарнею
 ];
 
 function onPath(x: number, z: number, pad: number): boolean {
@@ -347,8 +349,10 @@ export class PortLife {
     // торговці на рибному ринку
     this.place(this.person({ jacket: 0x456b4a, jacketKind: 'knit', pants: 0x2b2b2b, bib: 0x3b3f44, hat: 'beanie', hatColor: 0x7a2f2f, hatAccent: 0xf2ead8, apron: 0xd7d3c8, beard: 'goatee', hairColor: HAIRS[0], skin: SKINS[4], gloves: 0x3f86c9, boots: 0xf2c12e, width: 1.12 }), 32.5, Y, -47.6, 0, 'stand');
     this.place(this.person({ jacket: 0x8a5a3a, pants: 0x333a44, hat: 'beanie', hatColor: 0x2a3f66, hatAccent: 0xe0b44a, hair: 'long', hairColor: HAIRS[7], skin: SKINS[1], scarf: 0xe0b44a, brow: 0.15, stripes: false }), 36.3, Y, -46.2, 2.6, 'stand');
+    // пекарка Марта біля столика з хлібом (пекарня — port.ts BAKERY)
+    this.place(this.person({ jacket: 0xb8644a, jacketKind: 'knit', pants: 0x3a3a44, hat: 'none', hair: 'bun', hairColor: HAIRS[1], skin: SKINS[1], apron: 0xf7f3ea, brow: 0.2, belly: true, width: 1.08, boots: 0x6b4a33 }), -40.5, Y, -58.75, 0.25, 'stand');
     // перехожі
-    const walker = (ax: number, az: number, bx: number, bz: number, opts: Parameters<PortLife['person']>[0]) => {
+    const walker =(ax: number, az: number, bx: number, bz: number, opts: Parameters<PortLife['person']>[0]) => {
       const p = this.person(opts);
       p.pose = 'walk';
       p.path = { ax, az, bx, bz, speed: 1.1 + this.rng() * 0.3, t: this.rng(), dir: 1 };
