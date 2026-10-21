@@ -166,9 +166,21 @@ class Parts {
       return tris;
     }
 
-    // корінь моделі — спільний предок усіх сегментів
-    let root: THREE.Object3D = parents[0];
-    while (root.parent) root = root.parent;
+    // найглибший спільний предок усіх сегментів (тулуб моделі): його забирають до
+    // себе аватари (root.add(rig.body)), тож меші мають жити саме в ньому
+    const chain = (o: THREE.Object3D) => {
+      const out: THREE.Object3D[] = [];
+      for (let q: THREE.Object3D | null = o; q; q = q.parent) out.unshift(q);
+      return out;
+    };
+    let common = chain(parents[0]);
+    for (const p of parents) {
+      const c = chain(p);
+      let i = 0;
+      while (i < common.length && i < c.length && common[i] === c[i]) i++;
+      common = common.slice(0, i);
+    }
+    const root = common[common.length - 1];
     root.updateMatrixWorld(true);
     const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
     const rel = new THREE.Matrix4();
