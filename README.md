@@ -201,7 +201,7 @@ src/
 
 ## 📜 License
 
-Storm Fishers is source‑available under the [PolyForm Noncommercial License 1.0.0](LICENSE) — you're welcome to play it, read the code, learn from it, fork it and mod it **for non‑commercial purposes**.
+Storm Fishers is source‑available under the [PolyForm Noncommercial License 1.0.0](LICENSE) (see also [NOTICE](NOTICE)) — you're welcome to play it, read the code, learn from it, fork it and mod it **for non‑commercial purposes**.
 
 **Commercial use, selling the game or any part of it, or redistributing it as part of a paid product requires a separate written permission from the author**, Alex Bromson ([@TheAlexPG](https://github.com/TheAlexPG)). Copyright © 2026 Alex Bromson. All rights not expressly granted are reserved.
 
