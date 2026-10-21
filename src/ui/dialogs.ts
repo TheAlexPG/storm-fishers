@@ -1,5 +1,5 @@
 import { formatMoney } from '../core/math';
-import { fishSellPrice, FISH, FISH_BY_ID, ZONE_NAMES } from '../game/fish';
+import { fishSellPrice, FISH, FISH_BY_ID, ZONE_NAMES, schoolName } from '../game/fish';
 import { UPGRADES, UPGRADE_BY_ID, maxLevel, upgradeCost, upgradeLock } from '../game/upgrades';
 import { PartPreview } from './partPreview';
 import { PLANS, boatValue, dailyPremium, type SinkReport } from '../game/insurance';
@@ -1189,7 +1189,7 @@ export class Dialogs {
     else forecastText = L(`Погода стабільна: ${st === 'storm' ? L('шторм затихає', `the storm is easing`) : st === 'wind' ? L('вітер помірнає', `the wind is moderating`) : L('хвилі невеликі', `small waves`)}.`, `The weather is stable: ${st === 'storm' ? L('шторм затихає', `the storm is easing`) : st === 'wind' ? L('вітер помірнає', `the wind is moderating`) : L('хвилі невеликі', `small waves`)}.`);
 
     const repRows = game.reports
-      .map((r) => L(`<div class="radio-item"><b>${ZONE_NAMES[r.zone]}:</b> ${game.speciesName(r.speciesId)} клює добре (×${r.boost.toFixed(1).replace('.', L(',', '.'))})</div>`, `<div class="radio-item"><b>${ZONE_NAMES[r.zone]}:</b> ${game.speciesName(r.speciesId)} biting well (×${r.boost.toFixed(1).replace('.', L(',', '.'))})</div>`))
+      .map((r) => L(`<div class="radio-item"><b>${schoolName(r)}:</b> ${game.speciesName(r.speciesId)} клює добре (×${r.boost.toFixed(1).replace('.', L(',', '.'))})</div>`, `<div class="radio-item"><b>${schoolName(r)}:</b> ${game.speciesName(r.speciesId)} biting well (×${r.boost.toFixed(1).replace('.', L(',', '.'))})</div>`))
       .join('');
 
     this.show(L(`

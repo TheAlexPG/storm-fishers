@@ -77,23 +77,32 @@ export interface ContPort {
   plY: number;
   pierL: number;
   pierW: number;
+  /** радіус, у якому гавань «розгладжує» рваний берег (м): маленькі бухти — менший, щоб фіорди й затоки довкола лишились */
+  fade: [number, number];
 }
 
 /** заготовки: напрям від центру (рад, 0 — +X, за годинниковою на карті: +Z — «південь»), куди дивиться причал */
-const PORT_SPECS: Array<{ id: string; cont: string; ang: number; o: [number, number]; plW: number; plD: number; plY: number; pierL: number; pierW: number }> = [
+const PORT_SPECS: Array<{ id: string; cont: string; ang: number; o: [number, number]; plW: number; plD: number; plY: number; pierL: number; pierW: number; fade?: [number, number]; start?: [number, number] }> = [
   // Лазурове: велика гавань на західному березі (до дому) і грецьке село на північному
   { id: 'port-azzurro', cont: 'cont-med', ang: Math.PI * 1.02, o: [-1, 0], plW: 70, plD: 34, plY: 1.6, pierL: 36, pierW: 4.5 },
   { id: 'port-nikos', cont: 'cont-med', ang: -Math.PI * 0.55, o: [0, -1], plW: 44, plD: 22, plY: 1.6, pierL: 28, pierW: 3.6 },
   // Північ: портове містечко на східному березі й далека бухта на північному
   { id: 'port-cedar', cont: 'cont-north', ang: -0.05, o: [1, 0], plW: 66, plD: 34, plY: 2.0, pierL: 36, pierW: 4.5 },
   { id: 'port-grizzly', cont: 'cont-north', ang: -Math.PI * 0.42, o: [0, -1], plW: 40, plD: 20, plY: 2.2, pierL: 30, pierW: 4 },
+  // маленькі бухти (як Рибальський Кут удома): причал, кілька хаток, пальне й скупка
+  { id: 'cove-olive', cont: 'cont-med', ang: -2.29, start: [3150, 2250], o: [-1, 0], plW: 30, plD: 16, plY: 1.4, pierL: 22, pierW: 3, fade: [150, 300] },
+  { id: 'cove-sole', cont: 'cont-med', ang: -0.5, o: [1, 0], plW: 30, plD: 16, plY: 1.4, pierL: 22, pierW: 3, fade: [150, 300] },
+  { id: 'cove-luce', cont: 'cont-med', ang: 1.02, o: [0, 1], plW: 28, plD: 15, plY: 1.4, pierL: 22, pierW: 3, fade: [140, 260] },
+  { id: 'cove-salmon', cont: 'cont-north', ang: -0.84, start: [-3000, 1720], o: [1, 0], plW: 30, plD: 16, plY: 2.0, pierL: 24, pierW: 3, fade: [150, 300] },
+  { id: 'cove-smoke', cont: 'cont-north', ang: 1.87, o: [0, 1], plW: 28, plD: 15, plY: 2.0, pierL: 24, pierW: 3, fade: [140, 260] },
+  { id: 'cove-fjord', cont: 'cont-north', ang: Math.PI, o: [-1, 0], plW: 26, plD: 14, plY: 2.0, pierL: 24, pierW: 3, fade: [120, 220] },
 ];
 
 function placePort(sp: (typeof PORT_SPECS)[number]): ContPort {
   const c = CONTINENT_BY_ID[sp.cont];
   const m = c.m;
   // старт — на суші (60% радіуса в напрямку ang), далі вздовж причалу до води
-  let x = m.x + Math.cos(sp.ang) * m.rx * 0.55, z = m.z + Math.sin(sp.ang) * m.rz * 0.55;
+  let x = sp.start ? sp.start[0] : m.x + Math.cos(sp.ang) * m.rx * 0.55, z = sp.start ? sp.start[1] : m.z + Math.sin(sp.ang) * m.rz * 0.55;
   for (let i = 0; i < 1200 && contBase(c, x, z) > 0; i++) {
     x += sp.o[0] * 2;
     z += sp.o[1] * 2;
@@ -101,7 +110,7 @@ function placePort(sp: (typeof PORT_SPECS)[number]): ContPort {
   // корінь причалу — трохи на суші, щоб набережна стояла на березі
   x -= sp.o[0] * 4;
   z -= sp.o[1] * 4;
-  return { id: sp.id, cont: sp.cont, x: Math.round(x), z: Math.round(z), ox: sp.o[0], oz: sp.o[1], plW: sp.plW, plD: sp.plD, plY: sp.plY, pierL: sp.pierL, pierW: sp.pierW };
+  return { id: sp.id, cont: sp.cont, x: Math.round(x), z: Math.round(z), ox: sp.o[0], oz: sp.o[1], plW: sp.plW, plD: sp.plD, plY: sp.plY, pierL: sp.pierL, pierW: sp.pierW, fade: sp.fade ?? [330, 560] };
 }
 
 export const CONT_PORTS: ContPort[] = PORT_SPECS.map(placePort);
@@ -173,7 +182,7 @@ function polyDist(pts: Array<[number, number]>, x: number, z: number): [number, 
 /** затухання рис біля гаваней (1 — далеко, 0 — біля причалу) */
 function portFade(c: ContinentDef, x: number, z: number): number {
   let f = 1;
-  for (const p of CONT_PORTS) if (p.cont === c.id) f = Math.min(f, smoothstep(330, 560, Math.hypot(x - p.x, z - p.z)));
+  for (const p of CONT_PORTS) if (p.cont === c.id) f = Math.min(f, smoothstep(p.fade[0], p.fade[1], Math.hypot(x - p.x, z - p.z)));
   return f;
 }
 

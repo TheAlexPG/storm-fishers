@@ -6,6 +6,7 @@ import { PORT_SITES, siteGround as siteHeight, siteRect, siteToWorld, worldToSit
 import type { Platform, Solid } from './port';
 import { mergeStatic } from './staticMerge';
 import { buildKutVillage, type VillageLife } from './kutVillage';
+import { buildCoveDecor, isCove } from './coveDecor';
 import { ZORYA_ID, ZoryaLife, buildZoryaStatic, zoryaPlan, type TownCtx } from './zoryaTown';
 import { buildResort, type ResortLife } from './marinaResort';
 import { NIKOS_ID, NikosLife, buildNikos, nikosPlan } from './nikosVillage';
@@ -429,6 +430,8 @@ export class Ports {
       batch.add(boxGeo(1.4, 0.5, 4.2), M.sdBlue, T(bx, p.plY + 0.25, bz, ry));
     }
 
+    // ── маленькі бухти континентів: каїки, амфори, сушарки, коптильня, каплиця (coveDecor.ts) ──
+    if (isCove(p)) buildCoveDecor({ p, batch, M, H, rng });
     // ── Рибальський Кут: хатки на палях, місток, сушарки, мешканці (kutVillage.ts) ──
     let life: VillageLife | undefined;
     if (p.id === 'port-kut') {

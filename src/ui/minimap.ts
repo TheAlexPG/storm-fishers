@@ -7,7 +7,7 @@ import { L } from '../core/i18n';
 import { CALM, ROUGH, WORLD, WS, havens, seaDist } from '../core/region';
 import { CONT_BOXES } from '../world/continents';
 import { LANDMARKS } from '../world/landmarks';
-import { HOTSPOTS, SCHOOL_ANCHORS, SCHOOL_R, ZONE_NAMES, fishingSpot, hotspotAt, zoneFromDist } from '../game/fish';
+import { HOTSPOTS, SCHOOL_R, schoolPos, fishPoolAt, ZONE_NAMES, fishingSpot, hotspotAt, zoneFromDist } from '../game/fish';
 import type { ZoneId } from '../core/types';
 import { DOCK_BY_ID } from '../game/cargo';
 
@@ -87,7 +87,7 @@ export class Minimap {
   gps = false;
   /** відкриті місця, радіозвіти про стаї й активні доставки (GameState) */
   places: readonly string[] = [];
-  reports: ReadonlyArray<{ zone: ZoneId; speciesId: string; boost: number }> = [];
+  reports: ReadonlyArray<{ zone: ZoneId; speciesId: string; boost: number; spot?: string }> = [];
   orders: ReadonlyArray<{ to: string; crates: number }> = [];
   speciesName: (id: string) => string = (id) => id;
   /** вітер: куди дме (weather.windDir) і сила, м/с */
@@ -442,7 +442,7 @@ export class Minimap {
       fishIcon(px, pz, '🎣');
     }
     for (const r of this.reports) {
-      const [ax, az] = SCHOOL_ANCHORS[r.zone];
+      const [ax, az] = schoolPos(r);
       if (!inView(ax, az, SCHOOL_R * 1.2)) continue;
       const [px, pz] = toMap(ax, az);
       const rr = Math.max(7, SCHOOL_R * 1.1 * sc);
@@ -627,7 +627,7 @@ export class Minimap {
       label(`${name} ${'⚠'.repeat(hs.risk)}`, px, pz + Math.min(rr, 30) + 10, `800 8.5px ${FONT}`, '#a8432c', true);
     }
     for (const r of this.reports) {
-      const [ax, az] = SCHOOL_ANCHORS[r.zone];
+      const [ax, az] = schoolPos(r);
       if (!inView(ax, az)) continue;
       const [px, pz] = toMap(ax, az);
       const rr = Math.max(7, SCHOOL_R * 1.1 * sc);
@@ -695,7 +695,7 @@ export class Minimap {
     // два найближчі рибні місця/стаї поза кадром (до 2,5 км) — куди плисти по рибу
     const grounds = [
       ...HOTSPOTS.map((h) => ({ x: h.x, z: h.z, t: '🎣', col: '#a8432c' })),
-      ...this.reports.map((r) => ({ x: SCHOOL_ANCHORS[r.zone][0], z: SCHOOL_ANCHORS[r.zone][1], t: '🐟', col: '#1d6f73' })),
+      ...this.reports.map((r) => ({ x: schoolPos(r)[0], z: schoolPos(r)[1], t: '🐟', col: '#1d6f73' })),
     ]
       .map((g) => ({ ...g, d: Math.hypot(g.x - boatX, g.z - boatZ) }))
       .filter((g) => g.d * sc > R - 12 && g.d < 2500)
@@ -737,7 +737,7 @@ export class Minimap {
     } else {
       let best = 0, sp = '';
       for (const r of this.reports) {
-        const [ax, az] = SCHOOL_ANCHORS[r.zone];
+        const [ax, az] = schoolPos(r);
         const q = Math.hypot(x - ax, z - az) / SCHOOL_R;
         const h = Math.exp(-q * q);
         if (h > best) { best = h; sp = r.speciesId; }
@@ -748,7 +748,9 @@ export class Minimap {
       } else {
         const zone = zoneFromDist(seaDist(x, z));
         const tip = zone === 'shore' ? L('клює швидко, риба дрібна', 'quick bites, small fish') : zone === 'mid' ? L('клює помірно', 'steady bites') : L('клює рідко, риба велика', 'slow bites, big fish');
-        text = `${ZONE_NAMES[zone]} · ${tip}`;
+        // біля континенту — які місцеві види тут трапляються
+        const local = fishPoolAt(x, z, zone).filter((f) => f.regions).map((f) => f.name.toLowerCase());
+        text = local.length ? `${ZONE_NAMES[zone]} · ${L('тут', 'here')}: ${local.join(', ')}` : `${ZONE_NAMES[zone]} · ${tip}`;
       }
     }
     const key = kind + text;

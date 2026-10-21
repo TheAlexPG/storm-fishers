@@ -34,7 +34,7 @@ import { Dialogs, type Venue } from './ui/dialogs';
 import { StatsBoard, statsHtml, type StatsExtra } from './ui/statsBoard';
 import { HomeCottage } from './world/homeCottage';
 import { COTTAGE } from './world/cottageLayout';
-import { zoneFromDist, ZONE_NAMES, FISH, SCHOOL_ANCHORS, SCHOOL_R } from './game/fish';
+import { zoneFromDist, ZONE_NAMES, FISH, SCHOOL_R, schoolPos, schoolName, fishPoolAt } from './game/fish';
 
 /** місця швартування й причали інших гаваней (portSites.ts) */
 const SITE_BERTHS: Record<string, Berth[]> = Object.fromEntries(PORT_SITES.map((p) => [p.id, siteBerths(p)]));
@@ -73,7 +73,7 @@ import { ChartTable, CHART_CENTER } from './world/chartTable';
 import { Nets, type NetsNet } from './world/nets';
 import { Bots, botName } from './world/bots';
 import { sailEventText } from './world/sails';
-import { HelmInstruments, depthAt, bearingDeg } from './world/helmInstruments';
+import { HelmInstruments, depthAt, bearingDeg, compass8 } from './world/helmInstruments';
 import { instrHas } from './game/upgrades';
 import { ShopCounter, type CounterTarget } from './world/shopCounter';
 import { ExchangeBoard } from './world/exchangeBoard';
@@ -1293,7 +1293,7 @@ class Game {
     this.schoolJumpT = 1.5 + Math.random();
     const cam = this.camera.position;
     const r = this.game.reports.find((r) => {
-      const [ax, az] = SCHOOL_ANCHORS[r.zone];
+      const [ax, az] = schoolPos(r);
       return Math.hypot(ax - cam.x, az - cam.z) < SCHOOL_R;
     });
     const jump = this.schoolJumps.find((j) => !j.busy);
@@ -1432,13 +1432,24 @@ class Game {
       })),
       events: [...g.market.events.map((e) => `${e.mult > 1 ? '▲' : '▼'} ${e.text}`), ...g.market.news.slice(-2).map((n) => `🚢 «${botName(n.who)}» ${newsText(n.text, n.who)}`), ...g.trade.tickerTexts(g.clockH)],
       news: g.market.news.map((n) => ({ who: `«${botName(n.who)}»`, text: newsText(n.text, n.who), h: n.h })),
-      reports: g.reports.map((r) => ({ zone: ZONE_NAMES[r.zone], name: g.speciesName(r.speciesId), boost: r.boost })),
+      // стаї — найближчі першими: де саме, як далеко й куди (біля континенту радіо говорить про місцеві води)
+      reports: g.reports
+        .map((r) => {
+          const [ax, az] = schoolPos(r);
+          const bx = this.boat.pos.x, bz = this.boat.pos.z;
+          const d = Math.hypot(ax - bx, az - bz);
+          const km = d < 950 ? L(`${Math.round(d / 10) * 10} м`, `${Math.round(d / 10) * 10} m`) : L(`${(d / 1000).toFixed(1).replace('.', ',')} км`, `${(d / 1000).toFixed(1)} km`);
+          const where = d < 150 ? L('ти на ній', 'you are on it') : `${km} ${compass8(bearingDeg(bx, bz, ax, az))}`;
+          return { d, zone: `${schoolName(r)} · ${where}`, name: g.speciesName(r.speciesId), boost: r.boost };
+        })
+        .sort((a, b) => a.d - b.d)
+        .map(({ zone, name, boost }) => ({ zone, name, boost })),
       hold: { count: g.hold.length, cap: g.holdCap, value: g.hold.reduce((a, f) => a + g.sellPrice(f), 0) },
       stormSoon: w.localStormEta != null || snap.forecast > 0.74 || w.base > 0.74,
       tip: (() => {
         const zone = zoneFromDist(seaDist(this.boat.pos.x, this.boat.pos.z));
         const night = this.time.isNight;
-        const here = FISH.filter((f) => f.zones.includes(zone) && (night ? f.night : f.day)).map((f) => f.name.toLowerCase());
+        const here = fishPoolAt(this.boat.pos.x, this.boat.pos.z, zone).filter((f) => (night ? f.night : f.day)).map((f) => f.name.toLowerCase());
         return here.length ? L(`${night ? L('Ніч', `Night`) : L('День', `Day`)} · ${ZONE_NAMES[zone]}: тут зараз ловиться ${here.join(', ')}`, `${night ? L('Ніч', `Night`) : L('День', `Day`)} · ${ZONE_NAMES[zone]}: biting here now — ${here.join(', ')}`) : '';
       })(),
     };
@@ -3841,7 +3852,7 @@ class Game {
     let school: { x: number; z: number; name: string } | null = null;
     let sd = 900;
     for (const r of g.reports) {
-      const [ax, az] = SCHOOL_ANCHORS[r.zone];
+      const [ax, az] = schoolPos(r);
       const d = Math.hypot(ax - b.pos.x, az - b.pos.z);
       fish += Math.max(0, 1 - d / 320) * 0.25 * r.boost;
       if (d < sd) {

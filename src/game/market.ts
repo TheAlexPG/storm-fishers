@@ -92,6 +92,12 @@ const CASES: Record<string, [string, string, string]> = {
   shoraga: ['палтуса', 'палтусом', 'палтуса'],
   tunets: ['тунця', 'тунцем', 'тунця'],
   akula: ['акулу', 'акулою', 'акули'],
+  dorada: ['дораду', 'дорадою', 'доради'],
+  sibas: ['сибаса', 'сибасом', 'сибаса'],
+  kalmar: ['кальмара', 'кальмаром', 'кальмара'],
+  vosmyn: ['восьминога', 'восьминогом', 'восьминога'],
+  golets: ['гольця', 'гольцем', 'гольця'],
+  krab: ['краба', 'крабом', 'краба'],
 };
 
 const BUYERS = [L('Ресторан «Маяк» скуповує', `The “Lighthouse” restaurant is buying up`), L('Рибзавод шукає', `The fish plant is looking for`), L('Готель «Хвиля» замовив', `Hotel “Wave” has ordered`), L('Ярмарок у місті — розбирають', `Town fair — everyone wants`)];

@@ -925,6 +925,12 @@ const FISH_LOOK: Record<string, { top: string; belly: string; long: number; tall
   shoraga: { top: '#5a5246', belly: '#eee8dc', long: 0.95, tall: 0.7, fin: 'flat' },
   tunets: { top: '#24466e', belly: '#d9e2ea', long: 1.05, tall: 0.6, fin: 'tuna' },
   akula: { top: '#6d7b86', belly: '#e8ecee', long: 1.1, tall: 0.42, fin: 'shark' },
+  dorada: { top: '#8c9aa6', belly: '#f2efe4', long: 0.85, tall: 0.62 },
+  sibas: { top: '#6d7f86', belly: '#eef0ea', long: 1.05, tall: 0.5 },
+  kalmar: { top: '#d98a7a', belly: '#f6dccf', long: 1.15, tall: 0.36 },
+  vosmyn: { top: '#b4523e', belly: '#f0c4a8', long: 0.8, tall: 0.72 },
+  golets: { top: '#4f6a5a', belly: '#f0b48c', long: 1.05, tall: 0.48 },
+  krab: { top: '#c0472f', belly: '#f1d4b8', long: 0.75, tall: 0.6, fin: 'flat' },
 };
 
 function drawFish(cv: HTMLCanvasElement, id: string) {

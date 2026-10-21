@@ -18,6 +18,12 @@ const COLORS: Record<string, [number, number]> = {
   shoraga: [0x5a5246, 0xeee8dc],
   tunets: [0x24466e, 0xd9e2ea],
   akula: [0x6d7b86, 0xe8ecee],
+  dorada: [0x8c9aa6, 0xf2efe4],
+  sibas: [0x6d7f86, 0xeef0ea],
+  kalmar: [0xd98a7a, 0xf6dccf],
+  vosmyn: [0xb4523e, 0xf0c4a8],
+  golets: [0x4f6a5a, 0xf0b48c],
+  krab: [0xc0472f, 0xf1d4b8],
 };
 
 /** окрема модель риби (палуба, ящик, руки): основа — центр тіла, довжина len, ніс у +Z */

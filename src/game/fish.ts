@@ -1,10 +1,10 @@
 import type { FishItem, FishSpecies, ZoneId } from '../core/types';
 import { L } from '../core/i18n';
 import { paceMul } from './pace';
-import { WS, seaDist, seaMul } from '../core/region';
+import { WS, seaDist, seaMul, LANDMASSES, landmassDist } from '../core/region';
 
 // ─────────────────────────────────────────────────────────────
-// 12 видів риби, 3 зони, денні/нічні вікна.
+// 12 видів риби скрізь + місцеві біля континентів, 3 зони, денні/нічні вікна.
 // ─────────────────────────────────────────────────────────────
 
 export const FISH: FishSpecies[] = [
@@ -20,7 +20,31 @@ export const FISH: FishSpecies[] = [
   { id: 'shoraga',name: L('Палтус', `Halibut`),       basePrice: 140,  zones: ['open'],         day: false, night: true,  rarity: 1.6,  minKg: 2.0,  maxKg: 5.0 },
   { id: 'tunets', name: L('Тунець', `Tuna`),       basePrice: 205,  zones: ['open'],         day: true,  night: true,  rarity: 1.8,  minKg: 3.0,  maxKg: 9.0 },
   { id: 'akula',  name: L('Акула', `Shark`),        basePrice: 340,  zones: ['open'],         day: false, night: true,  rarity: 2.4,  minKg: 6.0,  maxKg: 22.0 },
+  // ── місцеві: лише біля Лазурового узбережжя ──
+  { id: 'dorada', name: L('Дорада', `Gilt-head bream`), basePrice: 44,  zones: ['shore', 'mid'], day: true,  night: false, rarity: 1.1,  minKg: 0.4,  maxKg: 1.4, regions: ['med'] },
+  { id: 'sibas',  name: L('Сибас', `Sea bass`),        basePrice: 58,  zones: ['shore', 'mid'], day: true,  night: true,  rarity: 1.2,  minKg: 0.5,  maxKg: 2.2, regions: ['med'] },
+  { id: 'kalmar', name: L('Кальмар', `Squid`),         basePrice: 66,  zones: ['mid', 'open'],  day: false, night: true,  rarity: 1.3,  minKg: 0.4,  maxKg: 2.0, regions: ['med'] },
+  { id: 'vosmyn', name: L('Восьминіг', `Octopus`),     basePrice: 92,  zones: ['shore', 'mid'], day: true,  night: true,  rarity: 1.5,  minKg: 0.8,  maxKg: 4.0, regions: ['med'] },
+  // ── місцеві: лише біля Північного краю ──
+  { id: 'golets', name: L('Арктичний голець', `Arctic char`), basePrice: 52, zones: ['shore', 'mid'], day: true, night: true, rarity: 1.1, minKg: 0.5, maxKg: 2.0, regions: ['north'] },
+  { id: 'krab',   name: L('Камчатський краб', `King crab`),   basePrice: 150, zones: ['mid', 'open'], day: false, night: true, rarity: 1.6, minKg: 1.5, maxKg: 6.0, regions: ['north'] },
 ];
+
+/** базові види (є скрізь) — для покупців, замовлень і домашніх звітів */
+export const BASE_FISH: FishSpecies[] = FISH.filter((f) => !f.regions);
+
+/** рибний регіон: біля якого континенту (до ~1 км від берега) — там клюють і місцеві види */
+export type FishRegion = 'home' | 'med' | 'north';
+export function fishRegionAt(x: number, z: number): FishRegion {
+  for (const m of LANDMASSES) if (landmassDist(m, x, z) < 1100) return m.id as FishRegion;
+  return 'home';
+}
+
+/** які види клюють тут (зона + регіон): місцеві — лише біля свого берега */
+export function fishPoolAt(x: number, z: number, zone: ZoneId): FishSpecies[] {
+  const reg = fishRegionAt(x, z);
+  return FISH.filter((f) => f.zones.includes(zone) && (!f.regions || (reg !== 'home' && f.regions.includes(reg))));
+}
 
 export const FISH_BY_ID: Record<string, FishSpecies> = Object.fromEntries(FISH.map((f) => [f.id, f]));
 
@@ -36,6 +60,54 @@ export const SCHOOL_ANCHORS: Record<ZoneId, [number, number]> = {
   mid: [-380 * WS, 520 * WS],
   open: [600 * WS, 720 * WS],
 };
+
+/** іменовані стаї по всьому світу: радіо щодня називає кілька біля кожного берега */
+export interface SchoolSpot {
+  id: string;
+  name: string;
+  region: FishRegion | 'ocean';
+  zone: ZoneId;
+  x: number;
+  z: number;
+}
+/** зона стаї — з відстані до берега (як у ловлі), щоб звіт і клювання збігались */
+const SPOT = (s: Omit<SchoolSpot, 'zone'>): SchoolSpot => ({ ...s, zone: zoneFromDist(seaDist(s.x, s.z)) });
+export const SCHOOL_SPOTS: SchoolSpot[] = [
+  // домашні — старі «стаї зони»
+  SPOT({ id: 'sch-home-shore', name: L('мілина біля Шторму', `the shoal off Storm`), region: 'home', x: SCHOOL_ANCHORS.shore[0], z: SCHOOL_ANCHORS.shore[1] }),
+  SPOT({ id: 'sch-home-mid', name: L('банка на заході', `the western bank`), region: 'home', x: SCHOOL_ANCHORS.mid[0], z: SCHOOL_ANCHORS.mid[1] }),
+  SPOT({ id: 'sch-home-open', name: L('глибина на південному сході', `the deep to the southeast`), region: 'home', x: SCHOOL_ANCHORS.open[0], z: SCHOOL_ANCHORS.open[1] }),
+  // Лазурове узбережжя
+  SPOT({ id: 'sch-med-azzurro', name: L('банка Аццурро', `the Azzurro bank`), region: 'med', x: 2330, z: 2760 }),
+  SPOT({ id: 'sch-med-nikos', name: L('мілина Айос-Нікоса', `the Agios Nikos shoal`), region: 'med', x: 3380, z: 1560 }),
+  SPOT({ id: 'sch-med-boot', name: L('води біля «чобота»', `the waters off the Boot`), region: 'med', x: 2560, z: 4380 }),
+  SPOT({ id: 'sch-med-gulf', name: L('гирло Гольфо', `the mouth of the Golfo`), region: 'med', x: 5080, z: 3060 }),
+  SPOT({ id: 'sch-med-cape', name: L('Посейдонів мис', `Poseidon's Cape`), region: 'med', x: 4980, z: 1820 }),
+  SPOT({ id: 'sch-med-south', name: L('південний свал', `the southern drop-off`), region: 'med', x: 3920, z: 4520 }),
+  // Північний край
+  SPOT({ id: 'sch-n-cedar', name: L('плесо Сідар-Гарбору', `the Cedar Harbor reach`), region: 'north', x: -2330, z: 2330 }),
+  SPOT({ id: 'sch-n-grizzly', name: L('гирло Бухти Гризлі', `the mouth of Grizzly Cove`), region: 'north', x: -3420, z: 980 }),
+  SPOT({ id: 'sch-n-west', name: L('біля західних фіордів', `off the western fjords`), region: 'north', x: -4960, z: 2620 }),
+  SPOT({ id: 'sch-n-skerries', name: L('шхери на сході', `the eastern skerries`), region: 'north', x: -2560, z: 3520 }),
+  SPOT({ id: 'sch-n-south', name: L('південна банка', `the southern bank`), region: 'north', x: -3720, z: 4060 }),
+  SPOT({ id: 'sch-n-nw', name: L('північно-західний свал', `the northwest drop-off`), region: 'north', x: -4660, z: 1500 }),
+  // Великий океан
+  SPOT({ id: 'sch-oc-west', name: L('океан між домом і Північчю', `the ocean between home and the North`), region: 'ocean', x: -1360, z: 2420 }),
+  SPOT({ id: 'sch-oc-east', name: L('океан між домом і Лазуровим', `the ocean between home and the Azure Coast`), region: 'ocean', x: 1380, z: 2640 }),
+  SPOT({ id: 'sch-oc-south', name: L('південний океан', `the southern ocean`), region: 'ocean', x: 160, z: 3640 }),
+];
+export const SCHOOL_BY_ID: Record<string, SchoolSpot> = Object.fromEntries(SCHOOL_SPOTS.map((s) => [s.id, s]));
+
+/** де стоїть стая звіту (старі звіти без spot — домашня стая зони) */
+export function schoolPos(r: { zone: ZoneId; spot?: string }): [number, number] {
+  const s = r.spot ? SCHOOL_BY_ID[r.spot] : undefined;
+  return s ? [s.x, s.z] : SCHOOL_ANCHORS[r.zone];
+}
+
+/** назва стаї звіту */
+export function schoolName(r: { zone: ZoneId; spot?: string }): string {
+  return (r.spot ? SCHOOL_BY_ID[r.spot]?.name : undefined) ?? ZONE_NAMES[r.zone];
+}
 
 // ─────────────────────────────────────────────────────────────
 // Рибні місця (гарячі точки): велика риба й трофеї — але в бурхливих
@@ -69,6 +141,10 @@ export const HOTSPOTS: Hotspot[] = [
   { id: 'hot-gulf', name: L('Кальмарова западина', `Squid Hollow`), sub: L('глибоко в Гольфо: уночі піднімається велика риба', `deep in the Golfo: big fish rise at night`), x: 4700, z: 2800, r: 150, kg: 1.6, trophy: 0.1, risk: 1 },
   { id: 'hot-fjord', name: L('Водоспадний фіорд', `Waterfall Fjord`), sub: L('лосось і палтус біля водоспаду — але фіорд вузький, а туман густий', `salmon and halibut by the falls — but the fjord is narrow and the fog thick`), x: -4500, z: 2880, r: 140, kg: 1.8, trophy: 0.14, risk: 2 },
   { id: 'hot-seals', name: L('Тюленяча бухта', `Seal Cove`), sub: L('де тюлені — там і тріска: холодно, хвиля з півночі', `where there are seals there's cod: cold, with a northern swell`), x: -4160, z: 1160, r: 130, kg: 1.6, trophy: 0.12, risk: 2 },
+  { id: 'hot-strait', name: L('Сибасова протока', `Sea Bass Strait`), sub: L('між «чоботом» і материком: сибас і восьминоги тримаються течії', `between the Boot and the mainland: sea bass and octopus hold the current`), x: 3660, z: 4120, r: 120, kg: 1.45, trophy: 0.08, risk: 1 },
+  { id: 'hot-tunaridge', name: L('Тунцева гряда', `Tuna Ridge`), sub: L('далеко на південному сході: тунець і кальмари-велетні — але це вже відкритий океан', `far to the southeast: tuna and giant squid — but this is already the open ocean`), x: 5250, z: 3900, r: 170, kg: 2.1, trophy: 0.18, risk: 3 },
+  { id: 'hot-crabbank', name: L('Крабова банка', `Crab Bank`), sub: L('між шхерами: камчатський краб і тріска — гранітні мілини чекають на необережних', `among the skerries: king crab and cod — granite shoals await the careless`), x: -2260, z: 3380, r: 130, kg: 1.7, trophy: 0.12, risk: 2 },
+  { id: 'hot-icedeep', name: L('Крижана прірва', `The Ice Deep`), sub: L('північно-західний свал: палтус і краби-велетні, найлютіші шторми Півночі', `the northwest drop-off: giant halibut and crabs, the North's fiercest storms`), x: -4980, z: 1180, r: 170, kg: 2.2, trophy: 0.2, risk: 3 },
   { id: 'hot-birds', name: L('Пташиний котел', `The Bird Cauldron`), sub: L('птахи над водою — тунець женеться за сардиною; посеред Великого океану', `birds over the water — tuna chasing sardines; in the middle of the Great Ocean`), x: -420, z: 2300, r: 170, kg: 2.4, trophy: 0.22, risk: 3 },
 ];
 
@@ -107,12 +183,12 @@ export interface FishingSpot {
 
 export const SCHOOL_R = 120;
 
-export function fishingSpot(x: number, z: number, reports: ReadonlyArray<{ zone: ZoneId }>): FishingSpot {
+export function fishingSpot(x: number, z: number, reports: ReadonlyArray<{ zone: ZoneId; spot?: string }>): FishingSpot {
   const d = seaDist(x, z);
   const far = Math.min(1, Math.max(0, (d - 120 * WS) / (1000 * WS)));
   let heat = 0;
   for (const r of reports) {
-    const [ax, az] = SCHOOL_ANCHORS[r.zone];
+    const [ax, az] = schoolPos(r);
     const q = Math.hypot(x - ax, z - az) / SCHOOL_R;
     heat = Math.max(heat, Math.exp(-q * q));
   }
