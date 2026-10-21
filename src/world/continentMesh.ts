@@ -45,8 +45,11 @@ const ROOF_PRISM = new THREE.CylinderGeometry(1, 1, 1, 3, 1, false, Math.PI / 2)
 
 interface TreeTile {
   meshes: THREE.InstancedMesh[];
+  /** ті самі дерева без стовбура (далеко — стовбур під кроною менший за піксель) */
+  far: THREE.InstancedMesh[];
   cx: number;
   cz: number;
+  isFar: boolean;
 }
 
 export class ContinentScenery {
@@ -269,6 +272,7 @@ export class ContinentScenery {
     const ports = CONT_PORTS.filter((p) => p.cont === c.id);
     // шаблони: Північ — ялиця; Середземномор'я — кипарис і олива (вершинні кольори)
     const kinds = med ? [cypressGeo(), oliveGeo()] : [firGeo(), firGeo(0.75)];
+    const farKinds = med ? [cypressGeo(false), oliveGeo(false)] : [firGeo(1, false), firGeo(0.75, false)];
     const mat = farFog(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true }));
     const nTx = Math.ceil((x1 - x0) / TILE), nTz = Math.ceil((z1 - z0) / TILE);
     const buckets: Array<Array<Array<THREE.Matrix4>>> = [];
@@ -300,6 +304,7 @@ export class ContinentScenery {
     const tint = new THREE.Color();
     for (let t = 0; t < buckets.length; t++) {
       const meshes: THREE.InstancedMesh[] = [];
+      const far: THREE.InstancedMesh[] = [];
       buckets[t].forEach((list, k) => {
         if (!list.length) return;
         const im = new THREE.InstancedMesh(kinds[k], mat, list.length);
@@ -313,8 +318,17 @@ export class ContinentScenery {
         im.receiveShadow = true;
         this.group.add(im);
         meshes.push(im);
+        // далекий варіант — ті самі матриці й кольори (спільні буфери)
+        const fm = new THREE.InstancedMesh(farKinds[k], mat, list.length);
+        fm.instanceMatrix = im.instanceMatrix;
+        fm.instanceColor = im.instanceColor;
+        fm.boundingSphere = im.boundingSphere;
+        fm.receiveShadow = true;
+        fm.visible = false;
+        this.group.add(fm);
+        far.push(fm);
       });
-      if (meshes.length) this.tiles.push({ meshes, cx: x0 + ((t % nTx) + 0.5) * TILE, cz: z0 + (Math.floor(t / nTx) + 0.5) * TILE });
+      if (meshes.length) this.tiles.push({ meshes, far, cx: x0 + ((t % nTx) + 0.5) * TILE, cz: z0 + (Math.floor(t / nTx) + 0.5) * TILE, isFar: false });
     }
   }
 
@@ -329,7 +343,10 @@ export class ContinentScenery {
     for (const tl of this.tiles) {
       const d = Math.hypot(cam.x - tl.cx, cam.z - tl.cz);
       const vis = d < 1600;
-      for (const m of tl.meshes) m.visible = vis;
+      // за ~600 м (з гістерезисом) — дерева без стовбура: стовбур під кроною там менший за піксель
+      tl.isFar = tl.isFar ? d > 560 : d > 620;
+      for (const m of tl.meshes) m.visible = vis && !tl.isFar;
+      for (const m of tl.far) m.visible = vis && tl.isFar;
     }
     for (const l of this.lanterns) {
       const d = Math.hypot(cam.x - l.pos.x, cam.z - l.pos.z);
@@ -342,6 +359,8 @@ export class ContinentScenery {
 }
 
 // ── шаблони дерев (вершинні кольори, один матеріал) ──
+// стовбури — без кришок: нижня під землею (дерево посаджене на 0,3 м глибше), верхня
+// всередині крони — їх ніколи не видно, а на ~20 тис. дерев це ~200 тис. трикутників
 
 function paint(g: THREE.BufferGeometry, hex: number): THREE.BufferGeometry {
   const gg = g.index ? g.toNonIndexed() : g;
@@ -376,22 +395,22 @@ function merge(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
   return g;
 }
 
-function firGeo(k = 1): THREE.BufferGeometry {
-  const trunk = paint(new THREE.CylinderGeometry(0.2, 0.3, 2.2, 5).translate(0, 1.1, 0), 0x5a4030);
+function firGeo(k = 1, withTrunk = true): THREE.BufferGeometry {
+  const trunk = paint(new THREE.CylinderGeometry(0.2, 0.3, 2.2, 5, 1, true).translate(0, 1.1, 0), 0x5a4030);
   const a = paint(new THREE.ConeGeometry(2.4 * k, 4.6, 6).translate(0, 3.6, 0), 0x2c4f33);
   const b = paint(new THREE.ConeGeometry(1.7 * k, 4.0, 6).translate(0, 6.2, 0), 0x325a3b);
   const c = paint(new THREE.ConeGeometry(1.0 * k, 3.2, 6).translate(0, 8.4, 0), 0x386243);
-  return merge([trunk, a, b, c]);
+  return merge(withTrunk ? [trunk, a, b, c] : [a, b, c]);
 }
 
-function cypressGeo(): THREE.BufferGeometry {
-  const trunk = paint(new THREE.CylinderGeometry(0.14, 0.18, 1.3, 5).translate(0, 0.6, 0), 0x6a5a46);
+function cypressGeo(withTrunk = true): THREE.BufferGeometry {
+  const trunk = paint(new THREE.CylinderGeometry(0.14, 0.18, 1.3, 5, 1, true).translate(0, 0.6, 0), 0x6a5a46);
   const crown = paint(new THREE.ConeGeometry(0.95, 8.2, 7).translate(0, 5.0, 0), 0x2f4f2c);
-  return merge([trunk, crown]);
+  return merge(withTrunk ? [trunk, crown] : [crown]);
 }
 
-function oliveGeo(): THREE.BufferGeometry {
-  const trunk = paint(new THREE.CylinderGeometry(0.16, 0.26, 1.6, 5).translate(0, 0.75, 0), 0x6a5a46);
+function oliveGeo(withTrunk = true): THREE.BufferGeometry {
+  const trunk = paint(new THREE.CylinderGeometry(0.16, 0.26, 1.6, 5, 1, true).translate(0, 0.75, 0), 0x6a5a46);
   const crown = paint(new THREE.IcosahedronGeometry(1.7, 0).scale(1.3, 0.75, 1.2).translate(0, 2.3, 0), 0x8a9a68);
-  return merge([trunk, crown]);
+  return merge(withTrunk ? [trunk, crown] : [crown]);
 }
