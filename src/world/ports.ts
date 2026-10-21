@@ -7,6 +7,7 @@ import type { Platform, Solid } from './port';
 import { mergeStatic } from './staticMerge';
 import { buildKutVillage, type VillageLife } from './kutVillage';
 import { ZORYA_ID, ZoryaLife, buildZoryaStatic, zoryaPlan, type TownCtx } from './zoryaTown';
+import { AZZURRO_ID, AzzurroLife, azzurroPlan, buildAzzurroStatic } from './azzurroTown';
 
 // ─────────────────────────────────────────────────────────────
 // Інші гавані світу (дані — portSites.ts): суходіл, кам'яна набережна,
@@ -97,6 +98,8 @@ interface Built {
   life?: VillageLife;
   /** живе містечко (Гавань Зорі): мешканці, дзвін, прапорці */
   zorya?: ZoryaLife;
+  /** живе містечко Порто-Аццурро: мешканці, гоцо, мандоліна */
+  azzurro?: AzzurroLife;
 }
 
 export class Ports {
@@ -109,6 +112,8 @@ export class Ports {
   /** удар дзвона каплиці (гучність 0..1) і репліка мешканця — ставить main */
   onBell: ((vol: number) => void) | null = null;
   onSay: ((text: string) => void) | null = null;
+  /** нота мандоліни в Порто-Аццурро (гучність 0..1, частота) — ставить main */
+  onMandolin: ((vol: number, hz: number) => void) | null = null;
 
   /** platforms/solids — спільні з домашнім Port (ходьба й зіткнення гравця) */
   constructor(scene: THREE.Scene, platforms: Platform[], solids: Solid[]) {
@@ -239,6 +244,9 @@ export class Ports {
     // ── план містечка (Гавань Зорі): сходи, каплиця, площа — до загальної забудови ──
     const zPlan = p.id === ZORYA_ID ? zoryaPlan(p, H) : null;
     if (zPlan) used.push(...zPlan.reserved);
+    // ── Порто-Аццурро: піаца, кампаніла, тратторія, вікол, лимонний гай — до загальної забудови ──
+    const azPlan = p.id === AZZURRO_ID ? azzurroPlan() : null;
+    if (azPlan) used.push(...azPlan.reserved);
     const town: TownCtx = {
       p, g, batch, M: M as unknown as TownCtx['M'], ry, rng, H,
       house: (o) => this.house(batch, g, o, rng),
@@ -404,6 +412,7 @@ export class Ports {
       life = buildKutVillage({ p, g, batch, M, H, platforms, solids, rng, lampPost: (x, z, y0) => this.lampPost(batch, g, x, z, y0), glow: (x, y, z, s) => this.glow(g, x, y, z, s) });
     }
     if (zPlan) buildZoryaStatic(town, zPlan);
+    if (azPlan) buildAzzurroStatic(town);
 
     // ── злити ──
     batch.build(g);
@@ -421,8 +430,15 @@ export class Ports {
       zorya.onSay = (s) => this.onSay?.(s);
       g.add(zorya.group);
     }
+    let azzurro: AzzurroLife | undefined;
+    if (azPlan) {
+      azzurro = new AzzurroLife(town);
+      azzurro.onSay = (s) => this.onSay?.(s);
+      azzurro.onMandolin = (v, hz) => this.onMandolin?.(v, hz);
+      g.add(azzurro.group);
+    }
     this.group.add(g);
-    return { site: p, group: g, lantern, lanternPos, phase: rng() * 6, life, zorya };
+    return { site: p, group: g, lantern, lanternPos, phase: rng() * 6, life, zorya, azzurro };
   }
 
   /** точка для маяка: на краю суходолу поруч із гаванню, на сухому */
@@ -654,6 +670,7 @@ export class Ports {
       }
       // містечко живе (і дзвонить) лише поки гавань видно
       if (b.zorya && b.group.visible && d < 1500) b.zorya.update(t, cam, hours, this.night);
+      if (b.azzurro && b.group.visible && d < 1500) b.azzurro.update(t, cam, hours, this.night);
     }
   }
 

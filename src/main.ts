@@ -1,4 +1,5 @@
 import { bakeryHtml, eatPastry, ostapLine, petCat } from './ui/bakery';
+import { gelatoHtml, eatGelato } from './ui/gelato';
 import * as THREE from 'three';
 import { Input } from './core/input';
 import { installFastMatrix } from './core/fastMatrix';
@@ -377,6 +378,7 @@ class Game {
     // Гавань Зорі: дзвін каплиці й репліки мешканців
     this.ports.onBell = (v) => this.audio.bell(v * 0.9, 262);
     this.ports.onSay = (s) => this.hud.toast(s, 'good', 4500);
+    this.ports.onMandolin = (v, hz) => this.audio.mandolin(v, hz);
     this.continents = new ContinentScenery(this.scene);
     this.traders = new Traders(this.scene, glowTex());
     this.moorDock = this.port.quay;
@@ -533,6 +535,8 @@ class Game {
     PORT_SERVICE_HANDLERS.bait = () => this.openBait();
     // картограф Гавані Зорі (portSites: svc 'chartmaker')
     PORT_SERVICE_HANDLERS.chartmaker = () => this.openChartmaker();
+    // джелатерія Порто-Аццурро (portSites: svc 'gelato')
+    PORT_SERVICE_HANDLERS.gelato = () => this.openGelato();
 
     this.reticle = document.createElement('div');
     this.reticle.id = 'reticle';
@@ -2710,6 +2714,22 @@ class Game {
 
   /** склад гавані: накладні, здати, відмовитись */
   /** пекарня «Тепла скоринка»: випічку з'їдаєш одразу — енергія й бафи */
+  /** Джелатерія «Стелла» (Порто-Аццурро): морозиво з бафами */
+  private openGelato(note = '') {
+    this.phase = 'dialog';
+    this.expectUnlock = true;
+    document.exitPointerLock();
+    this.dialogs.custom(gelatoHtml(this.game, note), 'shop cargo', (panel) => {
+      panel.querySelectorAll<HTMLElement>('[data-scoop]').forEach((b) => b.addEventListener('click', () => {
+        const msg = eatGelato(this.game, b.dataset.scoop!);
+        if (!msg) return;
+        this.audio.click();
+        this.saveGame();
+        this.openGelato(msg);
+      }));
+    });
+  }
+
   private openBakery(note = '') {
     this.dialogs.custom(bakeryHtml(this.game, note), 'shop cargo', (panel) => {
       panel.querySelectorAll<HTMLElement>('[data-pastry]').forEach((b) => b.addEventListener('click', () => {

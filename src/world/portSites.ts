@@ -168,6 +168,7 @@ const CONT_SITES: PortSite[] = [
       { kind: 'yard', a: -5, b: 28, name: L('Верф', `Shipyard`), icon: '🔧', label: L('Верф Порто-Аццурро — ремонт корпусу', `Porto Azzurro shipyard — hull repairs`) },
       { kind: 'shop', a: -20, b: -6, name: L('Яхтова крамниця', `Yacht chandlery`), icon: '🛠', label: L('Яхтова крамниця — каталог речей', `Yacht chandlery — item catalogue`) },
       BASE_SVC(-20, 18, L('Вілла на пагорбі', `Hillside villa`)),
+      { kind: 'gelato', a: -11, b: -29, name: L('Джелатерія', `Gelateria`), icon: '🍨', label: L('Джелатерія «Стелла» — морозиво з бафами', `Gelateria “Stella” — gelato with buffs`) },
     ],
   },
   {
